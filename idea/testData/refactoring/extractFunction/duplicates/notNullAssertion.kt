@@ -5,8 +5,8 @@
 fun foo(): Int {
     val s: String? = ""
     return if (true) {
-        <selection>s!!.length</selection>
+        <selection>s!!.size</selection>
     } else {
-        s!!.length
+        s!!.size
     }
 }

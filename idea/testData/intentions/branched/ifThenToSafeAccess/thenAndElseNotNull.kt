@@ -3,9 +3,9 @@
 fun main(args: Array<String>) {
     val foo: String? = "foo"
     if (foo == null<caret>) {
-        foo.length()
+        foo.size
     }
     else {
-        foo.length()
+        foo.size
     }
 }

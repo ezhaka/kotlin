@@ -8,10 +8,10 @@ fun withLambda(o : Int, block : Int.(String) -> Unit) {
 
 fun test() {
     withLambda {
-        it.length()
+        it.size
     }
 
     withLambda { r -> // no error should be here
-        r.length()
+        r.size
     }
 }

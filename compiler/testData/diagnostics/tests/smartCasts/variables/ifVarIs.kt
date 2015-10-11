@@ -1,5 +1,5 @@
 public fun bar(s: String) {
-    System.out.println("Length of $s is ${s.length()}")
+    System.out.println("Length of $s is ${s.size}")
 }
 
 public fun foo() {

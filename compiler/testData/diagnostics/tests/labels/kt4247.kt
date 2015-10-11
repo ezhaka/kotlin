@@ -2,10 +2,10 @@
 
 fun foo(bar1: (String.() -> Int) -> Int) {
     bar1 {
-        this.length()
+        this.size
     }
 
     bar1 {
-        this@bar1.length()
+        this@bar1.size
     }
 }

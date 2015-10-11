@@ -2,11 +2,11 @@
 
 inline fun foo(bar1: (String.() -> Int) -> Int, bar2: (()->Int) -> Int) {
     bar1 label@ {
-        this@label.length()
+        this@label.size
     }
 
     bar1 {
-        this.length()
+        this.size
     }
     //unmute after KT-4247 fix
     //bar1  {
