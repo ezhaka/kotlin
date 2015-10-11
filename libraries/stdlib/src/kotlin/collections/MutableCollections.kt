@@ -32,7 +32,7 @@ public fun <E> MutableList<E>.remove(index: Int): E = removeAt(index)
 public fun <E> MutableCollection<E>.remove(o: Any?): Boolean = remove(o as E)
 
 @Deprecated("Use 'size' property instead", ReplaceWith("this.size"))
-public fun CharSequence.length(): Int = size
+public inline fun CharSequence.length(): Int = size
 
 /**
  * Adds the specified [element] to this mutable collection.
