@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
+@file:JvmName("ReflectJvm")
 package kotlin.reflect.jvm
 
-import org.jetbrains.kotlin.load.java.JvmAbi
 import java.lang.reflect.*
 import java.util.*
 import kotlin.jvm.internal.KotlinFileFacade
@@ -108,7 +108,7 @@ public val Method.kotlinFunction: KFunction<*>?
             val fileFacade = declaringClass.getAnnotation(KotlinFileFacade::class.java)
             if (fileFacade != null) {
                 val kotlinPackage = Reflection.getOrCreateKotlinPackage(declaringClass, fileFacade.moduleName)
-                return kotlinPackage.functions.firstOrNull { it.javaMethod == this }
+                return kotlinPackage.members.filterIsInstance<KFunction<*>>().firstOrNull { it.javaMethod == this }
             }
 
             // For static bridge method generated for a jvmStatic function in the companion object, also try to find the latter
