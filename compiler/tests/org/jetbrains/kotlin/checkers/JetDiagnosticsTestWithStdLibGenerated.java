@@ -41,12 +41,6 @@ public class JetDiagnosticsTestWithStdLibGenerated extends AbstractJetDiagnostic
         doTest(fileName);
     }
 
-    @TestMetadata("fieldOverridesField.kt")
-    public void testFieldOverridesField() throws Exception {
-        String fileName = JetTestUtils.navigationMetadata("compiler/testData/diagnostics/testsWithStdLib/fieldOverridesField.kt");
-        doTest(fileName);
-    }
-
     @TestMetadata("instar.kt")
     public void testInstar() throws Exception {
         String fileName = JetTestUtils.navigationMetadata("compiler/testData/diagnostics/testsWithStdLib/instar.kt");
