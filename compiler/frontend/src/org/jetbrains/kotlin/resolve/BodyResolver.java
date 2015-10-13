@@ -271,7 +271,7 @@ public class BodyResolver {
             @Override
             public void visitDelegationByExpressionSpecifier(@NotNull JetDelegatorByExpressionSpecifier specifier) {
                 if (descriptor.getKind() == ClassKind.INTERFACE) {
-                    trace.report(DELEGATION_IN_TRAIT.on(specifier));
+                    trace.report(DELEGATION_IN_INTERFACE.on(specifier));
                 }
                 JetType supertype = trace.getBindingContext().get(BindingContext.TYPE, specifier.getTypeReference());
                 recordSupertype(specifier.getTypeReference(), supertype);
@@ -280,7 +280,7 @@ public class BodyResolver {
                     if (declarationDescriptor instanceof ClassDescriptor) {
                         ClassDescriptor classDescriptor = (ClassDescriptor) declarationDescriptor;
                         if (classDescriptor.getKind() != ClassKind.INTERFACE) {
-                            trace.report(DELEGATION_NOT_TO_TRAIT.on(specifier.getTypeReference()));
+                            trace.report(DELEGATION_NOT_TO_INTERFACE.on(specifier.getTypeReference()));
                         }
                     }
                 }
@@ -300,7 +300,7 @@ public class BodyResolver {
                 JetValueArgumentList valueArgumentList = call.getValueArgumentList();
                 PsiElement elementToMark = valueArgumentList == null ? call : valueArgumentList;
                 if (descriptor.getKind() == ClassKind.INTERFACE) {
-                    trace.report(SUPERTYPE_INITIALIZED_IN_TRAIT.on(elementToMark));
+                    trace.report(SUPERTYPE_INITIALIZED_IN_INTERFACE.on(elementToMark));
                 }
                 JetTypeReference typeReference = call.getTypeReference();
                 if (typeReference == null) return;
@@ -427,6 +427,17 @@ public class BodyResolver {
             JetTypeReference typeReference = entry.getKey();
             JetType supertype = entry.getValue();
 
+            JetTypeElement typeElement = typeReference.getTypeElement();
+            if (typeElement instanceof JetFunctionType) {
+                for (JetParameter parameter : ((JetFunctionType) typeElement).getParameters()) {
+                    PsiElement nameIdentifier = parameter.getNameIdentifier();
+
+                    if (nameIdentifier != null) {
+                        trace.report(Errors.UNSUPPORTED.on(nameIdentifier, "named parameter in function type in supertype position"));
+                    }
+                }
+            }
+
             boolean addSupertype = true;
 
             ClassDescriptor classDescriptor = TypeUtils.getClassDescriptor(supertype);
@@ -440,7 +451,7 @@ public class BodyResolver {
                     }
                     else if (supertypeOwner.getKind() == ClassKind.INTERFACE &&
                              !classAppeared && !TypesPackage.isDynamic(supertype) /* avoid duplicate diagnostics */) {
-                        trace.report(TRAIT_WITH_SUPERCLASS.on(typeReference));
+                        trace.report(INTERFACE_WITH_SUPERCLASS.on(typeReference));
                         addSupertype = false;
                     }
                     else if (jetClass.hasModifier(JetTokens.DATA_KEYWORD)) {
@@ -457,7 +468,7 @@ public class BodyResolver {
                 }
             }
             else {
-                trace.report(SUPERTYPE_NOT_A_CLASS_OR_TRAIT.on(typeReference));
+                trace.report(SUPERTYPE_NOT_A_CLASS_OR_INTERFACE.on(typeReference));
             }
 
             TypeConstructor constructor = supertype.getConstructor();
@@ -510,7 +521,7 @@ public class BodyResolver {
             processModifiersOnInitializer(anonymousInitializer, scopeForInitializers);
         }
         else {
-            trace.report(ANONYMOUS_INITIALIZER_IN_TRAIT.on(anonymousInitializer));
+            trace.report(ANONYMOUS_INITIALIZER_IN_INTERFACE.on(anonymousInitializer));
             processModifiersOnInitializer(anonymousInitializer, scopeForInitializers);
         }
     }
