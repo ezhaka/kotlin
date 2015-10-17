@@ -59,17 +59,18 @@ public final class D {
 
     public final enum class R : kotlin.Enum<D.R> {
         private constructor R()
+        public final override /*1*/ /*fake_override*/ val name: kotlin.String
+        public final override /*1*/ /*fake_override*/ val ordinal: kotlin.Int
         protected final override /*1*/ /*fake_override*/ fun clone(): kotlin.Any
         public final override /*1*/ /*fake_override*/ fun compareTo(/*0*/ other: D.R): kotlin.Int
         public final override /*1*/ /*fake_override*/ fun equals(/*0*/ other: kotlin.Any?): kotlin.Boolean
         public final override /*1*/ /*fake_override*/ fun hashCode(): kotlin.Int
-        public final override /*1*/ /*fake_override*/ fun name(): kotlin.String
-        public final override /*1*/ /*fake_override*/ fun ordinal(): kotlin.Int
         public open override /*1*/ /*fake_override*/ fun toString(): kotlin.String
 
         // Static members
+        public final /*synthesized*/ val values: kotlin.Array<D.R>
         public final /*synthesized*/ fun valueOf(/*0*/ value: kotlin.String): D.R
-        public final /*synthesized*/ fun values(): kotlin.Array<D.R>
+        @kotlin.Deprecated(message = "Use 'values' property instead", replaceWith = kotlin.ReplaceWith(expression = "this.values", imports = {})) public final /*synthesized*/ fun values(): kotlin.Array<D.R>
     }
 
     @kotlin.annotation.annotation() public final class S : kotlin.Annotation {
@@ -84,12 +85,12 @@ public final enum class H : kotlin.Enum<H> {
     enum entry I
 
     private constructor H()
+    public final override /*1*/ /*fake_override*/ val name: kotlin.String
+    public final override /*1*/ /*fake_override*/ val ordinal: kotlin.Int
     protected final override /*1*/ /*fake_override*/ fun clone(): kotlin.Any
     public final override /*1*/ /*fake_override*/ fun compareTo(/*0*/ other: H): kotlin.Int
     public final override /*1*/ /*fake_override*/ fun equals(/*0*/ other: kotlin.Any?): kotlin.Boolean
     public final override /*1*/ /*fake_override*/ fun hashCode(): kotlin.Int
-    public final override /*1*/ /*fake_override*/ fun name(): kotlin.String
-    public final override /*1*/ /*fake_override*/ fun ordinal(): kotlin.Int
     public open override /*1*/ /*fake_override*/ fun toString(): kotlin.String
 
     public final inner class J {
@@ -100,8 +101,9 @@ public final enum class H : kotlin.Enum<H> {
     }
 
     // Static members
+    public final /*synthesized*/ val values: kotlin.Array<H>
     public final /*synthesized*/ fun valueOf(/*0*/ value: kotlin.String): H
-    public final /*synthesized*/ fun values(): kotlin.Array<H>
+    @kotlin.Deprecated(message = "Use 'values' property instead", replaceWith = kotlin.ReplaceWith(expression = "this.values", imports = {})) public final /*synthesized*/ fun values(): kotlin.Array<H>
 }
 
 public interface K {

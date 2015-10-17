@@ -1,4 +1,6 @@
 // !DIAGNOSTICS: -UNUSED_PARAMETER
+import kotlin.reflect.KProperty
+
 var a: Int by A()
 var a1 by <!DELEGATE_SPECIAL_FUNCTION_MISSING, DELEGATE_SPECIAL_FUNCTION_MISSING!>A()<!>
 
@@ -8,16 +10,16 @@ val cObj = C()
 var c: String by cObj
 
 class A {
-  fun <T> getValue(t: Any?, p: PropertyMetadata): T = null!!
-  fun <T> setValue(t: Any?, p: PropertyMetadata, x: T) = Unit
+  operator fun <T> getValue(t: Any?, p: KProperty<*>): T = null!!
+  operator fun <T> setValue(t: Any?, p: KProperty<*>, x: T) = Unit
 }
 
 class B
 
-fun <T> B.getValue(t: Any?, p: PropertyMetadata): T = null!!
-fun <T> B.setValue(t: Any?, p: PropertyMetadata, x: T) = Unit
+operator fun <T> B.getValue(t: Any?, p: KProperty<*>): T = null!!
+operator fun <T> B.setValue(t: Any?, p: KProperty<*>, x: T) = Unit
 
 class C
 
-inline fun <reified T> C.getValue(t: Any?, p: PropertyMetadata): T = null!!
-inline fun <reified T> C.setValue(t: Any?, p: PropertyMetadata, x: T) = Unit
+operator inline fun <reified T> C.getValue(t: Any?, p: KProperty<*>): T = null!!
+operator inline fun <reified T> C.setValue(t: Any?, p: KProperty<*>, x: T) = Unit

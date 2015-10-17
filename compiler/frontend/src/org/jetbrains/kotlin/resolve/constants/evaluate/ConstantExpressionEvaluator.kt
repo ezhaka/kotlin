@@ -455,7 +455,7 @@ private class ConstantExpressionEvaluatorVisitor(
             return result
         }
         assert(isIntegerType(receiver.value)) { "Only integer constants should be checked for overflow" }
-        assert(name == "minus") { "Only negation should be checked for overflow" }
+        assert(name == "minus" || name == "unaryMinus") { "Only negation should be checked for overflow" }
 
         if (receiver.value == result) {
             trace.report(Errors.INTEGER_OVERFLOW.on(callExpression.getStrictParentOfType<JetExpression>() ?: callExpression))
@@ -563,6 +563,11 @@ private class ConstantExpressionEvaluatorVisitor(
 
             val receiverExpression = expression.getReceiverExpression()
             return evaluateCall(calleeExpression, receiverExpression, expectedType)
+        }
+
+        if (selectorExpression is JetSimpleNameExpression) {
+            val result = evaluateCall(selectorExpression, expression.receiverExpression, expectedType)
+            if (result != null) return result
         }
 
         // MyEnum.A, Integer.MAX_VALUE

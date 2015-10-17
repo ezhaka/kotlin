@@ -20,6 +20,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Sets;
 import com.intellij.psi.PsiElement;
+import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns;
@@ -47,16 +48,19 @@ public class DeclarationsChecker {
     @NotNull private final ModifiersChecker.ModifiersCheckingProcedure modifiersChecker;
     @NotNull private final DescriptorResolver descriptorResolver;
     @NotNull private final AnnotationChecker annotationChecker;
+    @NotNull private final IdentifierChecker identifierChecker;
 
     public DeclarationsChecker(
             @NotNull DescriptorResolver descriptorResolver,
             @NotNull ModifiersChecker modifiersChecker,
             @NotNull AnnotationChecker annotationChecker,
+            @NotNull IdentifierChecker identifierChecker,
             @NotNull BindingTrace trace
     ) {
         this.descriptorResolver = descriptorResolver;
         this.modifiersChecker = modifiersChecker.withTrace(trace);
         this.annotationChecker = annotationChecker;
+        this.identifierChecker = identifierChecker;
         this.trace = trace;
     }
 
@@ -87,6 +91,7 @@ public class DeclarationsChecker {
             checkPrimaryConstructor(classOrObject, classDescriptor);
 
             modifiersChecker.checkModifiersForDeclaration(classOrObject, classDescriptor);
+            identifierChecker.checkDeclaration(classOrObject, trace);
             checkClassExposedType(classOrObject, classDescriptor);
         }
 
@@ -97,6 +102,7 @@ public class DeclarationsChecker {
 
             checkFunction(function, functionDescriptor);
             modifiersChecker.checkModifiersForDeclaration(function, functionDescriptor);
+            identifierChecker.checkDeclaration(function, trace);
         }
 
         Map<JetProperty, PropertyDescriptor> properties = bodiesResolveContext.getProperties();
@@ -106,6 +112,7 @@ public class DeclarationsChecker {
 
             checkProperty(property, propertyDescriptor);
             modifiersChecker.checkModifiersForDeclaration(property, propertyDescriptor);
+            identifierChecker.checkDeclaration(property, trace);
         }
 
         for (Map.Entry<JetSecondaryConstructor, ConstructorDescriptor> entry : bodiesResolveContext.getSecondaryConstructors().entrySet()) {
@@ -118,6 +125,7 @@ public class DeclarationsChecker {
 
     private void checkConstructorDeclaration(ConstructorDescriptor constructorDescriptor, JetDeclaration declaration) {
         modifiersChecker.checkModifiersForDeclaration(declaration, constructorDescriptor);
+        identifierChecker.checkDeclaration(declaration, trace);
     }
 
     private void checkModifiersAndAnnotationsInPackageDirective(JetFile file) {
@@ -345,7 +353,6 @@ public class DeclarationsChecker {
             if (typeParameter != null) {
                 DescriptorResolver.checkConflictingUpperBounds(trace, typeParameter, jetTypeParameter);
             }
-            annotationChecker.check(jetTypeParameter, trace, null);
         }
     }
 
@@ -471,6 +478,33 @@ public class DeclarationsChecker {
         checkAccessors(property, propertyDescriptor);
         checkTypeParameterConstraints(property);
         checkPropertyExposedType(property, propertyDescriptor);
+        checkPropertyTypeParametersAreUsedInReceiverType(propertyDescriptor);
+    }
+
+    private void checkPropertyTypeParametersAreUsedInReceiverType(@NotNull PropertyDescriptor descriptor) {
+        for (TypeParameterDescriptor typeParameter : descriptor.getTypeParameters()) {
+            if (isTypeParameterUsedInReceiverType(typeParameter, descriptor)) continue;
+
+            PsiElement typeParameterPsi = DescriptorToSourceUtils.getSourceFromDescriptor(typeParameter);
+            if (typeParameterPsi instanceof JetTypeParameter) {
+                trace.report(TYPE_PARAMETER_OF_PROPERTY_NOT_USED_IN_RECEIVER.on((JetTypeParameter) typeParameterPsi));
+            }
+        }
+    }
+
+    private static boolean isTypeParameterUsedInReceiverType(
+            @NotNull final TypeParameterDescriptor parameter,
+            @NotNull PropertyDescriptor descriptor
+    ) {
+        ReceiverParameterDescriptor receiverParameter = descriptor.getExtensionReceiverParameter();
+        if (receiverParameter == null) return false;
+
+        return TypeUtils.containsSpecialType(receiverParameter.getType(), new Function1<JetType, Boolean>() {
+            @Override
+            public Boolean invoke(JetType type) {
+                return parameter.equals(type.getConstructor().getDeclarationDescriptor());
+            }
+        });
     }
 
     private void checkPropertyLateInit(@NotNull JetCallableDeclaration property, @NotNull PropertyDescriptor propertyDescriptor) {
@@ -480,8 +514,7 @@ public class DeclarationsChecker {
         if (modifier == null) return;
 
         if (!propertyDescriptor.isVar()) {
-            trace.report(INAPPLICABLE_LATEINIT_MODIFIER_IMMUTABLE.on(modifier));
-            return;
+            trace.report(INAPPLICABLE_LATEINIT_MODIFIER.on(modifier, "is allowed only on mutable properties"));
         }
 
         boolean returnTypeIsNullable = true;
@@ -494,32 +527,29 @@ public class DeclarationsChecker {
         }
 
         if (returnTypeIsNullable) {
-            trace.report(INAPPLICABLE_LATEINIT_MODIFIER_NULLABLE.on(modifier));
-            return;
+            trace.report(INAPPLICABLE_LATEINIT_MODIFIER.on(modifier, "is not allowed on nullable properties"));
         }
 
         if (returnTypeIsPrimitive) {
-            trace.report(INAPPLICABLE_LATEINIT_MODIFIER_PRIMITIVE.on(modifier));
-            return;
+            trace.report(INAPPLICABLE_LATEINIT_MODIFIER.on(modifier, "is not allowed on primitive type properties"));
         }
 
-        if (propertyDescriptor.getModality() == Modality.ABSTRACT) {
-            trace.report(INAPPLICABLE_LATEINIT_MODIFIER_ABSTRACT_PROPERTY.on(modifier));
-            return;
+        boolean isAbstract = propertyDescriptor.getModality() == Modality.ABSTRACT;
+        if (isAbstract) {
+            trace.report(INAPPLICABLE_LATEINIT_MODIFIER.on(modifier, "is not allowed on abstract properties"));
         }
 
         if (property instanceof JetParameter) {
-            trace.report(INAPPLICABLE_LATEINIT_MODIFIER_PRIMARY_CONSTRUCTOR_PARAMETER.on(modifier));
-            return;
+            trace.report(INAPPLICABLE_LATEINIT_MODIFIER.on(modifier, "is not allowed on primary constructor parameters"));
         }
 
-        boolean hasBackingField =
-                Boolean.TRUE.equals(trace.getBindingContext().get(BindingContext.BACKING_FIELD_REQUIRED, propertyDescriptor));
-
-        boolean hasDelegateOrInitializer = false;
-
+        boolean hasDelegateExpressionOrInitializer = false;
         if (property instanceof JetProperty) {
-            hasDelegateOrInitializer = ((JetProperty) property).hasDelegateExpressionOrInitializer();
+            hasDelegateExpressionOrInitializer = ((JetProperty) property).hasDelegateExpressionOrInitializer();
+            if (hasDelegateExpressionOrInitializer) {
+                trace.report(INAPPLICABLE_LATEINIT_MODIFIER.on(modifier,
+                        "is not allowed on properties with initializer or on delegated properties"));
+            }
         }
 
         PropertyGetterDescriptor getter = propertyDescriptor.getGetter();
@@ -533,9 +563,19 @@ public class DeclarationsChecker {
             customGetterOrSetter |= setter.hasBody();
         }
 
-        if (!hasBackingField || hasDelegateOrInitializer || customGetterOrSetter
-                || propertyDescriptor.getExtensionReceiverParameter() != null) {
-            trace.report(INAPPLICABLE_LATEINIT_MODIFIER.on(modifier));
+        if (!hasDelegateExpressionOrInitializer && customGetterOrSetter) {
+            trace.report(INAPPLICABLE_LATEINIT_MODIFIER.on(modifier, "is not allowed on properties with a custom getter or setter"));
+        }
+
+        boolean hasBackingField =
+                Boolean.TRUE.equals(trace.getBindingContext().get(BindingContext.BACKING_FIELD_REQUIRED, propertyDescriptor));
+
+        if (!isAbstract && !customGetterOrSetter && !hasDelegateExpressionOrInitializer && !hasBackingField) {
+            trace.report(INAPPLICABLE_LATEINIT_MODIFIER.on(modifier, "is not allowed on properties without backing field"));
+        }
+
+        if (propertyDescriptor.getExtensionReceiverParameter() != null) {
+            trace.report(INAPPLICABLE_LATEINIT_MODIFIER.on(modifier, "is not allowed on extension properties"));
         }
     }
 
@@ -654,58 +694,6 @@ public class DeclarationsChecker {
         }
     }
 
-    private void checkLocalTypesInFunctionReturnType(@NotNull JetFunction function, @NotNull FunctionDescriptor functionDescriptor) {
-        if (functionDescriptor instanceof ConstructorDescriptor) return;
-        if (!isExposedAsPublicAPI(functionDescriptor)) return;
-        JetType returnType = functionDescriptor.getReturnType();
-        if (returnType == null) return;
-        checkLocalTypesExposedInType(function, functionDescriptor, returnType,
-                                     FUNCTION_RETURN_TYPE_DEPENDS_ON_LOCAL_CLASS,
-                                     new HashSet<JetType>());
-    }
-
-    private void checkLocalTypesInPropertyType(@NotNull JetProperty property, @NotNull PropertyDescriptor propertyDescriptor) {
-        if (!isExposedAsPublicAPI(propertyDescriptor)) return;
-        JetType propertyType = propertyDescriptor.getType();
-        checkLocalTypesExposedInType(property, propertyDescriptor, propertyType,
-                                     PROPERTY_TYPE_DEPENDS_ON_LOCAL_CLASS,
-                                     new HashSet<JetType>());
-    }
-
-    private static boolean isExposedAsPublicAPI(@NotNull DeclarationDescriptor descriptor) {
-        for (DeclarationDescriptor finger = descriptor; finger != null; finger = finger.getContainingDeclaration()) {
-            if (finger instanceof DeclarationDescriptorWithVisibility) {
-                Visibility visibility = ((DeclarationDescriptorWithVisibility) finger).getVisibility();
-                if (Visibilities.isPrivate(visibility) || visibility == Visibilities.LOCAL) {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    private <D extends JetDeclaration> void checkLocalTypesExposedInType(
-            @NotNull D reportOnDeclaration,
-            @NotNull DeclarationDescriptor parentDeclarationDescriptor,
-            @NotNull JetType type,
-            @NotNull DiagnosticFactory1<D, ClassDescriptor> diagnostic,
-            @NotNull Set<JetType> visitedTypes
-    ) {
-        visitedTypes.add(type);
-        ClassDescriptor classDescriptor = TypeUtils.getClassDescriptor(type);
-        if (classDescriptor != null) {
-            if (DescriptorUtils.isLocal(classDescriptor) && DescriptorUtils.isAncestor(parentDeclarationDescriptor, classDescriptor, true)) {
-                trace.report(diagnostic.on(reportOnDeclaration, classDescriptor));
-            }
-        }
-        for (TypeProjection projection : type.getArguments()) {
-            JetType projectedType = projection.getType();
-            if (!visitedTypes.contains(projectedType)) {
-                checkLocalTypesExposedInType(reportOnDeclaration, parentDeclarationDescriptor, projectedType, diagnostic, visitedTypes);
-            }
-        }
-    }
-
     private void checkPropertyExposedType(@NotNull JetProperty property, @NotNull PropertyDescriptor propertyDescriptor) {
         EffectiveVisibility propertyVisibility = EffectiveVisibility.Companion.forMember(propertyDescriptor);
         EffectiveVisibility typeVisibility = EffectiveVisibility.Companion.forType(propertyDescriptor.getType());
@@ -713,7 +701,6 @@ public class DeclarationsChecker {
             trace.report(EXPOSED_PROPERTY_TYPE.on(property, propertyVisibility, typeVisibility));
         }
         checkMemberReceiverExposedType(property.getReceiverTypeReference(), propertyDescriptor);
-        checkLocalTypesInPropertyType(property, propertyDescriptor);
     }
 
     protected void checkFunction(JetNamedFunction function, SimpleFunctionDescriptor functionDescriptor) {
@@ -783,7 +770,6 @@ public class DeclarationsChecker {
             i++;
         }
         checkMemberReceiverExposedType(function.getReceiverTypeReference(), functionDescriptor);
-        checkLocalTypesInFunctionReturnType(function, functionDescriptor);
     }
 
     private void checkAccessors(@NotNull JetProperty property, @NotNull PropertyDescriptor propertyDescriptor) {
@@ -791,6 +777,7 @@ public class DeclarationsChecker {
             PropertyAccessorDescriptor propertyAccessorDescriptor = accessor.isGetter() ? propertyDescriptor.getGetter() : propertyDescriptor.getSetter();
             assert propertyAccessorDescriptor != null : "No property accessor descriptor for " + property.getText();
             modifiersChecker.checkModifiersForDeclaration(accessor, propertyAccessorDescriptor);
+            identifierChecker.checkDeclaration(accessor, trace);
         }
         checkAccessor(propertyDescriptor, property.getGetter(), propertyDescriptor.getGetter());
         checkAccessor(propertyDescriptor, property.getSetter(), propertyDescriptor.getSetter());

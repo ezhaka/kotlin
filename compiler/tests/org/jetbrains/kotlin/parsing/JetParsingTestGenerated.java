@@ -205,6 +205,12 @@ public class JetParsingTestGenerated extends AbstractJetParsingTest {
             doParsingTest(fileName);
         }
 
+        @TestMetadata("EmptyName.kt")
+        public void testEmptyName() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("compiler/testData/psi/EmptyName.kt");
+            doParsingTest(fileName);
+        }
+
         @TestMetadata("EnumCommas.kt")
         public void testEnumCommas() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("compiler/testData/psi/EnumCommas.kt");
@@ -810,6 +816,12 @@ public class JetParsingTestGenerated extends AbstractJetParsingTest {
             @TestMetadata("multiDeclaration.kt")
             public void testMultiDeclaration() throws Exception {
                 String fileName = JetTestUtils.navigationMetadata("compiler/testData/psi/annotation/multiDeclaration.kt");
+                doParsingTest(fileName);
+            }
+
+            @TestMetadata("noParameterYet.kt")
+            public void testNoParameterYet() throws Exception {
+                String fileName = JetTestUtils.navigationMetadata("compiler/testData/psi/annotation/noParameterYet.kt");
                 doParsingTest(fileName);
             }
 

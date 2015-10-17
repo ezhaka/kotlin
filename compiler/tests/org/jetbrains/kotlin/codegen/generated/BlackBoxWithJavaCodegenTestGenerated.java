@@ -77,6 +77,12 @@ public class BlackBoxWithJavaCodegenTestGenerated extends AbstractBlackBoxCodege
         doTestWithJava(fileName);
     }
 
+    @TestMetadata("number")
+    public void testNumber() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithJava/number/");
+        doTestWithJava(fileName);
+    }
+
     @TestMetadata("platformName")
     public void testPlatformName() throws Exception {
         String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithJava/platformName/");
@@ -188,6 +194,12 @@ public class BlackBoxWithJavaCodegenTestGenerated extends AbstractBlackBoxCodege
         @TestMetadata("mutableList")
         public void testMutableList() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithJava/collections/mutableList/");
+            doTestWithJava(fileName);
+        }
+
+        @TestMetadata("platformValueContains")
+        public void testPlatformValueContains() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithJava/collections/platformValueContains/");
             doTestWithJava(fileName);
         }
 
@@ -372,6 +384,12 @@ public class BlackBoxWithJavaCodegenTestGenerated extends AbstractBlackBoxCodege
         @TestMetadata("annotationWithKotlinProperty")
         public void testAnnotationWithKotlinProperty() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithJava/properties/annotationWithKotlinProperty/");
+            doTestWithJava(fileName);
+        }
+
+        @TestMetadata("annotationWithKotlinPropertyFromInterfaceCompanion")
+        public void testAnnotationWithKotlinPropertyFromInterfaceCompanion() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithJava/properties/annotationWithKotlinPropertyFromInterfaceCompanion/");
             doTestWithJava(fileName);
         }
 

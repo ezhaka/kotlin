@@ -3,7 +3,8 @@ package kotlin.js
 import java.util.*;
 
 @native
-public val <T> noImpl: T = throw Exception()
+public val noImpl: Nothing
+    get() = throw Exception()
 
 @native
 public fun eval(expr: String): dynamic = noImpl
@@ -14,9 +15,6 @@ public fun typeof(a: Any?): String = noImpl
 @native
 public val undefined: Nothing? = noImpl
 
-// Drop this after KT-2093 will be fixed and restore MutableMap.set in Maps.kt from MapsJVM.kt
-/** Provides [] access to maps */
-@Suppress("BASE_WITH_NULLABLE_UPPER_BOUND")
 @native public fun <K, V> MutableMap<K, V>.set(key: K, value: V): V? = noImpl
 
 @library

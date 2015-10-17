@@ -17,21 +17,24 @@
 package org.jetbrains.kotlin.load.java.descriptors
 
 import org.jetbrains.kotlin.descriptors.CallableDescriptor
+import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.ValueParameterDescriptor
 import org.jetbrains.kotlin.descriptors.impl.ValueParameterDescriptorImpl
+import org.jetbrains.kotlin.load.java.lazy.descriptors.LazyJavaStaticClassScope
+import org.jetbrains.kotlin.resolve.descriptorUtil.getSuperClassNotAny
 import org.jetbrains.kotlin.resolve.descriptorUtil.module
 import org.jetbrains.kotlin.types.JetType
 
-fun createEnhancedValueParameters(
-        enhancedTypes: Collection<JetType>,
+fun copyValueParameters(
+        newValueParametersTypes: Collection<JetType>,
         oldValueParameters: Collection<ValueParameterDescriptor>,
         newOwner: CallableDescriptor
 ): List<ValueParameterDescriptor> {
-    assert(enhancedTypes.size() == oldValueParameters.size()) {
-        "Different value parameters sizes: Enhanced = ${enhancedTypes.size()}, Old = ${oldValueParameters.size()}"
+    assert(newValueParametersTypes.size() == oldValueParameters.size()) {
+        "Different value parameters sizes: Enhanced = ${newValueParametersTypes.size}, Old = ${oldValueParameters.size}"
     }
 
-    return enhancedTypes.zip(oldValueParameters).map {
+    return newValueParametersTypes.zip(oldValueParameters).map {
         pair ->
         val (newType, oldParameter) = pair
         ValueParameterDescriptorImpl(
@@ -46,4 +49,14 @@ fun createEnhancedValueParameters(
                 oldParameter.getSource()
         )
     }
+}
+
+fun ClassDescriptor.getParentJavaStaticClassScope(): LazyJavaStaticClassScope? {
+    val superClassDescriptor = getSuperClassNotAny() ?: return null
+
+    val staticScope = superClassDescriptor.staticScope
+
+    if (staticScope !is LazyJavaStaticClassScope) return superClassDescriptor.getParentJavaStaticClassScope()
+
+    return staticScope
 }

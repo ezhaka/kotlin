@@ -20,11 +20,11 @@ import org.jetbrains.kotlin.container.StorageComponentContainer
 import org.jetbrains.kotlin.container.useImpl
 import org.jetbrains.kotlin.jvm.RuntimeAssertionsTypeChecker
 import org.jetbrains.kotlin.load.kotlin.JavaAnnotationCallChecker
-import org.jetbrains.kotlin.load.kotlin.JavaAnnotationMethodCallChecker
 import org.jetbrains.kotlin.load.kotlin.nativeDeclarations.NativeFunChecker
 import org.jetbrains.kotlin.resolve.*
 import org.jetbrains.kotlin.resolve.jvm.checkers.*
 import org.jetbrains.kotlin.types.DynamicTypesSettings
+
 
 public object JvmPlatformConfigurator : PlatformConfigurator(
         DynamicTypesSettings(),
@@ -44,7 +44,6 @@ public object JvmPlatformConfigurator : PlatformConfigurator(
         additionalCallCheckers = listOf(
                 NeedSyntheticChecker(),
                 JavaAnnotationCallChecker(),
-                JavaAnnotationMethodCallChecker(),
                 TraitDefaultMethodCallChecker(),
                 JavaClassOnCompanionChecker()
         ),
@@ -60,7 +59,9 @@ public object JvmPlatformConfigurator : PlatformConfigurator(
         additionalAnnotationCheckers = listOf(
                 RepeatableAnnotationChecker,
                 FileClassAnnotationsChecker
-        )
+        ),
+
+        identifierChecker = JvmSimpleNameBacktickChecker
 ) {
 
     override fun configure(container: StorageComponentContainer) {
@@ -69,4 +70,3 @@ public object JvmPlatformConfigurator : PlatformConfigurator(
         container.useImpl<ReflectionAPICallChecker>()
     }
 }
-

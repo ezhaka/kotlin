@@ -2660,18 +2660,6 @@ public class QuickFixTestGenerated extends AbstractQuickFixTest {
                     doTest(fileName);
                 }
 
-                @TestMetadata("inGenPropertyInitializerInClass.kt")
-                public void testInGenPropertyInitializerInClass() throws Exception {
-                    String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/createFromUsage/createVariable/parameter/inGenPropertyInitializerInClass.kt");
-                    doTest(fileName);
-                }
-
-                @TestMetadata("inGenPropertyInitializerInGenClass.kt")
-                public void testInGenPropertyInitializerInGenClass() throws Exception {
-                    String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/createFromUsage/createVariable/parameter/inGenPropertyInitializerInGenClass.kt");
-                    doTest(fileName);
-                }
-
                 @TestMetadata("inLambdaNoParams.kt")
                 public void testInLambdaNoParams() throws Exception {
                     String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/createFromUsage/createVariable/parameter/inLambdaNoParams.kt");
@@ -3091,6 +3079,12 @@ public class QuickFixTestGenerated extends AbstractQuickFixTest {
         @TestMetadata("dropReceiver.kt")
         public void testDropReceiver() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/deprecatedSymbolUsage/dropReceiver.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("enumValues.kt")
+        public void testEnumValues() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/deprecatedSymbolUsage/enumValues.kt");
             doTest(fileName);
         }
 
@@ -4382,6 +4376,18 @@ public class QuickFixTestGenerated extends AbstractQuickFixTest {
         @TestMetadata("cannotMakeClassAnnotation.kt")
         public void testCannotMakeClassAnnotation() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/modifiers/cannotMakeClassAnnotation.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("deprecatedDelegatesGetSetExtension.kt")
+        public void testDeprecatedDelegatesGetSetExtension() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/modifiers/deprecatedDelegatesGetSetExtension.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("deprecatedDelegatesGetSetMember.kt")
+        public void testDeprecatedDelegatesGetSetMember() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/modifiers/deprecatedDelegatesGetSetMember.kt");
             doTest(fileName);
         }
 

@@ -32,8 +32,8 @@ public fun <T> CompareContext<List<T>>.listBehavior() {
 
     propertyFails { this[size()] }
 
-    propertyEquals { indexOf(elementAtOrNull(0)) }
-    propertyEquals { lastIndexOf(elementAtOrNull(0)) }
+    propertyEquals { (this as List<T?>).indexOf(elementAtOrNull(0)) }
+    propertyEquals { (this as List<T?>).lastIndexOf(elementAtOrNull(0)) }
 
     propertyFails { subList(0, size() + 1)}
     propertyFails { subList(-1, 0)}
@@ -107,8 +107,8 @@ public fun <T> CompareContext<Collection<T>>.collectionBehavior(objectName: Stri
     propertyEquals (prefix + "size") { size() }
     propertyEquals (prefix + "isEmpty") { isEmpty() }
 
-    (object {}).let { propertyEquals { contains(it)}  }
-    propertyEquals { contains(firstOrNull()) }
+    (object {}).let { propertyEquals { containsRaw(it)}  }
+    propertyEquals { contains<T?>(firstOrNull()) }
     propertyEquals { containsAll(this) }
 }
 

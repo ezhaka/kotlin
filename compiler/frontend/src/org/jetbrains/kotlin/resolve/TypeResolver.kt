@@ -52,7 +52,8 @@ public class TypeResolver(
         private val storageManager: StorageManager,
         private val lazinessToken: TypeLazinessToken,
         private val dynamicTypesSettings: DynamicTypesSettings,
-        private val dynamicCallableDescriptors: DynamicCallableDescriptors
+        private val dynamicCallableDescriptors: DynamicCallableDescriptors,
+        private val identifierChecker: IdentifierChecker
 ) {
 
     public open class FlexibleTypeCapabilitiesProvider {
@@ -115,11 +116,40 @@ public class TypeResolver(
 
         if (!type.isBare) {
             for (argument in type.actualType.arguments) {
-                ForceResolveUtil.forceResolveAllContents(argument.type)
+                forceResolveTypeContents(argument.type)
             }
         }
 
         return type
+    }
+
+    /**
+     *  This function is light version of ForceResolveUtil.forceResolveAllContents
+     *  We can't use ForceResolveUtil.forceResolveAllContents here because it runs ForceResolveUtil.forceResolveAllContents(getConstructor()),
+     *  which is unsafe for some cyclic cases. For Example:
+     *  class A: List<A.B> {
+     *    class B
+     *  }
+     *  Here when we resolve class B, we should resolve supertype for A and we shouldn't start resolve for class B,
+     *  otherwise it would be a cycle.
+     *  Now there is no cycle here because member scope for A is very clever and can get lazy descriptor for class B without resolving it.
+     *
+     *  todo: find another way after release
+     */
+    private fun forceResolveTypeContents(type: JetType) {
+        type.annotations // force read type annotations
+        if (type.isFlexible()) {
+            forceResolveTypeContents(type.flexibility().lowerBound)
+            forceResolveTypeContents(type.flexibility().upperBound)
+        }
+        else {
+            type.constructor // force read type constructor
+            for (projection in type.arguments) {
+                if (!projection.isStarProjection) {
+                    forceResolveTypeContents(projection.type)
+                }
+            }
+        }
     }
 
     private fun resolveTypeElement(c: TypeResolutionContext, annotations: Annotations, typeElement: JetTypeElement?): PossiblyBareType {
@@ -230,14 +260,12 @@ public class TypeResolver(
                 if (baseType.isNullable() || innerType is JetNullableType || innerType is JetDynamicType) {
                     c.trace.report(REDUNDANT_NULLABLE.on(nullableType))
                 }
-                else if (c.checkBounds && !baseType.isBare() && TypeUtils.hasNullableSuperType(baseType.getActualType())) {
-                    c.trace.report(BASE_WITH_NULLABLE_UPPER_BOUND.on(nullableType, baseType.getActualType()))
-                }
                 result = baseType.makeNullable()
             }
 
             override fun visitFunctionType(type: JetFunctionType) {
                 val receiverTypeRef = type.getReceiverTypeReference()
+                type.parameters.forEach { identifierChecker.checkDeclaration(it, c.trace) }
                 val receiverType = if (receiverTypeRef == null) null else resolveType(c.noBareTypes(), receiverTypeRef)
 
                 type.parameters.forEach { checkParameterInFunctionType(it) }
@@ -270,7 +298,7 @@ public class TypeResolver(
                     c.trace.report(Errors.UNSUPPORTED.on(param.defaultValue!!, "default value of parameter in function type"))
                 }
 
-                if (param.nameIdentifier != null) {
+                if (param.name != null) {
                     for (annotationEntry in param.annotationEntries) {
                         c.trace.report(Errors.UNSUPPORTED.on(annotationEntry, "annotation on parameter in function type"))
                     }
@@ -344,7 +372,7 @@ public class TypeResolver(
         if (userType.qualifier != null) { // we must resolve all type references in arguments of qualifier type
             for (typeArgument in userType.qualifier!!.typeArguments) {
                 typeArgument.typeReference?.let {
-                    ForceResolveUtil.forceResolveAllContents(resolveType(scope, it, trace, true))
+                    forceResolveTypeContents(resolveType(scope, it, trace, true))
                 }
             }
         }

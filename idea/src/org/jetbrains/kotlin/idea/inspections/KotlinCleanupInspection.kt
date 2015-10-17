@@ -29,7 +29,7 @@ import org.jetbrains.kotlin.diagnostics.rendering.DefaultErrorMessages
 import org.jetbrains.kotlin.idea.caches.resolve.analyzeFullyAndGetResult
 import org.jetbrains.kotlin.idea.highlighter.JetPsiChecker
 import org.jetbrains.kotlin.idea.quickfix.CleanupFix
-import org.jetbrains.kotlin.idea.quickfix.JetIntentionAction
+import org.jetbrains.kotlin.idea.quickfix.KotlinQuickFixAction
 import org.jetbrains.kotlin.idea.quickfix.ReplaceObsoleteLabelSyntaxFix
 import org.jetbrains.kotlin.idea.quickfix.replaceWith.DeprecatedSymbolUsageFix
 import org.jetbrains.kotlin.idea.util.ProjectRootsUtil
@@ -92,6 +92,8 @@ public class KotlinCleanupInspection(): LocalInspectionTool(), CleanupLocalInspe
             Errors.NON_CONST_VAL_USED_IN_CONSTANT_EXPRESSION,
             Errors.BACKING_FIELD_OLD_SYNTAX,
             Errors.OPERATOR_MODIFIER_REQUIRED,
+            Errors.DEPRECATED_UNARY_PLUS_MINUS,
+            Errors.DELEGATE_RESOLVED_TO_DEPRECATED_CONVENTION,
             Errors.INFIX_MODIFIER_REQUIRED,
             Errors.CALLABLE_REFERENCE_TO_MEMBER_OR_EXTENSION_WITH_EMPTY_LHS,
             Errors.DEPRECATED_TYPE_PARAMETER_SYNTAX,
@@ -127,7 +129,7 @@ public class KotlinCleanupInspection(): LocalInspectionTool(), CleanupLocalInspe
                                                ProblemHighlightType.GENERIC_ERROR_OR_WARNING)
     }
 
-    private class RemoveImportFix(import: JetImportDirective) : JetIntentionAction<JetImportDirective>(import), CleanupFix {
+    private class RemoveImportFix(import: JetImportDirective) : KotlinQuickFixAction<JetImportDirective>(import), CleanupFix {
         override fun getFamilyName() = "Remove deprecated symbol import"
         override fun getText() = familyName
 

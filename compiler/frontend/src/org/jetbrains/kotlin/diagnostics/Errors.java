@@ -93,7 +93,6 @@ public interface Errors {
     DiagnosticFactory0<JetTypeProjection> PROJECTION_ON_NON_CLASS_TYPE_ARGUMENT = DiagnosticFactory0.create(ERROR, VARIANCE_IN_PROJECTION);
     DiagnosticFactory2<JetTypeReference, JetType, JetType> UPPER_BOUND_VIOLATED = DiagnosticFactory2.create(ERROR);
     DiagnosticFactory0<JetNullableType> REDUNDANT_NULLABLE = DiagnosticFactory0.create(WARNING, NULLABLE_TYPE);
-    DiagnosticFactory1<JetNullableType, JetType> BASE_WITH_NULLABLE_UPPER_BOUND = DiagnosticFactory1.create(WARNING, NULLABLE_TYPE);
     DiagnosticFactory1<JetElement, Integer> WRONG_NUMBER_OF_TYPE_ARGUMENTS = DiagnosticFactory1.create(ERROR);
     DiagnosticFactory2<JetTypeReference, Integer, String> NO_TYPE_ARGUMENTS_ON_RHS = DiagnosticFactory2.create(ERROR);
     DiagnosticFactory1<JetTypeProjection, ClassifierDescriptor> CONFLICTING_PROJECTION = DiagnosticFactory1.create(ERROR, VARIANCE_IN_PROJECTION);
@@ -125,6 +124,7 @@ public interface Errors {
     DiagnosticFactory2<PsiElement, JetModifierKeywordToken, String> REDUNDANT_MODIFIER_FOR_TARGET = DiagnosticFactory2.create(WARNING);
     DiagnosticFactory2<PsiElement, JetModifierKeywordToken, String> WRONG_MODIFIER_CONTAINING_DECLARATION = DiagnosticFactory2.create(ERROR);
     DiagnosticFactory2<PsiElement, JetModifierKeywordToken, String> DEPRECATED_MODIFIER_CONTAINING_DECLARATION = DiagnosticFactory2.create(WARNING);
+    DiagnosticFactory1<PsiElement, JetModifierKeywordToken> ILLEGAL_INLINE_PARAMETER_MODIFIER = DiagnosticFactory1.create(ERROR);
     DiagnosticFactory1<JetAnnotationEntry, String> WRONG_ANNOTATION_TARGET = DiagnosticFactory1.create(ERROR);
     DiagnosticFactory2<JetAnnotationEntry, String, String> WRONG_ANNOTATION_TARGET_WITH_USE_SITE_TARGET = DiagnosticFactory2.create(ERROR);
     DiagnosticFactory0<JetAnnotationEntry> REPEATED_ANNOTATION = DiagnosticFactory0.create(ERROR);
@@ -172,6 +172,7 @@ public interface Errors {
 
     DiagnosticFactory0<JetTypeReference> DELEGATION_NOT_TO_INTERFACE = DiagnosticFactory0.create(ERROR);
     DiagnosticFactory0<JetTypeReference> SUPERTYPE_NOT_A_CLASS_OR_INTERFACE = DiagnosticFactory0.create(ERROR);
+    DiagnosticFactory0<JetTypeReference> SUPERTYPE_IS_EXTENSION_FUNCTION_TYPE = DiagnosticFactory0.create(ERROR);
 
     DiagnosticFactory0<PsiElement> NO_GENERICS_IN_SUPERTYPE_SPECIFIER = DiagnosticFactory0.create(ERROR);
 
@@ -269,6 +270,8 @@ public interface Errors {
     DiagnosticFactory0<JetDeclaration> TYPE_PARAMETERS_NOT_ALLOWED
             = DiagnosticFactory0.create(ERROR, TYPE_PARAMETERS_OR_DECLARATION_SIGNATURE);
 
+    DiagnosticFactory0<JetTypeParameter> TYPE_PARAMETER_OF_PROPERTY_NOT_USED_IN_RECEIVER = DiagnosticFactory0.create(ERROR);
+
     DiagnosticFactory0<PsiElement> CYCLIC_GENERIC_UPPER_BOUND = DiagnosticFactory0.create(ERROR);
 
     DiagnosticFactory0<JetTypeParameter> MISPLACED_TYPE_PARAMETER_CONSTRAINTS = DiagnosticFactory0.create(WARNING);
@@ -357,12 +360,7 @@ public interface Errors {
     DiagnosticFactory0<JetSimpleNameExpression> BACKING_FIELD_OLD_SYNTAX = DiagnosticFactory0.create(ERROR);
     DiagnosticFactory0<JetSimpleNameExpression> BACKING_FIELD_USAGE_FORBIDDEN = DiagnosticFactory0.create(ERROR);
 
-    DiagnosticFactory0<PsiElement> INAPPLICABLE_LATEINIT_MODIFIER = DiagnosticFactory0.create(ERROR);
-    DiagnosticFactory0<PsiElement> INAPPLICABLE_LATEINIT_MODIFIER_IMMUTABLE = DiagnosticFactory0.create(ERROR);
-    DiagnosticFactory0<PsiElement> INAPPLICABLE_LATEINIT_MODIFIER_ABSTRACT_PROPERTY = DiagnosticFactory0.create(ERROR);
-    DiagnosticFactory0<PsiElement> INAPPLICABLE_LATEINIT_MODIFIER_PRIMARY_CONSTRUCTOR_PARAMETER = DiagnosticFactory0.create(ERROR);
-    DiagnosticFactory0<PsiElement> INAPPLICABLE_LATEINIT_MODIFIER_NULLABLE = DiagnosticFactory0.create(ERROR);
-    DiagnosticFactory0<PsiElement> INAPPLICABLE_LATEINIT_MODIFIER_PRIMITIVE = DiagnosticFactory0.create(ERROR);
+    DiagnosticFactory1<PsiElement, String> INAPPLICABLE_LATEINIT_MODIFIER = DiagnosticFactory1.create(ERROR);
 
     DiagnosticFactory2<JetModifierListOwner, String, ClassDescriptor> ABSTRACT_PROPERTY_IN_NON_ABSTRACT_CLASS = DiagnosticFactory2.create(ERROR, ABSTRACT_MODIFIER);
 
@@ -395,9 +393,6 @@ public interface Errors {
     DiagnosticFactory0<JetParameter> FUNCTION_EXPRESSION_PARAMETER_WITH_DEFAULT_VALUE = DiagnosticFactory0.create(ERROR, PARAMETER_DEFAULT_VALUE);
 
     DiagnosticFactory0<JetParameter> USELESS_VARARG_ON_PARAMETER = DiagnosticFactory0.create(WARNING);
-
-    DiagnosticFactory1<JetFunction, ClassDescriptor> FUNCTION_RETURN_TYPE_DEPENDS_ON_LOCAL_CLASS = DiagnosticFactory1.create(ERROR, DECLARATION_RETURN_TYPE);
-    DiagnosticFactory1<JetProperty, ClassDescriptor> PROPERTY_TYPE_DEPENDS_ON_LOCAL_CLASS = DiagnosticFactory1.create(ERROR, DECLARATION_RETURN_TYPE);
 
     // Named parameters
 
@@ -458,8 +453,6 @@ public interface Errors {
     DiagnosticFactory1<JetExpression, JetType> MISSING_RECEIVER = DiagnosticFactory1.create(ERROR);
     DiagnosticFactory0<JetExpression> NO_RECEIVER_ALLOWED = DiagnosticFactory0.create(ERROR);
 
-    DiagnosticFactory0<JetExpression> FREE_FUNCTION_CALLED_AS_EXTENSION = DiagnosticFactory0.create(ERROR);
-
     // Call resolution
 
     DiagnosticFactory1<JetExpression, String> ILLEGAL_SELECTOR = DiagnosticFactory1.create(ERROR);
@@ -480,6 +473,7 @@ public interface Errors {
     DiagnosticFactory1<PsiElement, Collection<? extends ResolvedCall<?>>> NONE_APPLICABLE = DiagnosticFactory1.create(ERROR);
     DiagnosticFactory1<PsiElement, Collection<? extends ResolvedCall<?>>> CANNOT_COMPLETE_RESOLVE = DiagnosticFactory1.create(ERROR);
     DiagnosticFactory1<PsiElement, Collection<? extends ResolvedCall<?>>> UNRESOLVED_REFERENCE_WRONG_RECEIVER = DiagnosticFactory1.create(ERROR);
+    DiagnosticFactory1<PsiElement, JetExpression> INVOKE_EXTENSION_ON_NOT_EXTENSION_FUNCTION = DiagnosticFactory1.create(ERROR);
 
     DiagnosticFactory1<PsiElement, TypeParameterDescriptor> TYPE_PARAMETER_AS_REIFIED = DiagnosticFactory1.create(ERROR);
     DiagnosticFactory1<PsiElement, JetType> REIFIED_TYPE_FORBIDDEN_SUBSTITUTION = DiagnosticFactory1.create(ERROR);
@@ -493,6 +487,7 @@ public interface Errors {
     DiagnosticFactory1<PsiElement, InferenceErrorData> TYPE_INFERENCE_CANNOT_CAPTURE_TYPES = DiagnosticFactory1.create(ERROR);
     DiagnosticFactory1<PsiElement, InferenceErrorData> TYPE_INFERENCE_PARAMETER_CONSTRAINT_ERROR = DiagnosticFactory1.create(ERROR);
     DiagnosticFactory0<PsiElement> TYPE_INFERENCE_INCORPORATION_ERROR = DiagnosticFactory0.create(ERROR);
+    DiagnosticFactory1<PsiElement, TypeParameterDescriptor> TYPE_INFERENCE_ONLY_INPUT_TYPES = DiagnosticFactory1.create(ERROR);
     DiagnosticFactory1<PsiElement, InferenceErrorData> TYPE_INFERENCE_UPPER_BOUND_VIOLATED = DiagnosticFactory1.create(ERROR);
     DiagnosticFactory2<JetExpression, JetType, JetType> TYPE_INFERENCE_EXPECTED_TYPE_MISMATCH = DiagnosticFactory2.create(ERROR);
 
@@ -501,6 +496,7 @@ public interface Errors {
     DiagnosticFactory1<JetExpression, CallableMemberDescriptor> EXTENSION_IN_CLASS_REFERENCE_NOT_ALLOWED = DiagnosticFactory1.create(ERROR);
     DiagnosticFactory0<JetExpression> CALLABLE_REFERENCE_LHS_NOT_A_CLASS = DiagnosticFactory0.create(ERROR);
     DiagnosticFactory0<JetExpression> CALLABLE_REFERENCE_TO_MEMBER_OR_EXTENSION_WITH_EMPTY_LHS = DiagnosticFactory0.create(ERROR);
+    DiagnosticFactory0<JetExpression> CALLABLE_REFERENCE_TO_OBJECT_MEMBER = DiagnosticFactory0.create(ERROR);
 
     DiagnosticFactory0<JetExpression> CLASS_LITERAL_LHS_NOT_A_CLASS = DiagnosticFactory0.create(ERROR);
     DiagnosticFactory0<JetExpression> ARRAY_CLASS_LITERAL_REQUIRES_ARGUMENT = DiagnosticFactory0.create(ERROR);
@@ -554,7 +550,7 @@ public interface Errors {
     DiagnosticFactory1<PsiElement, Collection<? extends ResolvedCall<?>>> ITERATOR_AMBIGUITY = DiagnosticFactory1.create(ERROR);
 
     DiagnosticFactory2<JetExpression, String, JetType> DELEGATE_SPECIAL_FUNCTION_MISSING = DiagnosticFactory2.create(ERROR);
-    DiagnosticFactory3<JetExpression, FunctionDescriptor, JetType, String> DELEGATE_RESOLVED_TO_DEPRECATED_CONVENTION = DiagnosticFactory3.create(WARNING);
+    DiagnosticFactory3<PsiElement, FunctionDescriptor, JetType, String> DELEGATE_RESOLVED_TO_DEPRECATED_CONVENTION = DiagnosticFactory3.create(WARNING);
     DiagnosticFactory2<JetExpression, String, Collection<? extends ResolvedCall<?>>> DELEGATE_SPECIAL_FUNCTION_AMBIGUITY = DiagnosticFactory2.create(ERROR);
     DiagnosticFactory2<JetExpression, String, Collection<? extends ResolvedCall<?>>> DELEGATE_SPECIAL_FUNCTION_NONE_APPLICABLE = DiagnosticFactory2.create(ERROR);
     DiagnosticFactory3<JetExpression, String, JetType, JetType> DELEGATE_SPECIAL_FUNCTION_RETURN_TYPE_MISMATCH = DiagnosticFactory3.create(ERROR);
@@ -563,9 +559,10 @@ public interface Errors {
     DiagnosticFactory1<JetSimpleNameExpression, JetType> COMPARE_TO_TYPE_MISMATCH = DiagnosticFactory1.create(ERROR);
 
     DiagnosticFactory0<PsiElement> UNDERSCORE_IS_DEPRECATED = DiagnosticFactory0.create(WARNING);
+    DiagnosticFactory1<PsiElement, String> INVALID_CHARACTERS = DiagnosticFactory1.create(ERROR);
 
-    DiagnosticFactory0<PsiElement> INAPPLICABLE_OPERATOR_MODIFIER = DiagnosticFactory0.create(ERROR);
-    DiagnosticFactory0<PsiElement> INAPPLICABLE_INFIX_MODIFIER = DiagnosticFactory0.create(ERROR);
+    DiagnosticFactory0<PsiElement> INAPPLICABLE_OPERATOR_MODIFIER = DiagnosticFactory0.create(WARNING);
+    DiagnosticFactory0<PsiElement> INAPPLICABLE_INFIX_MODIFIER = DiagnosticFactory0.create(WARNING);
 
     DiagnosticFactory2<PsiElement, FunctionDescriptor, String> OPERATOR_MODIFIER_REQUIRED = DiagnosticFactory2.create(WARNING);
     DiagnosticFactory2<JetOperationReferenceExpression, FunctionDescriptor, String> INFIX_MODIFIER_REQUIRED = DiagnosticFactory2.create(WARNING);
@@ -657,9 +654,6 @@ public interface Errors {
     DiagnosticFactory0<JetNullableType> USELESS_NULLABLE_CHECK = DiagnosticFactory0.create(WARNING, NULLABLE_TYPE);
 
     // Properties / locals
-
-    DiagnosticFactory1<JetExpression, DeclarationDescriptor> INITIALIZATION_USING_BACKING_FIELD_CUSTOM_SETTER = DiagnosticFactory1.create(ERROR);
-    DiagnosticFactory1<JetExpression, DeclarationDescriptor> INITIALIZATION_USING_BACKING_FIELD_OPEN_SETTER = DiagnosticFactory1.create(ERROR);
 
     DiagnosticFactory0<JetTypeReference> LOCAL_EXTENSION_PROPERTY = DiagnosticFactory0.create(ERROR);
     DiagnosticFactory0<JetPropertyAccessor> LOCAL_VARIABLE_WITH_GETTER = DiagnosticFactory0.create(ERROR);

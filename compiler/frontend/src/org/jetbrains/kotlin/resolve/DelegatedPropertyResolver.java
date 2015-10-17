@@ -26,6 +26,7 @@ import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.diagnostics.rendering.Renderers;
 import org.jetbrains.kotlin.name.Name;
 import org.jetbrains.kotlin.psi.*;
+import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilKt;
 import org.jetbrains.kotlin.resolve.calls.inference.ConstraintSystem;
 import org.jetbrains.kotlin.resolve.calls.inference.ConstraintSystemCompleter;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
@@ -33,6 +34,7 @@ import org.jetbrains.kotlin.resolve.calls.results.OverloadResolutionResults;
 import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowInfo;
 import org.jetbrains.kotlin.resolve.scopes.LexicalScope;
 import org.jetbrains.kotlin.resolve.scopes.receivers.ExpressionReceiver;
+import org.jetbrains.kotlin.resolve.validation.OperatorValidator;
 import org.jetbrains.kotlin.resolve.validation.SymbolUsageValidator;
 import org.jetbrains.kotlin.types.DeferredType;
 import org.jetbrains.kotlin.types.JetType;
@@ -47,9 +49,8 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.jetbrains.kotlin.diagnostics.Errors.*;
-import static org.jetbrains.kotlin.psi.PsiPackage.JetPsiFactory;
+import static org.jetbrains.kotlin.psi.JetPsiFactoryKt.JetPsiFactory;
 import static org.jetbrains.kotlin.resolve.BindingContext.*;
-import static org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilPackage.getCalleeExpressionIfAny;
 import static org.jetbrains.kotlin.resolve.calls.inference.constraintPosition.ConstraintPositionKind.FROM_COMPLETER;
 import static org.jetbrains.kotlin.types.TypeUtils.NO_EXPECTED_TYPE;
 import static org.jetbrains.kotlin.types.TypeUtils.noExpectedType;
@@ -126,15 +127,8 @@ public class DelegatedPropertyResolver {
     }
 
     @NotNull
-    private JetExpression createExpressionForPropertyMetadata(
-            @NotNull JetPsiFactory psiFactory,
-            @NotNull PropertyDescriptor propertyDescriptor
-    ) {
-        return psiFactory.createExpression(builtIns.getPropertyMetadataImpl().getName().asString() +
-                                           "(\"" +
-                                           propertyDescriptor.getName().asString() +
-                                           "\") as " +
-                                           builtIns.getPropertyMetadata().getName().asString());
+    private static JetExpression createExpressionForProperty(@NotNull JetPsiFactory psiFactory) {
+        return psiFactory.createExpression("null as " + KotlinBuiltIns.FQ_NAMES.kProperty.asSingleFqName().asString() + "<*>");
     }
 
     public void resolveDelegatedPropertyPDMethod(
@@ -150,7 +144,7 @@ public class DelegatedPropertyResolver {
                 DataFlowInfo.EMPTY, TypeUtils.NO_EXPECTED_TYPE);
 
         JetPsiFactory psiFactory = JetPsiFactory(delegateExpression);
-        List<JetExpression> arguments = Collections.singletonList(createExpressionForPropertyMetadata(psiFactory, propertyDescriptor));
+        List<JetExpression> arguments = Collections.singletonList(createExpressionForProperty(psiFactory));
         ExpressionReceiver receiver = new ExpressionReceiver(delegateExpression, delegateType);
 
         Pair<Call, OverloadResolutionResults<FunctionDescriptor>> resolutionResult =
@@ -174,7 +168,7 @@ public class DelegatedPropertyResolver {
         trace.record(DELEGATED_PROPERTY_PD_RESOLVED_CALL, propertyDescriptor, functionResults.getResultingCall());
     }
 
-    /* Resolve get() or set() methods from delegate */
+    /* Resolve getValue() or setValue() methods from delegate */
     private void resolveDelegatedPropertyConventionMethod(
             @NotNull PropertyDescriptor propertyDescriptor,
             @NotNull JetExpression delegateExpression,
@@ -213,6 +207,8 @@ public class DelegatedPropertyResolver {
             return;
         }
 
+        FunctionDescriptor resultingDescriptor = functionResults.getResultingDescriptor();
+
         ResolvedCall<FunctionDescriptor> resultingCall = functionResults.getResultingCall();
         PsiElement declaration = DescriptorToSourceUtils.descriptorToDeclaration(propertyDescriptor);
         if (declaration instanceof JetProperty) {
@@ -220,6 +216,11 @@ public class DelegatedPropertyResolver {
             JetPropertyDelegate delegate = property.getDelegate();
             if (delegate != null) {
                 PsiElement byKeyword = delegate.getByKeywordNode().getPsi();
+
+                if (!resultingDescriptor.isOperator()) {
+                    OperatorValidator.Companion.report(byKeyword, resultingDescriptor, trace);
+                }
+
                 symbolUsageValidator.validateCall(resultingCall, resultingCall.getResultingDescriptor(), trace, byKeyword);
             }
         }
@@ -251,7 +252,7 @@ public class DelegatedPropertyResolver {
         List<JetExpression> arguments = Lists.newArrayList();
         JetPsiFactory psiFactory = JetPsiFactory(delegateExpression);
         arguments.add(psiFactory.createExpression(hasThis ? "this" : "null"));
-        arguments.add(createExpressionForPropertyMetadata(psiFactory, propertyDescriptor));
+        arguments.add(createExpressionForProperty(psiFactory));
 
         if (!isGet) {
             JetReferenceExpression fakeArgument = (JetReferenceExpression) createFakeExpressionOfType(delegateExpression.getProject(), trace,
@@ -277,8 +278,19 @@ public class DelegatedPropertyResolver {
                     fakeCallResolver.makeAndResolveFakeCallInContext(receiver, context, arguments, oldFunctionName, delegateExpression);
             if (additionalResolutionResult.getSecond().isSuccess()) {
                 FunctionDescriptor resultingDescriptor = additionalResolutionResult.getSecond().getResultingDescriptor();
-                trace.report(DELEGATE_RESOLVED_TO_DEPRECATED_CONVENTION.on(
-                        delegateExpression, resultingDescriptor, delegateType, functionName.asString()));
+
+                PsiElement declaration = DescriptorToSourceUtils.descriptorToDeclaration(propertyDescriptor);
+                if (declaration instanceof JetProperty) {
+                    JetProperty property = (JetProperty) declaration;
+                    JetPropertyDelegate delegate = property.getDelegate();
+                    if (delegate != null) {
+                        PsiElement byKeyword = delegate.getByKeywordNode().getPsi();
+
+                        trace.report(DELEGATE_RESOLVED_TO_DEPRECATED_CONVENTION.on(
+                                byKeyword, resultingDescriptor, delegateType, functionName.asString()));
+                    }
+                }
+
                 trace.record(BindingContext.DELEGATED_PROPERTY_CALL, accessor, additionalResolutionResult.getFirst());
                 return additionalResolutionResult.getSecond();
             }
@@ -314,7 +326,7 @@ public class DelegatedPropertyResolver {
             @NotNull DataFlowInfo dataFlowInfo
     ) {
         TemporaryBindingTrace traceToResolveDelegatedProperty = TemporaryBindingTrace.create(trace, "Trace to resolve delegated property");
-        JetExpression calleeExpression = getCalleeExpressionIfAny(delegateExpression);
+        JetExpression calleeExpression = CallUtilKt.getCalleeExpressionIfAny(delegateExpression);
         ConstraintSystemCompleter completer = createConstraintSystemCompleter(
                 jetProperty, propertyDescriptor, delegateExpression, accessorScope, trace);
         if (calleeExpression != null) {

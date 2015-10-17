@@ -24,7 +24,7 @@ import org.jetbrains.kotlin.descriptors.impl.SimpleFunctionDescriptorImpl;
 import org.jetbrains.kotlin.name.Name;
 import org.jetbrains.kotlin.types.JetType;
 import org.jetbrains.kotlin.types.TypeSubstitutor;
-import org.jetbrains.kotlin.util.OperatorNameConventions;
+import org.jetbrains.kotlin.util.OperatorChecks;
 
 import java.util.List;
 
@@ -88,7 +88,7 @@ public class JavaMethodDescriptor extends SimpleFunctionDescriptorImpl implement
         SimpleFunctionDescriptorImpl descriptor = super.initialize(
                 receiverParameterType, dispatchReceiverParameter, typeParameters, unsubstitutedValueParameters,
                 unsubstitutedReturnType, modality, visibility);
-        setOperator(OperatorNameConventions.INSTANCE$.canBeOperator(descriptor));
+        setOperator(OperatorChecks.INSTANCE$.canBeOperator(descriptor));
         return descriptor;
     }
 
@@ -135,7 +135,7 @@ public class JavaMethodDescriptor extends SimpleFunctionDescriptorImpl implement
             @NotNull JetType enhancedReturnType
     ) {
         List<ValueParameterDescriptor> enhancedValueParameters =
-                DescriptorsPackage.createEnhancedValueParameters(enhancedValueParametersTypes, getValueParameters(), this);
+                UtilKt.copyValueParameters(enhancedValueParametersTypes, getValueParameters(), this);
 
         // We use `doSubstitute` here because it does exactly what we need:
         // 1. creates full copy of descriptor

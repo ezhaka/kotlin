@@ -29,7 +29,7 @@ import org.jetbrains.kotlin.codegen.state.JetTypeMapper;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.descriptors.annotations.Annotations;
 import org.jetbrains.kotlin.descriptors.impl.SimpleFunctionDescriptorImpl;
-import org.jetbrains.kotlin.fileClasses.FileClassesPackage;
+import org.jetbrains.kotlin.fileClasses.FileClasses;
 import org.jetbrains.kotlin.fileClasses.JvmFileClassesProvider;
 import org.jetbrains.kotlin.load.java.JvmAbi;
 import org.jetbrains.kotlin.name.Name;
@@ -41,9 +41,12 @@ import org.jetbrains.kotlin.resolve.BindingTrace;
 import org.jetbrains.kotlin.resolve.TemporaryBindingTrace;
 import org.jetbrains.kotlin.resolve.constants.ConstantValue;
 import org.jetbrains.kotlin.resolve.constants.evaluate.ConstantExpressionEvaluator;
-import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilPackage;
+import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt;
 import org.jetbrains.kotlin.resolve.jvm.AsmTypes;
-import org.jetbrains.kotlin.resolve.source.SourcePackage;
+import org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOriginKt;
+import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue;
+import org.jetbrains.kotlin.resolve.scopes.receivers.TransientReceiver;
+import org.jetbrains.kotlin.resolve.source.KotlinSourceElementKt;
 import org.jetbrains.kotlin.storage.LockBasedStorageManager;
 import org.jetbrains.kotlin.storage.NotNullLazyValue;
 import org.jetbrains.kotlin.types.ErrorUtils;
@@ -59,9 +62,7 @@ import static org.jetbrains.kotlin.codegen.AsmUtil.calculateInnerClassAccessFlag
 import static org.jetbrains.kotlin.codegen.AsmUtil.isPrimitive;
 import static org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.SYNTHESIZED;
 import static org.jetbrains.kotlin.resolve.BindingContext.VARIABLE;
-import static org.jetbrains.kotlin.resolve.jvm.AsmTypes.PROPERTY_METADATA_IMPL_TYPE;
 import static org.jetbrains.kotlin.resolve.jvm.AsmTypes.PROPERTY_METADATA_TYPE;
-import static org.jetbrains.kotlin.resolve.jvm.diagnostics.DiagnosticsPackage.OtherOrigin;
 import static org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOrigin.NO_ORIGIN;
 import static org.jetbrains.org.objectweb.asm.Opcodes.*;
 
@@ -204,7 +205,7 @@ public abstract class MemberCodegen<T extends JetElement/* TODO: & JetDeclaratio
         }
 
         Type classType = state.getTypeMapper().mapClass(descriptor);
-        ClassBuilder classBuilder = state.getFactory().newVisitor(OtherOrigin(aClass, descriptor), classType, aClass.getContainingFile());
+        ClassBuilder classBuilder = state.getFactory().newVisitor(JvmDeclarationOriginKt.OtherOrigin(aClass, descriptor), classType, aClass.getContainingFile());
         ClassContext classContext = parentContext.intoClass(descriptor, OwnerKind.IMPLEMENTATION, state);
         new ImplementationBodyCodegen(aClass, classContext, classBuilder, state, parentCodegen, false).generate();
     }
@@ -290,7 +291,7 @@ public abstract class MemberCodegen<T extends JetElement/* TODO: & JetDeclaratio
                 return implementationOwnerType;
             }
             else {
-                return FileClassesPackage.getFileClassType(fileClassesProvider, element.getContainingJetFile());
+                return FileClasses.getFileClassType(fileClassesProvider, element.getContainingJetFile());
             }
         }
         /*disabled cause of KT-7775
@@ -324,13 +325,13 @@ public abstract class MemberCodegen<T extends JetElement/* TODO: & JetDeclaratio
     protected ExpressionCodegen createOrGetClInitCodegen() {
         DeclarationDescriptor descriptor = context.getContextDescriptor();
         if (clInit == null) {
-            MethodVisitor mv = v.newMethod(OtherOrigin(descriptor), ACC_STATIC, "<clinit>", "()V", null, null);
+            MethodVisitor mv = v.newMethod(JvmDeclarationOriginKt.OtherOrigin(descriptor), ACC_STATIC, "<clinit>", "()V", null, null);
             SimpleFunctionDescriptorImpl clInit =
                     SimpleFunctionDescriptorImpl.create(descriptor, Annotations.Companion.getEMPTY(), Name.special("<clinit>"), SYNTHESIZED,
-                                                        SourcePackage.toSourceElement(element));
+                                                        KotlinSourceElementKt.toSourceElement(element));
             clInit.initialize(null, null, Collections.<TypeParameterDescriptor>emptyList(),
                               Collections.<ValueParameterDescriptor>emptyList(),
-                              DescriptorUtilPackage.getModule(descriptor).getBuiltIns().getUnitType(),
+                              DescriptorUtilsKt.getModule(descriptor).getBuiltIns().getUnitType(),
                               null, Visibilities.PRIVATE);
 
             this.clInit = new ExpressionCodegen(mv, new FrameMap(), Type.VOID_TYPE, context.intoFunction(clInit), state, this);
@@ -372,6 +373,11 @@ public abstract class MemberCodegen<T extends JetElement/* TODO: & JetDeclaratio
 
         PropertyDescriptor propertyDescriptor = (PropertyDescriptor) bindingContext.get(VARIABLE, property);
         assert propertyDescriptor != null;
+
+        if (propertyDescriptor.isConst()) {
+            //const initializer always inlined
+            return false;
+        }
 
         JetExpression initializer = property.getInitializer();
 
@@ -467,7 +473,7 @@ public abstract class MemberCodegen<T extends JetElement/* TODO: & JetDeclaratio
         }
         if (delegatedProperties.isEmpty()) return;
 
-        v.newField(NO_ORIGIN, ACC_PRIVATE | ACC_STATIC | ACC_FINAL | ACC_SYNTHETIC, JvmAbi.PROPERTY_METADATA_ARRAY_NAME,
+        v.newField(NO_ORIGIN, ACC_PRIVATE | ACC_STATIC | ACC_FINAL | ACC_SYNTHETIC, JvmAbi.DELEGATED_PROPERTIES_ARRAY_NAME,
                    "[" + PROPERTY_METADATA_TYPE, null, null);
 
         if (state.getClassBuilderMode() == ClassBuilderMode.LIGHT_CLASSES) return;
@@ -481,14 +487,21 @@ public abstract class MemberCodegen<T extends JetElement/* TODO: & JetDeclaratio
 
             iv.dup();
             iv.iconst(i);
-            iv.anew(PROPERTY_METADATA_IMPL_TYPE);
-            iv.dup();
-            iv.visitLdcInsn(property.getName().asString());
-            iv.invokespecial(PROPERTY_METADATA_IMPL_TYPE.getInternalName(), "<init>", "(Ljava/lang/String;)V", false);
-            iv.astore(PROPERTY_METADATA_IMPL_TYPE);
+
+            ReceiverParameterDescriptor dispatchReceiver = property.getDispatchReceiverParameter();
+
+            //noinspection ConstantConditions
+            StackValue value = createOrGetClInitCodegen().generatePropertyReference(
+                    delegatedProperties.get(i).getDelegate(), property, property,
+                    dispatchReceiver != null ? new TransientReceiver(dispatchReceiver.getType()) : ReceiverValue.NO_RECEIVER
+            );
+
+            value.put(PROPERTY_METADATA_TYPE, iv);
+
+            iv.astore(PROPERTY_METADATA_TYPE);
         }
 
-        iv.putstatic(thisAsmType.getInternalName(), JvmAbi.PROPERTY_METADATA_ARRAY_NAME, "[" + PROPERTY_METADATA_TYPE);
+        iv.putstatic(thisAsmType.getInternalName(), JvmAbi.DELEGATED_PROPERTIES_ARRAY_NAME, "[" + PROPERTY_METADATA_TYPE);
     }
 
     public String getClassName() {
@@ -527,7 +540,7 @@ public abstract class MemberCodegen<T extends JetElement/* TODO: & JetDeclaratio
             @NotNull Type fieldAsmType,
             @NotNull Function1<InstructionAdapter, Unit> initialization
     ) {
-        v.newField(OtherOrigin(element), ACC_STATIC | ACC_FINAL | ACC_PUBLIC, JvmAbi.INSTANCE_FIELD, fieldAsmType.getDescriptor(),
+        v.newField(JvmDeclarationOriginKt.OtherOrigin(element), ACC_STATIC | ACC_FINAL | ACC_PUBLIC, JvmAbi.INSTANCE_FIELD, fieldAsmType.getDescriptor(),
                    null, null);
 
         if (state.getClassBuilderMode() == ClassBuilderMode.FULL) {

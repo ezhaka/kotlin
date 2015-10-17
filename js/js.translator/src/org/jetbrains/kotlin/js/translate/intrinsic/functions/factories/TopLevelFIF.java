@@ -22,6 +22,7 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.builtins.PrimitiveType;
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor;
 import org.jetbrains.kotlin.descriptors.PropertyDescriptor;
+import org.jetbrains.kotlin.js.descriptorUtils.DescriptorUtilsKt;
 import org.jetbrains.kotlin.js.patterns.DescriptorPredicate;
 import org.jetbrains.kotlin.js.patterns.NamePredicate;
 import org.jetbrains.kotlin.js.resolve.JsPlatform;
@@ -42,7 +43,6 @@ import org.jetbrains.kotlin.types.JetType;
 
 import java.util.List;
 
-import static org.jetbrains.kotlin.js.descriptorUtils.DescriptorUtilsPackage.getNameIfStandardType;
 import static org.jetbrains.kotlin.js.patterns.PatternBuilder.pattern;
 import static org.jetbrains.kotlin.js.translate.intrinsic.functions.basic.FunctionIntrinsic.CallParametersAwareFunctionIntrinsic;
 import static org.jetbrains.kotlin.js.translate.utils.ManglingUtils.getStableMangledNameForDescriptor;
@@ -130,17 +130,6 @@ public final class TopLevelFIF extends CompositeFIF {
         }
     };
 
-    private static final FunctionIntrinsic PROPERTY_METADATA_IMPL = new FunctionIntrinsic() {
-        @NotNull
-        @Override
-        public JsExpression apply(
-                @Nullable JsExpression receiver, @NotNull List<JsExpression> arguments, @NotNull TranslationContext context
-        ) {
-            JsNameRef functionRef = new JsNameRef("PropertyMetadata", Namer.KOTLIN_NAME);
-            return new JsNew(functionRef, arguments);
-        }
-    };
-
     @NotNull
     public static final KotlinFunctionIntrinsic TO_STRING = new KotlinFunctionIntrinsic("toString");
 
@@ -156,7 +145,6 @@ public final class TopLevelFIF extends CompositeFIF {
         add(pattern(NamePredicate.PRIMITIVE_NUMBERS, "equals"), KOTLIN_EQUALS);
         add(pattern("String|Boolean|Char|Number.equals"), KOTLIN_EQUALS);
         add(pattern("kotlin", "arrayOfNulls"), new KotlinFunctionIntrinsic("nullArray"));
-        add(pattern("kotlin", "PropertyMetadataImpl", "<init>"), PROPERTY_METADATA_IMPL);
         add(pattern("kotlin", "iterator").isExtensionOf("kotlin.Iterator"), RETURN_RECEIVER_INTRINSIC);
 
         add(pattern("kotlin", "Map", "get").checkOverridden(), NATIVE_MAP_GET);
@@ -233,7 +221,7 @@ public final class TopLevelFIF extends CompositeFIF {
                 @NotNull TranslationContext context
         ) {
             JetType keyType = callInfo.getResolvedCall().getTypeArguments().values().iterator().next();
-            Name keyTypeName = getNameIfStandardType(keyType);
+            Name keyTypeName = DescriptorUtilsKt.getNameIfStandardType(keyType);
             String collectionClassName = null;
             if (keyTypeName != null) {
                 if (NamePredicate.PRIMITIVE_NUMBERS.apply(keyTypeName)) {

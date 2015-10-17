@@ -35,7 +35,7 @@ public final class JvmAbi {
      * - Patch version can be increased freely and is only supposed to be used for debugging. Increase the patch version when you
      *   make a change to the metadata format or the bytecode which is both forward- and backward compatible.
      */
-    public static final BinaryVersion VERSION = BinaryVersion.create(0, 30, 0);
+    public static final BinaryVersion VERSION = BinaryVersion.create(0, 31, 0);
 
     public static final String DEFAULT_IMPLS_CLASS_NAME = "DefaultImpls";
     public static final String DEFAULT_IMPLS_SUFFIX = "$" + DEFAULT_IMPLS_CLASS_NAME;
@@ -47,7 +47,7 @@ public final class JvmAbi {
     private static final String SET_PREFIX = "set";
 
     public static final String DELEGATED_PROPERTY_NAME_SUFFIX = "$delegate";
-    public static final String PROPERTY_METADATA_ARRAY_NAME = "$propertyMetadata";
+    public static final String DELEGATED_PROPERTIES_ARRAY_NAME = "$delegatedProperties";
     public static final String ANNOTATED_PROPERTY_METHOD_NAME_SUFFIX = "$annotations";
 
     public static final String INSTANCE_FIELD = "INSTANCE";
@@ -56,6 +56,9 @@ public final class JvmAbi {
     public static final String MODULE_NAME_FIELD = "$moduleName";
     public static final String DEFAULT_MODULE_NAME = "main";
     public static final ClassId REFLECTION_FACTORY_IMPL = ClassId.topLevel(new FqName("kotlin.reflect.jvm.internal.ReflectionFactoryImpl"));
+
+    public static final String LOCAL_VARIABLE_NAME_PREFIX_INLINE_ARGUMENT = "$i$a$";
+    public static final String LOCAL_VARIABLE_NAME_PREFIX_INLINE_FUNCTION = "$i$f$";
 
     @NotNull
     public static String getSyntheticMethodNameForAnnotatedProperty(@NotNull Name propertyName) {
