@@ -406,6 +406,7 @@ public class ControlStructureTypingVisitor extends ExpressionTypingVisitor {
                         loopScope, multiParameter, iteratorNextAsReceiver, loopRange, context
                 );
                 components.modifiersChecker.withTrace(context.trace).checkModifiersForMultiDeclaration(multiParameter);
+                components.modifiersChecker.withTrace(context.trace).checkMultiDeclarationHasNoValOrVar(multiParameter, VAL_OR_VAR_ON_LOOP_PARAMETER);
             }
         }
 
