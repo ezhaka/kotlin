@@ -24,12 +24,13 @@ import org.jetbrains.kotlin.codegen.binding.MutableClosure;
 import org.jetbrains.kotlin.codegen.state.GenerationState;
 import org.jetbrains.kotlin.codegen.state.JetTypeMapper;
 import org.jetbrains.kotlin.descriptors.*;
-import org.jetbrains.kotlin.psi.JetSuperExpression;
+import org.jetbrains.kotlin.psi.KtFile;
+import org.jetbrains.kotlin.psi.KtSuperExpression;
 import org.jetbrains.kotlin.resolve.BindingContext;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
 import org.jetbrains.kotlin.storage.LockBasedStorageManager;
 import org.jetbrains.kotlin.storage.NullableLazyValue;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KtType;
 import org.jetbrains.org.objectweb.asm.Type;
 
 import java.util.*;
@@ -180,22 +181,18 @@ public abstract class CodegenContext<T extends DeclarationDescriptor> {
     }
 
     @NotNull
-    public PackageContext intoPackagePart(@NotNull PackageFragmentDescriptor descriptor, Type packagePartType) {
-        return new PackageContext(descriptor, this, packagePartType);
-    }
-
-    @NotNull
-    public FieldOwnerContext intoPackageFacade(@NotNull Type delegateTo, @NotNull PackageFragmentDescriptor descriptor, @NotNull Type publicFacadeType) {
-        return new PackageFacadeContext(descriptor, this, delegateTo, publicFacadeType);
+    public PackageContext intoPackagePart(@NotNull PackageFragmentDescriptor descriptor, Type packagePartType, @Nullable KtFile sourceFile) {
+        return new PackageContext(descriptor, this, packagePartType, sourceFile);
     }
 
     @NotNull
     public FieldOwnerContext<PackageFragmentDescriptor> intoMultifileClassPart(
             @NotNull PackageFragmentDescriptor descriptor,
             @NotNull Type multifileClassType,
-            @NotNull Type filePartType
+            @NotNull Type filePartType,
+            @NotNull KtFile sourceFile
     ) {
-        return new MultifileClassPartContext(descriptor, this, multifileClassType, filePartType);
+        return new MultifileClassPartContext(descriptor, this, multifileClassType, filePartType, sourceFile);
     }
 
     @NotNull
@@ -276,7 +273,7 @@ public abstract class CodegenContext<T extends DeclarationDescriptor> {
     }
 
     @NotNull
-    public <D extends CallableMemberDescriptor> D getAccessor(@NotNull D descriptor, @Nullable JetSuperExpression superCallExpression) {
+    public <D extends CallableMemberDescriptor> D getAccessor(@NotNull D descriptor, @Nullable KtSuperExpression superCallExpression) {
         return getAccessor(descriptor, false, null, superCallExpression);
     }
 
@@ -285,8 +282,8 @@ public abstract class CodegenContext<T extends DeclarationDescriptor> {
     public <D extends CallableMemberDescriptor> D getAccessor(
             @NotNull D possiblySubstitutedDescriptor,
             boolean isForBackingFieldInOuterClass,
-            @Nullable JetType delegateType,
-            @Nullable JetSuperExpression superCallExpression
+            @Nullable KtType delegateType,
+            @Nullable KtSuperExpression superCallExpression
     ) {
         if (accessors == null) {
             accessors = new LinkedHashMap<AccessorKey, AccessorForCallableDescriptor<?>>();
@@ -303,11 +300,10 @@ public abstract class CodegenContext<T extends DeclarationDescriptor> {
                    accessor instanceof AccessorForPropertyBackingFieldInOuterClass : "There is already exists accessor with isForBackingFieldInOuterClass = false in this context";
             return (D) accessor;
         }
-
-        int accessorIndex = accessors.size();
+        String nameSuffix = SyntheticAccessorUtilKt.getAccessorNameSuffix(descriptor, key.superCallLabelTarget, isForBackingFieldInOuterClass);
         if (descriptor instanceof SimpleFunctionDescriptor) {
             accessor = new AccessorForFunctionDescriptor(
-                    (FunctionDescriptor) descriptor, contextDescriptor, accessorIndex, superCallExpression
+                    (FunctionDescriptor) descriptor, contextDescriptor, superCallExpression, nameSuffix
             );
         }
         else if (descriptor instanceof ConstructorDescriptor) {
@@ -316,11 +312,11 @@ public abstract class CodegenContext<T extends DeclarationDescriptor> {
         else if (descriptor instanceof PropertyDescriptor) {
             if (isForBackingFieldInOuterClass) {
                 accessor = new AccessorForPropertyBackingFieldInOuterClass((PropertyDescriptor) descriptor, contextDescriptor,
-                                                                           accessorIndex, delegateType);
+                                                                           delegateType, nameSuffix);
             }
             else {
                 accessor = new AccessorForPropertyDescriptor((PropertyDescriptor) descriptor, contextDescriptor,
-                                                             accessorIndex, superCallExpression);
+                                                             superCallExpression, nameSuffix);
             }
         }
         else {
@@ -383,11 +379,13 @@ public abstract class CodegenContext<T extends DeclarationDescriptor> {
     @NotNull
     public <D extends CallableMemberDescriptor> D accessibleDescriptor(
             @NotNull D descriptor,
-            @Nullable JetSuperExpression superCallExpression
+            @Nullable KtSuperExpression superCallExpression
     ) {
         DeclarationDescriptor enclosing = descriptor.getContainingDeclaration();
-        if (!hasThisDescriptor() || enclosing == getThisDescriptor() ||
-            enclosing == getClassOrPackageParentContext().getContextDescriptor()) {
+        if (!isInlineMethodContext() && (
+                !hasThisDescriptor() ||
+                enclosing == getThisDescriptor() ||
+                enclosing == getClassOrPackageParentContext().getContextDescriptor())) {
             return descriptor;
         }
 
@@ -419,7 +417,7 @@ public abstract class CodegenContext<T extends DeclarationDescriptor> {
     @NotNull
     private <D extends CallableMemberDescriptor> D accessibleDescriptorIfNeeded(
             @NotNull D descriptor,
-            @Nullable JetSuperExpression superCallExpression
+            @Nullable KtSuperExpression superCallExpression
     ) {
         CallableMemberDescriptor unwrappedDescriptor = DescriptorUtils.unwrapFakeOverride(descriptor);
         int flag = getAccessFlags(unwrappedDescriptor);
@@ -477,5 +475,20 @@ public abstract class CodegenContext<T extends DeclarationDescriptor> {
 
     private static boolean isStaticField(@NotNull StackValue value) {
         return value instanceof StackValue.Field && ((StackValue.Field) value).isStaticPut;
+    }
+
+    private boolean isInsideInliningContext() {
+        CodegenContext current = this;
+        while (current != null) {
+            if (current instanceof MethodContext && ((MethodContext) current).isInlineFunction()) {
+                return true;
+            }
+            current = current.getParentContext();
+        }
+        return false;
+    }
+
+    private boolean isInlineMethodContext() {
+        return this instanceof MethodContext && ((MethodContext) this).isInlineFunction();
     }
 }

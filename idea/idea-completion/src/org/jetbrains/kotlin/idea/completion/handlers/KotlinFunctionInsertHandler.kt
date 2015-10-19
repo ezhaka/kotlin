@@ -26,22 +26,21 @@ import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.codeStyle.CodeStyleSettingsManager
 import org.jetbrains.kotlin.idea.core.formatter.JetCodeStyleSettings
-import org.jetbrains.kotlin.lexer.JetTokens
-import org.jetbrains.kotlin.psi.JetTypeArgumentList
+import org.jetbrains.kotlin.lexer.KtTokens
+import org.jetbrains.kotlin.psi.KtTypeArgumentList
 import org.jetbrains.kotlin.psi.psiUtil.endOffset
-import org.jetbrains.kotlin.types.JetType
+import org.jetbrains.kotlin.types.KtType
 
-class GenerateLambdaInfo(val lambdaType: JetType, val explicitParameters: Boolean)
+class GenerateLambdaInfo(val lambdaType: KtType, val explicitParameters: Boolean)
 
-sealed class KotlinFunctionInsertHandler(
-
-) : KotlinCallableInsertHandler() {
+sealed class KotlinFunctionInsertHandler : KotlinCallableInsertHandler() {
 
     class Normal(
             val inputTypeArguments: Boolean,
             val inputValueArguments: Boolean,
             val argumentText: String = "",
-            val lambdaInfo: GenerateLambdaInfo? = null
+            val lambdaInfo: GenerateLambdaInfo? = null,
+            val argumentsOnly: Boolean = false
     ) : KotlinFunctionInsertHandler() {
         init {
             if (lambdaInfo != null) {
@@ -49,8 +48,19 @@ sealed class KotlinFunctionInsertHandler(
             }
         }
 
-        public override fun handleInsert(context: InsertionContext, item: LookupElement) {
-            super.handleInsert(context, item)
+        //TODO: add 'data' or special annotation when supported
+        fun copy(
+                inputTypeArguments: Boolean = this.inputTypeArguments,
+                inputValueArguments: Boolean = this.inputValueArguments,
+                argumentText: String = this.argumentText,
+                lambdaInfo: GenerateLambdaInfo? = this.lambdaInfo,
+                argumentsOnly: Boolean = this.argumentsOnly
+        ) = Normal(inputTypeArguments, inputValueArguments, argumentText, lambdaInfo, argumentsOnly)
+
+        override fun handleInsert(context: InsertionContext, item: LookupElement) {
+            if (!argumentsOnly) {
+                super.handleInsert(context, item)
+            }
 
             val psiDocumentManager = PsiDocumentManager.getInstance(context.project)
             psiDocumentManager.commitAllDocuments()
@@ -87,9 +97,9 @@ sealed class KotlinFunctionInsertHandler(
                     if (chars[offset1] == '<') {
                         PsiDocumentManager.getInstance(project).commitDocument(document)
                         val token = context.getFile().findElementAt(offset1)!!
-                        if (token.getNode().getElementType() == JetTokens.LT) {
+                        if (token.getNode().getElementType() == KtTokens.LT) {
                             val parent = token.getParent()
-                            if (parent is JetTypeArgumentList && parent.getText().indexOf('\n') < 0/* if type argument list is on multiple lines this is more likely wrong parsing*/) {
+                            if (parent is KtTypeArgumentList && parent.getText().indexOf('\n') < 0/* if type argument list is on multiple lines this is more likely wrong parsing*/) {
                                 offset = parent.endOffset
                                 insertTypeArguments = false
                             }

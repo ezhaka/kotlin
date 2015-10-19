@@ -30,7 +30,6 @@ import org.jetbrains.kotlin.codegen.*;
 import org.jetbrains.kotlin.codegen.binding.CodegenBinding;
 import org.jetbrains.kotlin.codegen.binding.MutableClosure;
 import org.jetbrains.kotlin.codegen.binding.PsiCodegenPredictor;
-import org.jetbrains.kotlin.codegen.inline.InlineCodegenUtil;
 import org.jetbrains.kotlin.codegen.signature.BothSignatureWriter;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.fileClasses.FileClasses;
@@ -43,15 +42,14 @@ import org.jetbrains.kotlin.load.java.BuiltinMethodsWithSpecialGenericSignature.
 import org.jetbrains.kotlin.load.java.descriptors.JavaCallableMemberDescriptor;
 import org.jetbrains.kotlin.load.java.descriptors.JavaClassDescriptor;
 import org.jetbrains.kotlin.load.java.lazy.descriptors.LazyJavaPackageScope;
-import org.jetbrains.kotlin.load.kotlin.PackageClassUtils;
 import org.jetbrains.kotlin.load.kotlin.incremental.IncrementalPackageFragmentProvider;
 import org.jetbrains.kotlin.load.kotlin.incremental.components.IncrementalCache;
 import org.jetbrains.kotlin.name.*;
 import org.jetbrains.kotlin.platform.JavaToKotlinClassMap;
-import org.jetbrains.kotlin.psi.JetExpression;
-import org.jetbrains.kotlin.psi.JetFile;
-import org.jetbrains.kotlin.psi.JetFunctionLiteral;
-import org.jetbrains.kotlin.psi.JetFunctionLiteralExpression;
+import org.jetbrains.kotlin.psi.KtExpression;
+import org.jetbrains.kotlin.psi.KtFile;
+import org.jetbrains.kotlin.psi.KtFunctionLiteral;
+import org.jetbrains.kotlin.psi.KtFunctionLiteralExpression;
 import org.jetbrains.kotlin.resolve.*;
 import org.jetbrains.kotlin.resolve.annotations.AnnotationUtilKt;
 import org.jetbrains.kotlin.resolve.calls.model.DefaultValueArgument;
@@ -65,7 +63,7 @@ import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodParameterKind;
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodParameterSignature;
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodSignature;
 import org.jetbrains.kotlin.resolve.scopes.AbstractScopeAdapter;
-import org.jetbrains.kotlin.resolve.scopes.JetScope;
+import org.jetbrains.kotlin.resolve.scopes.KtScope;
 import org.jetbrains.kotlin.serialization.deserialization.DeserializedType;
 import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedCallableMemberDescriptor;
 import org.jetbrains.kotlin.types.*;
@@ -148,18 +146,23 @@ public class JetTypeMapper {
 
     @NotNull
     public Type mapOwner(@NotNull DeclarationDescriptor descriptor) {
+        return mapOwner(descriptor, true);
+    }
+
+    public Type mapImplementationOwner(@NotNull DeclarationDescriptor descriptor) {
         return mapOwner(descriptor, false);
     }
 
     @NotNull
-    private Type mapOwner(@NotNull DeclarationDescriptor descriptor, boolean isImplementation) {
+    public Type mapOwner(@NotNull DeclarationDescriptor descriptor, boolean publicFacade) {
         if (isLocalFunction(descriptor)) {
             return asmTypeForAnonymousClass(bindingContext, (FunctionDescriptor) descriptor);
         }
 
         DeclarationDescriptor container = descriptor.getContainingDeclaration();
         if (container instanceof PackageFragmentDescriptor) {
-            return Type.getObjectType(internalNameForPackageMemberOwner((CallableMemberDescriptor) descriptor, isImplementation));
+            String packageMemberOwner = internalNameForPackageMemberOwner((CallableMemberDescriptor) descriptor, publicFacade);
+            return Type.getObjectType(packageMemberOwner);
         }
         else if (container instanceof ClassDescriptor) {
             return mapClass((ClassDescriptor) container);
@@ -173,11 +176,19 @@ public class JetTypeMapper {
     }
 
     @NotNull
-    private String internalNameForPackageMemberOwner(@NotNull CallableMemberDescriptor descriptor, boolean isImplementation) {
-        JetFile file = DescriptorToSourceUtils.getContainingFile(descriptor);
+    private String internalNameForPackageMemberOwner(@NotNull CallableMemberDescriptor descriptor, boolean publicFacade) {
+        boolean isAccessor = descriptor instanceof AccessorForCallableDescriptor;
+        if (isAccessor) {
+            descriptor = ((AccessorForCallableDescriptor) descriptor).getCalleeDescriptor();
+        }
+        KtFile file = DescriptorToSourceUtils.getContainingFile(descriptor);
         if (file != null) {
             Visibility visibility = descriptor.getVisibility();
-            if (isImplementation || descriptor instanceof PropertyDescriptor || Visibilities.isPrivate(visibility)) {
+            if (!publicFacade ||
+                descriptor instanceof PropertyDescriptor ||
+                Visibilities.isPrivate(visibility) ||
+                isAccessor/*Cause of KT-9603*/
+            ) {
                 return FileClasses.getFileClassInternalName(fileClassesProvider, file);
             }
             else {
@@ -188,12 +199,12 @@ public class JetTypeMapper {
         CallableMemberDescriptor directMember = getDirectMember(descriptor);
 
         if (directMember instanceof DeserializedCallableMemberDescriptor) {
-            String facadeFqName = getPackageMemberOwnerInternalName((DeserializedCallableMemberDescriptor) directMember);
+            String facadeFqName = getPackageMemberOwnerInternalName((DeserializedCallableMemberDescriptor) directMember, publicFacade);
             if (facadeFqName != null) return facadeFqName;
         }
 
-        throw new RuntimeException("Unreachable state");
-        //return PackageClassUtils.getPackageClassInternalName(packageFragment.getFqName());
+        throw new RuntimeException("Could not find package member for " + descriptor +
+                                   " in package fragment " + descriptor.getContainingDeclaration());
     }
 
     public static class ContainingClassesInfo {
@@ -239,8 +250,8 @@ public class JetTypeMapper {
         if (parentDeclaration instanceof PackageFragmentDescriptor) {
             containingClassesInfo = getPackageMemberContainingClassesInfo(deserializedDescriptor);
         } else {
-            containingClassesInfo = ContainingClassesInfo.forClassMemberOrNull(
-                    InlineCodegenUtil.getContainerClassId(deserializedDescriptor));
+            ClassId classId = getContainerClassIdForClassDescriptor((ClassDescriptor) parentDeclaration);
+            containingClassesInfo = ContainingClassesInfo.forClassMemberOrNull(classId);
         }
         if (containingClassesInfo == null) {
             throw new IllegalStateException("Couldn't find container for " + deserializedDescriptor.getName());
@@ -248,8 +259,18 @@ public class JetTypeMapper {
         return containingClassesInfo;
     }
 
+    private static ClassId getContainerClassIdForClassDescriptor(ClassDescriptor classDescriptor) {
+        ClassId classId = DescriptorUtilsKt.getClassId(classDescriptor);
+        if (isInterface(classDescriptor)) {
+            FqName relativeClassName = classId.getRelativeClassName();
+            //TODO test nested trait fun inlining
+            classId = new ClassId(classId.getPackageFqName(), Name.identifier(relativeClassName.shortName().asString() + JvmAbi.DEFAULT_IMPLS_SUFFIX));
+        }
+        return classId;
+    }
+
     @Nullable
-    private String getPackageMemberOwnerInternalName(@NotNull DeserializedCallableMemberDescriptor descriptor) {
+    private String getPackageMemberOwnerInternalName(@NotNull DeserializedCallableMemberDescriptor descriptor, boolean publicFacade) {
         DeclarationDescriptor containingDeclaration = descriptor.getContainingDeclaration();
         assert containingDeclaration instanceof PackageFragmentDescriptor : "Not a top-level member: " + descriptor;
 
@@ -258,12 +279,16 @@ public class JetTypeMapper {
             return null;
         }
 
-        return JvmClassName.byClassId(containingClasses.getFacadeClassId()).getInternalName();
+        ClassId ownerClassId = publicFacade ? containingClasses.getFacadeClassId()
+                                            : containingClasses.getImplClassId();
+        return JvmClassName.byClassId(ownerClassId).getInternalName();
     }
+
+    private static final ClassId FAKE_CLASS_ID_FOR_BUILTINS = ClassId.topLevel(new FqName("kotlin.KotlinPackage"));
 
     @Nullable
     private ContainingClassesInfo getPackageMemberContainingClassesInfo(@NotNull DeserializedCallableMemberDescriptor descriptor) {
-        // XXX This method (and getPackageMemberOwnerShortName) is a dirty hack.
+        // XXX This method is a dirty hack.
         // We need some safe, concise way to identify multifile facade and multifile part
         // from a deserialized package member descriptor.
         DeclarationDescriptor containingDeclaration = descriptor.getContainingDeclaration();
@@ -272,8 +297,7 @@ public class JetTypeMapper {
         PackageFragmentDescriptor packageFragmentDescriptor = (PackageFragmentDescriptor) containingDeclaration;
 
         if (packageFragmentDescriptor instanceof BuiltinsPackageFragment) {
-            ClassId builtinsFacadeClassId = ClassId.topLevel(PackageClassUtils.getPackageClassFqName(packageFragmentDescriptor.getFqName()));
-            return new ContainingClassesInfo(builtinsFacadeClassId, builtinsFacadeClassId);
+            return new ContainingClassesInfo(FAKE_CLASS_ID_FOR_BUILTINS, FAKE_CLASS_ID_FOR_BUILTINS);
         }
 
         Name implClassName = JvmFileClassUtil.getImplClassName(descriptor);
@@ -282,7 +306,7 @@ public class JetTypeMapper {
 
         String facadeSimpleName;
 
-        JetScope scope = packageFragmentDescriptor.getMemberScope();
+        KtScope scope = packageFragmentDescriptor.getMemberScope();
         if (scope instanceof AbstractScopeAdapter) {
             scope = ((AbstractScopeAdapter) scope).getActualScope();
         }
@@ -318,7 +342,7 @@ public class JetTypeMapper {
 
     @NotNull
     private Type mapReturnType(@NotNull CallableDescriptor descriptor, @Nullable BothSignatureWriter sw) {
-        JetType returnType = descriptor.getReturnType();
+        KtType returnType = descriptor.getReturnType();
         assert returnType != null : "Function has no return type: " + descriptor;
 
         if (descriptor instanceof ConstructorDescriptor) {
@@ -346,17 +370,17 @@ public class JetTypeMapper {
     }
 
     @NotNull
-    private Type mapType(@NotNull JetType jetType, @NotNull JetTypeMapperMode mode) {
+    private Type mapType(@NotNull KtType jetType, @NotNull JetTypeMapperMode mode) {
         return mapType(jetType, null, mode);
     }
 
     @NotNull
-    public Type mapSupertype(@NotNull JetType jetType, @Nullable BothSignatureWriter signatureVisitor) {
+    public Type mapSupertype(@NotNull KtType jetType, @Nullable BothSignatureWriter signatureVisitor) {
         return mapType(jetType, signatureVisitor, JetTypeMapperMode.SUPER_TYPE);
     }
 
     @NotNull
-    public Type mapTypeParameter(@NotNull JetType jetType, @Nullable BothSignatureWriter signatureVisitor) {
+    public Type mapTypeParameter(@NotNull KtType jetType, @Nullable BothSignatureWriter signatureVisitor) {
         return mapType(jetType, signatureVisitor, JetTypeMapperMode.TYPE_PARAMETER);
     }
 
@@ -366,7 +390,7 @@ public class JetTypeMapper {
     }
 
     @NotNull
-    public Type mapType(@NotNull JetType jetType) {
+    public Type mapType(@NotNull KtType jetType) {
         return mapType(jetType, null, JetTypeMapperMode.VALUE);
     }
 
@@ -391,13 +415,13 @@ public class JetTypeMapper {
     }
 
     @NotNull
-    private Type mapType(@NotNull JetType jetType, @Nullable BothSignatureWriter signatureVisitor, @NotNull JetTypeMapperMode mode) {
+    private Type mapType(@NotNull KtType jetType, @Nullable BothSignatureWriter signatureVisitor, @NotNull JetTypeMapperMode mode) {
         return mapType(jetType, signatureVisitor, mode, Variance.INVARIANT);
     }
 
     @NotNull
     private Type mapType(
-            @NotNull JetType jetType,
+            @NotNull KtType jetType,
             @Nullable BothSignatureWriter signatureVisitor,
             @NotNull JetTypeMapperMode kind,
             @NotNull Variance howThisTypeIsUsed
@@ -426,7 +450,7 @@ public class JetTypeMapper {
         TypeConstructor constructor = jetType.getConstructor();
         DeclarationDescriptor descriptor = constructor.getDeclarationDescriptor();
         if (constructor instanceof IntersectionTypeConstructor) {
-            jetType = CommonSupertypes.commonSupertype(new ArrayList<JetType>(constructor.getSupertypes()));
+            jetType = CommonSupertypes.commonSupertype(new ArrayList<KtType>(constructor.getSupertypes()));
         }
 
         if (descriptor == null) {
@@ -449,7 +473,7 @@ public class JetTypeMapper {
                 throw new UnsupportedOperationException("arrays must have one type argument");
             }
             TypeProjection memberProjection = jetType.getArguments().get(0);
-            JetType memberType = memberProjection.getType();
+            KtType memberType = memberProjection.getType();
 
             Type arrayElementType;
             if (memberProjection.getProjectionKind() == Variance.IN_VARIANCE) {
@@ -496,7 +520,7 @@ public class JetTypeMapper {
     }
 
     @Nullable
-    private static Type mapBuiltinType(@NotNull JetType type) {
+    private static Type mapBuiltinType(@NotNull KtType type) {
         DeclarationDescriptor descriptor = type.getConstructor().getDeclarationDescriptor();
         if (!(descriptor instanceof ClassDescriptor)) return null;
 
@@ -559,7 +583,7 @@ public class JetTypeMapper {
     }
 
     @NotNull
-    private static String generateErrorMessageForErrorType(@NotNull JetType type, @NotNull DeclarationDescriptor descriptor) {
+    private static String generateErrorMessageForErrorType(@NotNull KtType type, @NotNull DeclarationDescriptor descriptor) {
         PsiElement declarationElement = DescriptorToSourceUtils.descriptorToDeclaration(descriptor);
 
         if (declarationElement == null) {
@@ -592,7 +616,7 @@ public class JetTypeMapper {
     private void writeGenericType(
             BothSignatureWriter signatureVisitor,
             Type asmType,
-            JetType jetType,
+            KtType jetType,
             Variance howThisTypeIsUsed,
             boolean projectionsAllowed
     ) {
@@ -629,7 +653,7 @@ public class JetTypeMapper {
         }
     }
 
-    private static boolean hasNothingInArguments(JetType jetType) {
+    private static boolean hasNothingInArguments(KtType jetType) {
         boolean hasNothingInArguments = CollectionsKt.any(jetType.getArguments(), new Function1<TypeProjection, Boolean>() {
             @Override
             public Boolean invoke(TypeProjection projection) {
@@ -667,7 +691,7 @@ public class JetTypeMapper {
     }
 
     private Type mapKnownAsmType(
-            JetType jetType,
+            KtType jetType,
             Type asmType,
             @Nullable BothSignatureWriter signatureVisitor,
             @NotNull Variance howThisTypeIsUsed
@@ -676,7 +700,7 @@ public class JetTypeMapper {
     }
 
     private Type mapKnownAsmType(
-            JetType jetType,
+            KtType jetType,
             Type asmType,
             @Nullable BothSignatureWriter signatureVisitor,
             @NotNull Variance howThisTypeIsUsed,
@@ -851,7 +875,7 @@ public class JetTypeMapper {
 
             boolean isAccessor = property instanceof AccessorForPropertyDescriptor;
             String propertyName = isAccessor
-                                  ? ((AccessorForPropertyDescriptor) property).getIndexedAccessorSuffix()
+                                  ? ((AccessorForPropertyDescriptor) property).getAccessorSuffix()
                                   : property.getName().asString();
 
             String accessorName = descriptor instanceof PropertyGetterDescriptor
@@ -862,10 +886,10 @@ public class JetTypeMapper {
         }
         else if (isFunctionLiteral(descriptor)) {
             PsiElement element = DescriptorToSourceUtils.getSourceFromDescriptor(descriptor);
-            if (element instanceof JetFunctionLiteral) {
+            if (element instanceof KtFunctionLiteral) {
                 PsiElement expression = element.getParent();
-                if (expression instanceof JetFunctionLiteralExpression) {
-                    SamType samType = bindingContext.get(SAM_VALUE, (JetExpression) expression);
+                if (expression instanceof KtFunctionLiteralExpression) {
+                    SamType samType = bindingContext.get(SAM_VALUE, (KtExpression) expression);
                     if (samType != null) {
                         return samType.getAbstractMethod().getName().asString();
                     }
@@ -1068,7 +1092,7 @@ public class JetTypeMapper {
     }
 
     @Nullable
-    public String mapFieldSignature(@NotNull JetType backingFieldType) {
+    public String mapFieldSignature(@NotNull KtType backingFieldType) {
         BothSignatureWriter sw = new BothSignatureWriter(BothSignatureWriter.Mode.TYPE);
         mapType(backingFieldType, sw, JetTypeMapperMode.VALUE);
         return sw.makeJavaGenericSignature();
@@ -1119,7 +1143,7 @@ public class JetTypeMapper {
         {
             sw.writeClassBound();
 
-            for (JetType jetType : typeParameterDescriptor.getUpperBounds()) {
+            for (KtType jetType : typeParameterDescriptor.getUpperBounds()) {
                 if (jetType.getConstructor().getDeclarationDescriptor() instanceof ClassDescriptor) {
                     if (!isJvmInterface(jetType)) {
                         mapType(jetType, sw, JetTypeMapperMode.TYPE_PARAMETER);
@@ -1135,7 +1159,7 @@ public class JetTypeMapper {
         }
         sw.writeClassBoundEnd();
 
-        for (JetType jetType : typeParameterDescriptor.getUpperBounds()) {
+        for (KtType jetType : typeParameterDescriptor.getUpperBounds()) {
             ClassifierDescriptor classifier = jetType.getConstructor().getDeclarationDescriptor();
             if (classifier instanceof ClassDescriptor) {
                 if (isJvmInterface(jetType)) {
@@ -1155,11 +1179,11 @@ public class JetTypeMapper {
         }
     }
 
-    private void writeParameter(@NotNull BothSignatureWriter sw, @NotNull JetType type) {
+    private void writeParameter(@NotNull BothSignatureWriter sw, @NotNull KtType type) {
         writeParameter(sw, JvmMethodParameterKind.VALUE, type);
     }
 
-    private void writeParameter(@NotNull BothSignatureWriter sw, @NotNull JvmMethodParameterKind kind, @NotNull JetType type) {
+    private void writeParameter(@NotNull BothSignatureWriter sw, @NotNull JvmMethodParameterKind kind, @NotNull KtType type) {
         sw.writeParameterType(kind);
         mapType(type, sw, JetTypeMapperMode.VALUE);
         sw.writeParameterTypeEnd();
@@ -1179,7 +1203,7 @@ public class JetTypeMapper {
             writeParameter(sw, JvmMethodParameterKind.OUTER, captureThis.getDefaultType());
         }
 
-        JetType captureReceiverType = closure != null ? closure.getCaptureReceiverType() : null;
+        KtType captureReceiverType = closure != null ? closure.getCaptureReceiverType() : null;
         if (captureReceiverType != null) {
             writeParameter(sw, JvmMethodParameterKind.RECEIVER, captureReceiverType);
         }

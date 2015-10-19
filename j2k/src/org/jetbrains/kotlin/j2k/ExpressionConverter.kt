@@ -255,12 +255,12 @@ class DefaultExpressionConverter : JavaElementVisitor(), ExpressionConverter {
 
         if (target is KotlinLightMethod) {
             val origin = target.getOrigin()
-            val isTopLevel = origin?.getStrictParentOfType<JetClassOrObject>() == null
-            if (origin is JetProperty || origin is JetPropertyAccessor || origin is JetParameter) {
-                val property = if (origin is JetPropertyAccessor)
-                    origin.getParent() as JetProperty
+            val isTopLevel = origin?.getStrictParentOfType<KtClassOrObject>() == null
+            if (origin is KtProperty || origin is KtPropertyAccessor || origin is KtParameter) {
+                val property = if (origin is KtPropertyAccessor)
+                    origin.getParent() as KtProperty
                 else
-                    origin as JetNamedDeclaration
+                    origin as KtNamedDeclaration
                 val parameterCount = target.getParameterList().getParameters().size()
                 if (parameterCount == arguments.size()) {
                     val propertyName = Identifier(property.getName()!!, isNullable).assignNoPrototype()
@@ -289,7 +289,7 @@ class DefaultExpressionConverter : JavaElementVisitor(), ExpressionConverter {
                     }
                 }
             }
-            else if (origin is JetFunction) {
+            else if (origin is KtFunction) {
                 if (isTopLevel) {
                     result = if (origin.isExtensionDeclaration()) {
                         val qualifier = codeConverter.convertExpression(arguments.firstOrNull())
@@ -312,8 +312,8 @@ class DefaultExpressionConverter : JavaElementVisitor(), ExpressionConverter {
         }
 
         if (target is PsiMethod) {
-            val specialMethod = SpecialMethod.values().firstOrNull { it.matches(target) }
-            if (specialMethod != null && (specialMethod.parameterCount == null || specialMethod.parameterCount == arguments.size())) {
+            val specialMethod = SpecialMethod.match(target, arguments.size(), converter.services)
+            if (specialMethod != null) {
                 val converted = specialMethod.convertCall(methodExpr.getQualifierExpression(), arguments, typeArguments, codeConverter)
                 if (converted != null) {
                     result = converted
@@ -350,23 +350,31 @@ class DefaultExpressionConverter : JavaElementVisitor(), ExpressionConverter {
     }
 
     override fun visitNewExpression(expression: PsiNewExpression) {
+        val type = expression.type
         if (expression.getArrayInitializer() != null) {
             result = codeConverter.convertExpression(expression.getArrayInitializer())
         }
         else if (expression.getArrayDimensions().size() > 0 && expression.getType() is PsiArrayType) {
             result = ArrayWithoutInitializationExpression(
-                    typeConverter.convertType(expression.getType(), Nullability.NotNull) as ArrayType,
+                    typeConverter.convertType(expression.type, Nullability.NotNull) as ArrayType,
                     codeConverter.convertExpressions(expression.getArrayDimensions()))
         }
         else {
-            val anonymousClass = expression.getAnonymousClass()
+            if (type?.canonicalText in PsiPrimitiveType.getAllBoxedTypeNames()) {
+                val argument = expression.argumentList?.expressions?.singleOrNull()
+                if (argument != null && argument.type is PsiPrimitiveType) {
+                    result = codeConverter.convertExpression(argument)
+                    return
+                }
+            }
+
             val qualifier = expression.getQualifier()
             val classRef = expression.getClassOrAnonymousClassReference()
             val classRefConverted = if (classRef != null) converter.convertCodeReferenceElement(classRef, hasExternalQualifier = qualifier != null) else null
             result = NewClassExpression(classRefConverted,
-                                      convertArguments(expression),
-                                      codeConverter.convertExpression(qualifier),
-                                      if (anonymousClass != null) converter.convertAnonymousClassBody(anonymousClass) else null)
+                    convertArguments(expression),
+                    codeConverter.convertExpression(qualifier),
+                    expression.anonymousClass?.let { converter.convertAnonymousClassBody(it) })
         }
     }
 
@@ -414,7 +422,7 @@ class DefaultExpressionConverter : JavaElementVisitor(), ExpressionConverter {
             identifier = Identifier("size()", isNullable).assignNoPrototype()
         }
         else if (qualifier != null) {
-            if (target is KotlinLightField<*, *> && target.getOrigin() is JetObjectDeclaration) {
+            if (target is KotlinLightField<*, *> && target.getOrigin() is KtObjectDeclaration) {
                 result = codeConverter.convertExpression(qualifier)
                 return
             }

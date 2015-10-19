@@ -37,14 +37,11 @@ import org.jetbrains.kotlin.fileClasses.FileClasses;
 import org.jetbrains.kotlin.fileClasses.JvmFileClassesProvider;
 import org.jetbrains.kotlin.load.java.JvmAbi;
 import org.jetbrains.kotlin.load.kotlin.JvmVirtualFileFinder;
-import org.jetbrains.kotlin.load.kotlin.PackageClassUtils;
 import org.jetbrains.kotlin.name.ClassId;
 import org.jetbrains.kotlin.name.FqName;
 import org.jetbrains.kotlin.name.Name;
-import org.jetbrains.kotlin.psi.JetFile;
+import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils;
-import org.jetbrains.kotlin.resolve.DescriptorUtils;
-import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt;
 import org.jetbrains.kotlin.resolve.jvm.AsmTypes;
 import org.jetbrains.kotlin.resolve.jvm.JvmClassName;
 import org.jetbrains.kotlin.util.OperatorNameConventions;
@@ -58,9 +55,6 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.ListIterator;
-
-import static org.jetbrains.kotlin.resolve.DescriptorUtils.getFqName;
-import static org.jetbrains.kotlin.resolve.DescriptorUtils.isInterface;
 
 public class InlineCodegenUtil {
     public static final boolean GENERATE_SMAP = true;
@@ -163,26 +157,6 @@ public class InlineCodegenUtil {
         return fileFinder.findVirtualFileWithHeader(new ClassId(packageFqName, Name.identifier(classNameWithDollars)));
     }
 
-    //TODO: navigate to inner classes
-    @Nullable
-    public static ClassId getContainerClassId(@NotNull DeclarationDescriptor referencedDescriptor) {
-        ClassOrPackageFragmentDescriptor
-                containerDescriptor = DescriptorUtils.getParentOfType(referencedDescriptor, ClassOrPackageFragmentDescriptor.class, false);
-        if (containerDescriptor instanceof PackageFragmentDescriptor) {
-            return PackageClassUtils.getPackageClassId(getFqName(containerDescriptor).toSafe());
-        }
-        if (containerDescriptor instanceof ClassDescriptor) {
-            ClassId classId = DescriptorUtilsKt.getClassId((ClassDescriptor) containerDescriptor);
-            if (isInterface(containerDescriptor)) {
-                FqName relativeClassName = classId.getRelativeClassName();
-                //TODO test nested trait fun inlining
-                classId = new ClassId(classId.getPackageFqName(), Name.identifier(relativeClassName.shortName().asString() + JvmAbi.DEFAULT_IMPLS_SUFFIX));
-            }
-            return classId;
-        }
-        return null;
-    }
-
     public static String getInlineName(
             @NotNull CodegenContext codegenContext,
             @NotNull JetTypeMapper typeMapper,
@@ -204,7 +178,7 @@ public class InlineCodegenUtil {
             if (file == null) {
                 implementationOwnerType = CodegenContextUtil.getImplementationOwnerClassType(codegenContext);
             } else {
-                implementationOwnerType = FileClasses.getFileClassType(fileClassesProvider, (JetFile) file);
+                implementationOwnerType = FileClasses.getFileClassType(fileClassesProvider, (KtFile) file);
             }
 
             if (implementationOwnerType == null) {

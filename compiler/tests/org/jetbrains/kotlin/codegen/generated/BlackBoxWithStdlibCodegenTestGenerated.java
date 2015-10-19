@@ -106,18 +106,6 @@ public class BlackBoxWithStdlibCodegenTestGenerated extends AbstractBlackBoxCode
             doTestWithStdlib(fileName);
         }
 
-        @TestMetadata("packageFacadeIsDeprecated.kt")
-        public void testPackageFacadeIsDeprecated() throws Exception {
-            String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithStdlib/annotations/packageFacadeIsDeprecated.kt");
-            doTestWithStdlib(fileName);
-        }
-
-        @TestMetadata("packageFacadeMethodsAnnotation.kt")
-        public void testPackageFacadeMethodsAnnotation() throws Exception {
-            String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithStdlib/annotations/packageFacadeMethodsAnnotation.kt");
-            doTestWithStdlib(fileName);
-        }
-
         @TestMetadata("parameterWithPrimitiveType.kt")
         public void testParameterWithPrimitiveType() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithStdlib/annotations/parameterWithPrimitiveType.kt");
@@ -1212,12 +1200,6 @@ public class BlackBoxWithStdlibCodegenTestGenerated extends AbstractBlackBoxCode
                 doTestWithStdlib(fileName);
             }
 
-            @TestMetadata("paramWithoutProperty.kt")
-            public void testParamWithoutProperty() throws Exception {
-                String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithStdlib/dataClasses/copy/paramWithoutProperty.kt");
-                doTestWithStdlib(fileName);
-            }
-
             @TestMetadata("valInConstructorParams.kt")
             public void testValInConstructorParams() throws Exception {
                 String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithStdlib/dataClasses/copy/valInConstructorParams.kt");
@@ -1386,12 +1368,6 @@ public class BlackBoxWithStdlibCodegenTestGenerated extends AbstractBlackBoxCode
             @TestMetadata("alreadyDeclaredWrongSignature.kt")
             public void testAlreadyDeclaredWrongSignature() throws Exception {
                 String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithStdlib/dataClasses/tostring/alreadyDeclaredWrongSignature.kt");
-                doTestWithStdlib(fileName);
-            }
-
-            @TestMetadata("alreadyInherited.kt")
-            public void testAlreadyInherited() throws Exception {
-                String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithStdlib/dataClasses/tostring/alreadyInherited.kt");
                 doTestWithStdlib(fileName);
             }
 
@@ -4660,6 +4636,51 @@ public class BlackBoxWithStdlibCodegenTestGenerated extends AbstractBlackBoxCode
         @TestMetadata("toArrayAlreadyPresent.kt")
         public void testToArrayAlreadyPresent() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithStdlib/toArray/toArrayAlreadyPresent.kt");
+            doTestWithStdlib(fileName);
+        }
+    }
+
+    @TestMetadata("compiler/testData/codegen/boxWithStdlib/topLevelPrivate")
+    @TestDataPath("$PROJECT_ROOT")
+    @RunWith(JUnit3RunnerWithInners.class)
+    public static class TopLevelPrivate extends AbstractBlackBoxCodegenTest {
+        public void testAllFilesPresentInTopLevelPrivate() throws Exception {
+            JetTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/boxWithStdlib/topLevelPrivate"), Pattern.compile("^(.+)\\.kt$"), true);
+        }
+
+        @TestMetadata("noPrivateNoAccessorsInMultiFileFacade.kt")
+        public void testNoPrivateNoAccessorsInMultiFileFacade() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithStdlib/topLevelPrivate/noPrivateNoAccessorsInMultiFileFacade.kt");
+            doTestWithStdlib(fileName);
+        }
+
+        @TestMetadata("noPrivateNoAccessorsInMultiFileFacade2.kt")
+        public void testNoPrivateNoAccessorsInMultiFileFacade2() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithStdlib/topLevelPrivate/noPrivateNoAccessorsInMultiFileFacade2.kt");
+            doTestWithStdlib(fileName);
+        }
+
+        @TestMetadata("privateInInlineNested.kt")
+        public void testPrivateInInlineNested() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithStdlib/topLevelPrivate/privateInInlineNested.kt");
+            doTestWithStdlib(fileName);
+        }
+
+        @TestMetadata("privateVisibility.kt")
+        public void testPrivateVisibility() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithStdlib/topLevelPrivate/privateVisibility.kt");
+            doTestWithStdlib(fileName);
+        }
+
+        @TestMetadata("syntheticAccessor.kt")
+        public void testSyntheticAccessor() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithStdlib/topLevelPrivate/syntheticAccessor.kt");
+            doTestWithStdlib(fileName);
+        }
+
+        @TestMetadata("syntheticAccessorInMultiFile.kt")
+        public void testSyntheticAccessorInMultiFile() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/boxWithStdlib/topLevelPrivate/syntheticAccessorInMultiFile.kt");
             doTestWithStdlib(fileName);
         }
     }

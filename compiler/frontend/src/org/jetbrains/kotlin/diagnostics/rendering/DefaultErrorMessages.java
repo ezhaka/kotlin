@@ -25,15 +25,15 @@ import org.jetbrains.annotations.TestOnly;
 import org.jetbrains.kotlin.diagnostics.Diagnostic;
 import org.jetbrains.kotlin.diagnostics.DiagnosticFactory;
 import org.jetbrains.kotlin.diagnostics.Errors;
-import org.jetbrains.kotlin.psi.JetExpression;
-import org.jetbrains.kotlin.psi.JetSimpleNameExpression;
-import org.jetbrains.kotlin.psi.JetTypeConstraint;
+import org.jetbrains.kotlin.psi.KtExpression;
+import org.jetbrains.kotlin.psi.KtSimpleNameExpression;
+import org.jetbrains.kotlin.psi.KtTypeConstraint;
 import org.jetbrains.kotlin.renderer.DescriptorRenderer;
 import org.jetbrains.kotlin.renderer.DescriptorRendererOptions;
 import org.jetbrains.kotlin.renderer.MultiRenderer;
 import org.jetbrains.kotlin.renderer.Renderer;
 import org.jetbrains.kotlin.resolve.varianceChecker.VarianceChecker.VarianceConflictDiagnosticData;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KtType;
 import org.jetbrains.kotlin.util.MappedExtensionProvider;
 import org.jetbrains.kotlin.util.OperatorNameConventions;
 
@@ -365,7 +365,7 @@ public class DefaultErrorMessages {
 
         MAP.put(COMPARE_TO_TYPE_MISMATCH, "''compareTo()'' must return kotlin.Int, but returns {0}", RENDER_TYPE);
 
-        MAP.put(UNDERSCORE_IS_DEPRECATED, "Names _, __, ___, ..., are deprecated");
+        MAP.put(UNDERSCORE_IS_RESERVED, "Names _, __, ___, ..., are reserved in Kotlin");
         MAP.put(INVALID_CHARACTERS, "Name {0}", STRING);
 
         MAP.put(INAPPLICABLE_OPERATOR_MODIFIER, "'operator' modifier is inapplicable on this function");
@@ -387,10 +387,10 @@ public class DefaultErrorMessages {
 
         MAP.put(IMPLICIT_CAST_TO_UNIT_OR_ANY, "Type is cast to ''{0}''. Please specify ''{0}'' as expected type, if you mean such cast",
                 RENDER_TYPE);
-        MAP.put(EXPRESSION_EXPECTED, "{0} is not an expression, and only expressions are allowed here", new Renderer<JetExpression>() {
+        MAP.put(EXPRESSION_EXPECTED, "{0} is not an expression, and only expressions are allowed here", new Renderer<KtExpression>() {
             @NotNull
             @Override
-            public String render(@NotNull JetExpression expression) {
+            public String render(@NotNull KtExpression expression) {
                 String expressionType = expression.toString();
                 return expressionType.substring(0, 1) +
                        expressionType.substring(1).toLowerCase();
@@ -437,7 +437,7 @@ public class DefaultErrorMessages {
         MAP.put(INTERFACE_WITH_SUPERCLASS, "An interface cannot inherit from a class");
         MAP.put(SUPERTYPE_APPEARS_TWICE, "A supertype appears twice");
         MAP.put(FINAL_SUPERTYPE, "This type is final, so it cannot be inherited from");
-        MAP.put(DATA_CLASS_CANNOT_HAVE_CLASS_SUPERTYPES, "Data class inheritance from other classes is deprecated");
+        MAP.put(DATA_CLASS_CANNOT_HAVE_CLASS_SUPERTYPES, "Data class inheritance from other classes is forbidden");
         MAP.put(SEALED_SUPERTYPE, "This type is sealed, so it can be inherited by only its own nested classes or objects");
         MAP.put(SEALED_SUPERTYPE_IN_LOCAL_CLASS, "Local class cannot extend a sealed class");
         MAP.put(SINGLETON_IN_SUPERTYPE, "Cannot inherit from a singleton");
@@ -477,10 +477,10 @@ public class DefaultErrorMessages {
         MAP.put(UNEXPECTED_SAFE_CALL, "Safe-call is not allowed here");
         MAP.put(UNNECESSARY_NOT_NULL_ASSERTION, "Unnecessary non-null assertion (!!) on a non-null receiver of type {0}", RENDER_TYPE);
         MAP.put(NOT_NULL_ASSERTION_ON_FUNCTION_LITERAL, "Non-null assertion (!!) is called on function literal");
-        MAP.put(NAME_IN_CONSTRAINT_IS_NOT_A_TYPE_PARAMETER, "{0} does not refer to a type parameter of {1}", new Renderer<JetTypeConstraint>() {
+        MAP.put(NAME_IN_CONSTRAINT_IS_NOT_A_TYPE_PARAMETER, "{0} does not refer to a type parameter of {1}", new Renderer<KtTypeConstraint>() {
             @NotNull
             @Override
-            public String render(@NotNull JetTypeConstraint typeConstraint) {
+            public String render(@NotNull KtTypeConstraint typeConstraint) {
                 //noinspection ConstantConditions
                 return typeConstraint.getSubjectTypeParameterName().getReferencedName();
             }
@@ -525,10 +525,10 @@ public class DefaultErrorMessages {
 
         MAP.put(INCONSISTENT_TYPE_PARAMETER_VALUES, "Type parameter {0} of ''{1}'' has inconsistent values: {2}", NAME, NAME, RENDER_COLLECTION_OF_TYPES);
 
-        MAP.put(EQUALITY_NOT_APPLICABLE, "Operator ''{0}'' cannot be applied to ''{1}'' and ''{2}''", new Renderer<JetSimpleNameExpression>() {
+        MAP.put(EQUALITY_NOT_APPLICABLE, "Operator ''{0}'' cannot be applied to ''{1}'' and ''{2}''", new Renderer<KtSimpleNameExpression>() {
             @NotNull
             @Override
-            public String render(@NotNull JetSimpleNameExpression nameExpression) {
+            public String render(@NotNull KtSimpleNameExpression nameExpression) {
                 //noinspection ConstantConditions
                 return nameExpression.getReferencedName();
             }
@@ -536,6 +536,8 @@ public class DefaultErrorMessages {
 
         MAP.put(SENSELESS_COMPARISON, "Condition ''{0}'' is always ''{1}''", ELEMENT_TEXT, TO_STRING);
         MAP.put(SENSELESS_NULL_IN_WHEN, "Expression under 'when' is never equal to null");
+
+        MAP.put(INVALID_IF_AS_EXPRESSION, "'if' must have both main and 'else' branches if used as an expression");
 
         MAP.put(OVERRIDING_FINAL_MEMBER, "''{0}'' in ''{1}'' is final and cannot be overridden", NAME, NAME);
         MAP.put(CANNOT_WEAKEN_ACCESS_PRIVILEGE, "Cannot weaken access privilege ''{0}'' for ''{1}'' in ''{2}''", TO_STRING, NAME, NAME);
@@ -563,10 +565,10 @@ public class DefaultErrorMessages {
 
         MAP.put(FUNCTION_EXPECTED, "Expression ''{0}''{1} cannot be invoked as a function. " +
                                    "The function '" + OperatorNameConventions.INVOKE.asString() + "()' is not found",
-                ELEMENT_TEXT, new Renderer<JetType>() {
+                ELEMENT_TEXT, new Renderer<KtType>() {
                     @NotNull
                     @Override
-                    public String render(@NotNull JetType type) {
+                    public String render(@NotNull KtType type) {
                         if (type.isError()) return "";
                         return " of type '" + RENDER_TYPE.render(type) + "'";
                     }
@@ -607,7 +609,7 @@ public class DefaultErrorMessages {
         MAP.put(TYPE_INFERENCE_ONLY_INPUT_TYPES, "Type inference failed. The value of the type parameter {0} should be mentioned in input types " +
                                                  "(argument types, receiver type or expected type). Try to specify it explicitly.", NAME);
         MAP.put(TYPE_INFERENCE_UPPER_BOUND_VIOLATED, "{0}", TYPE_INFERENCE_UPPER_BOUND_VIOLATED_RENDERER);
-        MAP.put(TYPE_INFERENCE_EXPECTED_TYPE_MISMATCH, "Type inference failed. Expected type mismatch: found: {1} required: {0}", RENDER_TYPE, RENDER_TYPE);
+        MAP.put(TYPE_INFERENCE_EXPECTED_TYPE_MISMATCH, "Type inference failed. Expected type mismatch: inferred type is {1} but {0} was expected", RENDER_TYPE, RENDER_TYPE);
 
         MAP.put(WRONG_NUMBER_OF_TYPE_ARGUMENTS, "{0,choice,0#No type arguments|1#Type argument|1<{0,number,integer} type arguments} expected", (Renderer) null);
         MAP.put(NO_TYPE_ARGUMENTS_ON_RHS, "{0,choice,0#No type arguments|1#Type argument|1<{0,number,integer} type arguments} expected. " +
@@ -657,9 +659,9 @@ public class DefaultErrorMessages {
 
         MAP.put(NAME_FOR_AMBIGUOUS_PARAMETER, "Named argument is not allowed for a parameter with an ambiguous name");
 
-        MAP.put(DATA_CLASS_WITHOUT_PARAMETERS, "Data class without primary constructor parameters are deprecated");
-        MAP.put(DATA_CLASS_VARARG_PARAMETER, "Primary constructor vararg parameters are deprecated for data classes");
-        MAP.put(DATA_CLASS_NOT_PROPERTY_PARAMETER, "Primary constructor parameters without val / var are deprecated for data classes");
+        MAP.put(DATA_CLASS_WITHOUT_PARAMETERS, "Data class must have at least one primary constructor parameter");
+        MAP.put(DATA_CLASS_VARARG_PARAMETER, "Primary constructor vararg parameters are forbidden for data classes");
+        MAP.put(DATA_CLASS_NOT_PROPERTY_PARAMETER, "Data class primary constructor must have only property (val / var) parameters");
 
         MAP.put(AMBIGUOUS_ANONYMOUS_TYPE_INFERRED, "Right-hand side has anonymous type. Please specify type explicitly", TO_STRING);
 

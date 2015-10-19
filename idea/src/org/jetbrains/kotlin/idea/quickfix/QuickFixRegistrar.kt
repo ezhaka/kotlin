@@ -20,8 +20,8 @@ import com.intellij.codeInsight.intention.IntentionAction
 import org.jetbrains.kotlin.diagnostics.DiagnosticFactory
 import org.jetbrains.kotlin.diagnostics.Errors.*
 import org.jetbrains.kotlin.idea.core.overrideImplement.ImplementMembersHandler
+import org.jetbrains.kotlin.idea.inspections.AddModifierFixFactory
 import org.jetbrains.kotlin.idea.inspections.AddReflectionQuickFix
-import org.jetbrains.kotlin.idea.inspections.ModifierFixFactory
 import org.jetbrains.kotlin.idea.intentions.IntroduceBackingPropertyFix
 import org.jetbrains.kotlin.idea.quickfix.createFromUsage.createCallable.*
 import org.jetbrains.kotlin.idea.quickfix.createFromUsage.createClass.CreateClassFromCallWithConstructorCalleeActionFactory
@@ -34,9 +34,9 @@ import org.jetbrains.kotlin.idea.quickfix.createFromUsage.createVariable.CreateP
 import org.jetbrains.kotlin.idea.quickfix.migration.MigrateTypeParameterListFix
 import org.jetbrains.kotlin.idea.quickfix.replaceWith.DeprecatedSymbolUsageFix
 import org.jetbrains.kotlin.idea.quickfix.replaceWith.DeprecatedSymbolUsageInWholeProjectFix
-import org.jetbrains.kotlin.lexer.JetTokens
-import org.jetbrains.kotlin.lexer.JetTokens.*
-import org.jetbrains.kotlin.psi.JetClass
+import org.jetbrains.kotlin.lexer.KtTokens
+import org.jetbrains.kotlin.lexer.KtTokens.*
+import org.jetbrains.kotlin.psi.KtClass
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.ErrorsJvm
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.ErrorsJvm.NO_REFLECTION_IN_CLASS_PATH
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.ErrorsJvm.POSITIONED_VALUE_ARGUMENT_FOR_JAVA_ANNOTATION
@@ -65,10 +65,10 @@ public class QuickFixRegistrar : QuickFixContributor {
 
         MUST_BE_INITIALIZED_OR_BE_ABSTRACT.registerFactory(addAbstractModifierFactory)
         ABSTRACT_MEMBER_NOT_IMPLEMENTED.registerFactory(addAbstractModifierFactory)
-        MANY_IMPL_MEMBER_NOT_IMPLEMENTED.registerFactory(addAbstractModifierFactory)
+        ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED.registerFactory(addAbstractModifierFactory)
 
         val removeFinalModifierFactory = RemoveModifierFix.createRemoveModifierFromListOwnerFactory(FINAL_KEYWORD)
-        val addAbstractToClassFactory = AddModifierFix.createFactory(ABSTRACT_KEYWORD, javaClass<JetClass>())
+        val addAbstractToClassFactory = AddModifierFix.createFactory(ABSTRACT_KEYWORD, javaClass<KtClass>())
         ABSTRACT_PROPERTY_IN_NON_ABSTRACT_CLASS.registerFactory(removeAbstractModifierFactory, addAbstractToClassFactory)
 
         ABSTRACT_FUNCTION_IN_NON_ABSTRACT_CLASS.registerFactory(removeAbstractModifierFactory, addAbstractToClassFactory)
@@ -110,7 +110,7 @@ public class QuickFixRegistrar : QuickFixContributor {
         VARIANCE_ON_TYPE_PARAMETER_OF_FUNCTION_OR_PROPERTY.registerFactory(RemoveModifierFix.createRemoveVarianceFactory())
 
         val removeOpenModifierFactory = RemoveModifierFix.createRemoveModifierFromListOwnerFactory(OPEN_KEYWORD)
-        NON_FINAL_MEMBER_IN_FINAL_CLASS.registerFactory(AddModifierFix.createFactory(OPEN_KEYWORD, javaClass<JetClass>()),
+        NON_FINAL_MEMBER_IN_FINAL_CLASS.registerFactory(AddModifierFix.createFactory(OPEN_KEYWORD, javaClass<KtClass>()),
                                                    removeOpenModifierFactory)
 
         val removeModifierFactory = RemoveModifierFix.createRemoveModifierFactory()
@@ -151,7 +151,8 @@ public class QuickFixRegistrar : QuickFixContributor {
 
         val implementMethodsHandler = ImplementMembersHandler()
         ABSTRACT_MEMBER_NOT_IMPLEMENTED.registerActions(implementMethodsHandler)
-        MANY_IMPL_MEMBER_NOT_IMPLEMENTED.registerActions(implementMethodsHandler)
+        ABSTRACT_CLASS_MEMBER_NOT_IMPLEMENTED.registerActions(implementMethodsHandler)
+        MANY_INTERFACES_MEMBER_NOT_IMPLEMENTED.registerActions(implementMethodsHandler)
 
         VAL_WITH_SETTER.registerFactory(ChangeVariableMutabilityFix.VAL_WITH_SETTER_FACTORY)
         VAL_REASSIGNMENT.registerFactory(ChangeVariableMutabilityFix.VAL_REASSIGNMENT_FACTORY)
@@ -189,7 +190,7 @@ public class QuickFixRegistrar : QuickFixContributor {
         UNCHECKED_CAST.registerFactory(changeToStarProjectionFactory)
         CANNOT_CHECK_FOR_ERASED.registerFactory(changeToStarProjectionFactory)
 
-        INACCESSIBLE_OUTER_CLASS_EXPRESSION.registerFactory(AddModifierFix.createFactory(INNER_KEYWORD, javaClass<JetClass>()))
+        INACCESSIBLE_OUTER_CLASS_EXPRESSION.registerFactory(AddModifierFix.createFactory(INNER_KEYWORD, javaClass<KtClass>()))
 
         val addOpenModifierToClassDeclarationFix = AddOpenModifierToClassDeclarationFix.createFactory()
         FINAL_SUPERTYPE.registerFactory(addOpenModifierToClassDeclarationFix)
@@ -326,10 +327,10 @@ public class QuickFixRegistrar : QuickFixContributor {
         BACKING_FIELD_USAGE_FORBIDDEN.registerFactory(MigrateBackingFieldUsageFix)
         BACKING_FIELD_USAGE_FORBIDDEN.registerFactory(IntroduceBackingPropertyFix)
 
-        OPERATOR_MODIFIER_REQUIRED.registerFactory(ModifierFixFactory(JetTokens.OPERATOR_KEYWORD))
-        INFIX_MODIFIER_REQUIRED.registerFactory(ModifierFixFactory(JetTokens.INFIX_KEYWORD))
+        OPERATOR_MODIFIER_REQUIRED.registerFactory(AddModifierFixFactory(KtTokens.OPERATOR_KEYWORD))
+        INFIX_MODIFIER_REQUIRED.registerFactory(AddModifierFixFactory(KtTokens.INFIX_KEYWORD))
 
-        UNDERSCORE_IS_DEPRECATED.registerFactory(RenameUnderscoreFix)
+        UNDERSCORE_IS_RESERVED.registerFactory(RenameUnderscoreFix)
 
         CALLABLE_REFERENCE_TO_MEMBER_OR_EXTENSION_WITH_EMPTY_LHS.registerFactory(AddTypeToLHSOfCallableReferenceFix)
 

@@ -40,8 +40,8 @@ import org.jetbrains.kotlin.idea.util.makeNotNullable
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
 import org.jetbrains.kotlin.load.java.descriptors.SamConstructorDescriptor
 import org.jetbrains.kotlin.platform.JavaToKotlinClassMap
-import org.jetbrains.kotlin.psi.JetClassOrObject
-import org.jetbrains.kotlin.psi.JetDeclaration
+import org.jetbrains.kotlin.psi.KtClassOrObject
+import org.jetbrains.kotlin.psi.KtDeclaration
 import org.jetbrains.kotlin.renderer.DescriptorRenderer
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.DescriptorUtils
@@ -104,14 +104,14 @@ class TypeInstantiationItems(
             descriptor: ClassDescriptor, kotlinClassDescriptor: ClassDescriptor, typeArgs: List<TypeProjection>, freeParameters: Collection<TypeParameterDescriptor>, tail: Tail?
     ) {
         val _declaration = DescriptorToSourceUtilsIde.getAnyDeclaration(resolutionFacade.project, descriptor) ?: return
-        val declaration = if (_declaration is JetDeclaration)
+        val declaration = if (_declaration is KtDeclaration)
             toFromOriginalFileMapper.toOriginalFile(_declaration) ?: return
         else
             _declaration
 
         val psiClass: PsiClass = when (declaration) {
             is PsiClass -> declaration
-            is JetClassOrObject -> LightClassUtil.getPsiClass(declaration) ?: return
+            is KtClassOrObject -> LightClassUtil.getPsiClass(declaration) ?: return
             else -> return
         }
         add(InheritanceSearcher(psiClass, kotlinClassDescriptor, typeArgs, freeParameters, tail))
@@ -202,10 +202,13 @@ class TypeInstantiationItems(
                 else -> "(...)"
             }
 
-            val baseInsertHandler = when (visibleConstructors.size()) {
-                0 -> KotlinFunctionInsertHandler.Normal(inputTypeArguments = false, inputValueArguments = false)
-                1 -> lookupElementFactory.insertHandlerProvider.insertHandler(visibleConstructors.single()) as KotlinFunctionInsertHandler.Normal
-                else -> KotlinFunctionInsertHandler.Normal(inputTypeArguments = false, inputValueArguments = true)
+            val baseInsertHandler = when (visibleConstructors.size) {
+                0 -> KotlinFunctionInsertHandler.Normal(inputTypeArguments = false, inputValueArguments = false, argumentsOnly = true)
+
+                1 -> (lookupElementFactory.insertHandlerProvider.insertHandler(visibleConstructors.single()) as KotlinFunctionInsertHandler.Normal)
+                        .copy(argumentsOnly = true)
+
+                else -> KotlinFunctionInsertHandler.Normal(inputTypeArguments = false, inputValueArguments = true, argumentsOnly = true)
             }
 
             insertHandler = object : InsertHandler<LookupElement> {
@@ -263,7 +266,7 @@ class TypeInstantiationItems(
         return InstantiationLookupElement(lookupElement).addTail(tail)
     }
 
-    private fun JetType.areTypeParametersUsedInside(freeParameters: Collection<TypeParameterDescriptor>): Boolean {
+    private fun KtType.areTypeParametersUsedInside(freeParameters: Collection<TypeParameterDescriptor>): Boolean {
         return FuzzyType(this, freeParameters).freeParameters.isNotEmpty()
     }
 
@@ -293,7 +296,7 @@ class TypeInstantiationItems(
             private val tail: Tail?) : InheritanceItemsSearcher {
 
         private val baseHasTypeArgs = classDescriptor.typeConstructor.parameters.isNotEmpty()
-        private val expectedType = JetTypeImpl.create(Annotations.EMPTY, classDescriptor, false, typeArgs)
+        private val expectedType = KtTypeImpl.create(Annotations.EMPTY, classDescriptor, false, typeArgs)
         private val expectedFuzzyType = FuzzyType(expectedType, freeParameters)
 
         override fun search(nameFilter: (String) -> Boolean, consumer: (LookupElement) -> Unit) {
@@ -301,7 +304,7 @@ class TypeInstantiationItems(
             for (inheritor in ClassInheritorsSearch.search(parameters)) {
                 val descriptor = resolutionFacade.psiClassToDescriptor(
                         inheritor,
-                        { toFromOriginalFileMapper.toSyntheticFile(it) as JetClassOrObject? }) as? ClassDescriptor ?: continue
+                        { toFromOriginalFileMapper.toSyntheticFile(it) as KtClassOrObject? }) as? ClassDescriptor ?: continue
                 if (!visibilityFilter(descriptor)) continue
 
                 var inheritorFuzzyType = FuzzyType(descriptor.defaultType, descriptor.typeConstructor.parameters)

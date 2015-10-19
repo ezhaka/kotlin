@@ -22,19 +22,20 @@ import org.jetbrains.kotlin.descriptors.PropertyDescriptor
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
 import org.jetbrains.kotlin.load.java.structure.reflect.classId
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.resolve.scopes.JetScope
+import org.jetbrains.kotlin.resolve.scopes.KtScope
 import kotlin.jvm.internal.KotlinPackage
 import kotlin.reflect.KCallable
 import kotlin.reflect.KPackage
 
 internal class KPackageImpl(override val jClass: Class<*>, val moduleName: String) : KDeclarationContainerImpl(), KPackage {
-    val descriptor by ReflectProperties.lazySoft {
-        val moduleData = moduleData
-        moduleData.packageFacadeProvider.registerModule(moduleName)
-        moduleData.module.getPackage(jClass.classId.packageFqName)
+    private val descriptor = ReflectProperties.lazySoft {
+        with(moduleData) {
+            packageFacadeProvider.registerModule(moduleName)
+            module.getPackage(jClass.classId.packageFqName)
+        }
     }
 
-    internal val scope: JetScope get() = descriptor.memberScope
+    internal val scope: KtScope get() = descriptor().memberScope
 
     override val members: Collection<KCallable<*>>
         get() = getMembers(scope, declaredOnly = false, nonExtensions = true, extensions = true).toList()

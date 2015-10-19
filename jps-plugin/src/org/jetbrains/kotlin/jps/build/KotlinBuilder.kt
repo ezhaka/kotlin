@@ -87,6 +87,7 @@ public class KotlinBuilder : ModuleLevelBuilder(BuilderCategory.SOURCE_PROCESSOR
     override fun getCompilableFileExtensions() = arrayListOf("kt")
 
     override fun buildStarted(context: CompileContext) {
+        LOG.debug("==========================================")
         LOG.info("is Kotlin incremental compilation enabled: ${IncrementalCompilation.isEnabled()}")
 
         val historyLabel = context.getBuilderParameter("history label")
@@ -101,6 +102,7 @@ public class KotlinBuilder : ModuleLevelBuilder(BuilderCategory.SOURCE_PROCESSOR
             dirtyFilesHolder: DirtyFilesHolder<JavaSourceRootDescriptor, ModuleBuildTarget>,
             outputConsumer: ModuleLevelBuilder.OutputConsumer
     ): ModuleLevelBuilder.ExitCode {
+        LOG.debug("------------------------------------------")
         val messageCollector = MessageCollectorAdapter(context)
 
         try {
@@ -126,7 +128,7 @@ public class KotlinBuilder : ModuleLevelBuilder(BuilderCategory.SOURCE_PROCESSOR
             messageCollector: MessageCollectorAdapter, outputConsumer: ModuleLevelBuilder.OutputConsumer
     ): ModuleLevelBuilder.ExitCode {
         // Workaround for Android Studio
-        if (!JpsUtils.isJsKotlinModule(chunk.representativeTarget()) && !JavaBuilder.IS_ENABLED[context, true]) {
+        if (!JavaBuilder.IS_ENABLED[context, true] && !JpsUtils.isJsKotlinModule(chunk.representativeTarget())) {
             messageCollector.report(INFO, "Kotlin JPS plugin is disabled", CompilerMessageLocation.NO_LOCATION)
             return NOTHING_DONE
         }
@@ -213,7 +215,9 @@ public class KotlinBuilder : ModuleLevelBuilder(BuilderCategory.SOURCE_PROCESSOR
             copyJsLibraryFilesIfNeeded(chunk, project)
         }
 
-        if (!IncrementalCompilation.isEnabled()) return OK
+        if (!IncrementalCompilation.isEnabled()) {
+            return OK
+        }
 
         val caches = filesToCompile.keySet().map { incrementalCaches[it]!! }
         val marker = ChangesProcessor(context, chunk, allCompiledFiles, caches)
@@ -316,7 +320,9 @@ public class KotlinBuilder : ModuleLevelBuilder(BuilderCategory.SOURCE_PROCESSOR
         val compilerServices = Services.Builder()
                 .register(javaClass<IncrementalCompilationComponents>(), IncrementalCompilationComponentsImpl(incrementalCaches, lookupTracker))
                 .register(javaClass<CompilationCanceledStatus>(), object : CompilationCanceledStatus {
-                    override fun checkCanceled(): Unit = if (context.getCancelStatus().isCanceled()) throw CompilationCanceledException()
+                    override fun checkCanceled() {
+                        if (context.getCancelStatus().isCanceled()) throw CompilationCanceledException()
+                    }
                 })
                 .build()
 

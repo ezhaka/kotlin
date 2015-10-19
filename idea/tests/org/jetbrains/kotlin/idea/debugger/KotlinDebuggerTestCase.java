@@ -42,9 +42,9 @@ import org.jetbrains.kotlin.codegen.forTestCompile.ForTestCompileRuntime;
 import org.jetbrains.kotlin.idea.test.ConfigLibraryUtil;
 import org.jetbrains.kotlin.idea.test.PluginTestCaseBase;
 import org.jetbrains.kotlin.idea.test.ProjectDescriptorWithStdlibSources;
-import org.jetbrains.kotlin.load.kotlin.PackageClassUtils;
+import org.jetbrains.kotlin.load.kotlin.PackagePartClassUtils;
 import org.jetbrains.kotlin.name.FqName;
-import org.jetbrains.kotlin.psi.JetFile;
+import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.test.JetTestUtils;
 import org.jetbrains.kotlin.test.MockLibraryUtil;
 import org.junit.ComparisonFailure;
@@ -201,8 +201,8 @@ public abstract class KotlinDebuggerTestCase extends DescriptorTestCase {
 
         for (PsiClass psiClass : psiClasses) {
             if (psiClass instanceof KotlinLightClassForFacade) {
-                Collection<JetFile> files = ((KotlinLightClassForFacade) psiClass).getFiles();
-                for (JetFile jetFile : files) {
+                Collection<KtFile> files = ((KotlinLightClassForFacade) psiClass).getFiles();
+                for (KtFile jetFile : files) {
                     createBreakpoints(jetFile);
                 }
             }
@@ -220,7 +220,9 @@ public abstract class KotlinDebuggerTestCase extends DescriptorTestCase {
         VfsUtil.markDirty(true, true, VfsUtil.findFileByIoFile(new File(TINY_APP), true));
         File file = new File(path);
         String packageName = file.getName().replace(".kt", "");
-        createLocalProcess(PackageClassUtils.getPackageClassFqName(new FqName(packageName)).asString());
+        FqName packageFQN = new FqName(packageName);
+        String mainClassName = PackagePartClassUtils.getPackagePartFqName(packageFQN, file.getName()).asString();
+        createLocalProcess(mainClassName);
     }
 
     @Override

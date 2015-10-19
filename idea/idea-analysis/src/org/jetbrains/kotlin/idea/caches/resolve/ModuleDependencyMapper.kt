@@ -29,15 +29,16 @@ import org.jetbrains.kotlin.context.withProject
 import org.jetbrains.kotlin.idea.project.IdeaEnvironment
 import org.jetbrains.kotlin.load.java.structure.JavaClass
 import org.jetbrains.kotlin.load.java.structure.impl.JavaClassImpl
-import org.jetbrains.kotlin.psi.JetFile
+import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.resolve.jvm.JvmPlatformParameters
 import org.jetbrains.kotlin.storage.ExceptionTracker
 
 fun createModuleResolverProvider(
+        debugName: String,
         project: Project,
         globalContext: GlobalContextImpl,
         analyzerFacade: AnalyzerFacade<JvmPlatformParameters>,
-        syntheticFiles: Collection<JetFile>,
+        syntheticFiles: Collection<KtFile>,
         delegateResolver: ResolverForProject<IdeaModuleInfo>,
         moduleFilter: (IdeaModuleInfo) -> Boolean
 ): ModuleResolverProvider {
@@ -62,7 +63,7 @@ fun createModuleResolverProvider(
         }
 
         val resolverForProject = analyzerFacade.setupResolverForProject(
-                globalContext.withProject(project), modulesToCreateResolversFor, modulesContent,
+                debugName, globalContext.withProject(project), modulesToCreateResolversFor, modulesContent,
                 jvmPlatformParameters, IdeaEnvironment, delegateResolver,
                 { m, c -> IDEPackagePartProvider(c.moduleContentScope) }
         )

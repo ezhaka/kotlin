@@ -20,33 +20,41 @@ import org.jetbrains.kotlin.cfg.pseudocode.PseudoValue
 import org.jetbrains.kotlin.cfg.pseudocode.PseudoValueFactory
 import org.jetbrains.kotlin.cfg.pseudocode.instructions.*
 import org.jetbrains.kotlin.descriptors.VariableDescriptor
-import org.jetbrains.kotlin.psi.JetElement
-import org.jetbrains.kotlin.psi.JetNamedDeclaration
+import org.jetbrains.kotlin.psi.KtElement
+import org.jetbrains.kotlin.psi.KtNamedDeclaration
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall
 import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue
 
 public sealed class AccessTarget {
-    public data class Declaration(val descriptor: VariableDescriptor): AccessTarget()
-    public data class Call(val resolvedCall: ResolvedCall<*>): AccessTarget()
+    public class Declaration(val descriptor: VariableDescriptor): AccessTarget() {
+        override fun equals(other: Any?) = other is Declaration && descriptor == other.descriptor
+
+        override fun hashCode() = descriptor.hashCode()
+    }
+    public class Call(val resolvedCall: ResolvedCall<*>): AccessTarget() {
+        override fun equals(other: Any?) = other is Call && resolvedCall == other.resolvedCall
+
+        override fun hashCode() = resolvedCall.hashCode()
+    }
     public object BlackBox: AccessTarget()
 }
 
 public abstract class AccessValueInstruction protected constructor(
-        element: JetElement,
+        element: KtElement,
         lexicalScope: LexicalScope,
         public val target: AccessTarget,
         override val receiverValues: Map<PseudoValue, ReceiverValue>
 ) : InstructionWithNext(element, lexicalScope), InstructionWithReceivers
 
 public class ReadValueInstruction private constructor(
-        element: JetElement,
+        element: KtElement,
         lexicalScope: LexicalScope,
         target: AccessTarget,
         receiverValues: Map<PseudoValue, ReceiverValue>,
         private var _outputValue: PseudoValue?
 ) : AccessValueInstruction(element, lexicalScope, target, receiverValues), InstructionWithValue {
     public constructor(
-            element: JetElement,
+            element: KtElement,
             lexicalScope: LexicalScope,
             target: AccessTarget,
             receiverValues: Map<PseudoValue, ReceiverValue>,
@@ -87,11 +95,11 @@ public class ReadValueInstruction private constructor(
 }
 
 public class WriteValueInstruction(
-        assignment: JetElement,
+        assignment: KtElement,
         lexicalScope: LexicalScope,
         target: AccessTarget,
         receiverValues: Map<PseudoValue, ReceiverValue>,
-        public val lValue: JetElement,
+        public val lValue: KtElement,
         public val rValue: PseudoValue
 ) : AccessValueInstruction(assignment, lexicalScope, target, receiverValues) {
     override val inputValues: List<PseudoValue>
@@ -106,7 +114,7 @@ public class WriteValueInstruction(
     }
 
     override fun toString(): String {
-        val lhs = (lValue as? JetNamedDeclaration)?.getName() ?: render(lValue)
+        val lhs = (lValue as? KtNamedDeclaration)?.getName() ?: render(lValue)
         return "w($lhs|${inputValues.joinToString(", ")})"
     }
 

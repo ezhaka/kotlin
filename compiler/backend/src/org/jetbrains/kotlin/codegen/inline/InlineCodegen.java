@@ -73,7 +73,7 @@ public class InlineCodegen extends CallGenerator {
 
     private final SimpleFunctionDescriptor functionDescriptor;
     private final JvmMethodSignature jvmSignature;
-    private final JetElement callElement;
+    private final KtElement callElement;
     private final MethodContext context;
     private final ExpressionCodegen codegen;
 
@@ -94,7 +94,7 @@ public class InlineCodegen extends CallGenerator {
             @NotNull ExpressionCodegen codegen,
             @NotNull GenerationState state,
             @NotNull SimpleFunctionDescriptor functionDescriptor,
-            @NotNull JetElement callElement,
+            @NotNull KtElement callElement,
             @Nullable ReifiedTypeParameterMappings typeParameterMappings
     ) {
         assert InlineUtil.isInline(functionDescriptor) : "InlineCodegen could inline only inline function: " + functionDescriptor;
@@ -109,7 +109,8 @@ public class InlineCodegen extends CallGenerator {
 
         initialFrameSize = codegen.getFrameMap().getCurrentSize();
 
-        context = (MethodContext) getContext(functionDescriptor, state);
+        PsiElement element = DescriptorToSourceUtils.descriptorToDeclaration(functionDescriptor);
+        context = (MethodContext) getContext(functionDescriptor, state, element != null ? (KtFile) element.getContainingFile() : null);
         jvmSignature = typeMapper.mapSignature(functionDescriptor, context.getContextKind());
 
         // TODO: implement AS_FUNCTION inline strategy
@@ -204,10 +205,10 @@ public class InlineCodegen extends CallGenerator {
         else {
             PsiElement element = DescriptorToSourceUtils.descriptorToDeclaration(functionDescriptor);
 
-            if (element == null || !(element instanceof JetNamedFunction)) {
+            if (element == null || !(element instanceof KtNamedFunction)) {
                 throw new RuntimeException("Couldn't find declaration for function " + descriptorName(functionDescriptor));
             }
-            JetNamedFunction inliningFunction = (JetNamedFunction) element;
+            KtNamedFunction inliningFunction = (KtNamedFunction) element;
 
             MethodNode node = new MethodNode(InlineCodegenUtil.API,
                                            getMethodAsmFlags(functionDescriptor, context.getContextKind()) | (callDefault ? Opcodes.ACC_STATIC : 0),
@@ -304,7 +305,7 @@ public class InlineCodegen extends CallGenerator {
     }
 
     private SMAPAndMethodNode generateLambdaBody(LambdaInfo info) {
-        JetExpression declaration = info.getFunctionWithBodyOrCallableReference();
+        KtExpression declaration = info.getFunctionWithBodyOrCallableReference();
         FunctionDescriptor descriptor = info.getFunctionDescriptor();
 
         MethodContext parentContext = codegen.getContext();
@@ -326,7 +327,7 @@ public class InlineCodegen extends CallGenerator {
             @NotNull MethodVisitor adapter,
             @NotNull FunctionDescriptor descriptor,
             @NotNull MethodContext context,
-            @NotNull JetExpression expression,
+            @NotNull KtExpression expression,
             @NotNull JvmMethodSignature jvmMethodSignature,
             boolean isLambda
     ) {
@@ -337,14 +338,14 @@ public class InlineCodegen extends CallGenerator {
                                                : typeMapper.mapOwner(descriptor).getInternalName());
 
         FunctionGenerationStrategy strategy =
-                expression instanceof JetCallableReferenceExpression ?
+                expression instanceof KtCallableReferenceExpression ?
                 new FunctionReferenceGenerationStrategy(
                         state,
                         descriptor,
-                        CallUtilKt.getResolvedCallWithAssert(((JetCallableReferenceExpression) expression).getCallableReference(),
+                        CallUtilKt.getResolvedCallWithAssert(((KtCallableReferenceExpression) expression).getCallableReference(),
                                                              codegen.getBindingContext()
                         )) :
-                new FunctionGenerationStrategy.FunctionDefault(state, descriptor, (JetDeclarationWithBody) expression);
+                new FunctionGenerationStrategy.FunctionDefault(state, descriptor, (KtDeclarationWithBody) expression);
 
         FunctionCodegen.generateMethodBody(
                 adapter, descriptor, context, jvmMethodSignature,
@@ -357,7 +358,7 @@ public class InlineCodegen extends CallGenerator {
     }
 
     private static SMAP createSMAPWithDefaultMapping(
-            @NotNull JetExpression declaration,
+            @NotNull KtExpression declaration,
             @NotNull List<FileMapping> mappings
     ) {
         PsiFile containingFile = declaration.getContainingFile();
@@ -372,7 +373,7 @@ public class InlineCodegen extends CallGenerator {
         private final MemberCodegen delegate;
         @NotNull private final String className;
 
-        public FakeMemberCodegen(@NotNull MemberCodegen wrapped, @NotNull JetElement declaration, @NotNull FieldOwnerContext codegenContext, @NotNull String className) {
+        public FakeMemberCodegen(@NotNull MemberCodegen wrapped, @NotNull KtElement declaration, @NotNull FieldOwnerContext codegenContext, @NotNull String className) {
             super(wrapped, declaration, codegenContext);
             delegate = wrapped;
             this.className = className;
@@ -534,21 +535,21 @@ public class InlineCodegen extends CallGenerator {
     }
 
     /*lambda or callable reference*/
-    public static boolean isInliningParameter(JetExpression expression, ValueParameterDescriptor valueParameterDescriptor) {
+    public static boolean isInliningParameter(KtExpression expression, ValueParameterDescriptor valueParameterDescriptor) {
         //TODO deparenthisise typed
-        JetExpression deparenthesized = JetPsiUtil.deparenthesize(expression);
+        KtExpression deparenthesized = KtPsiUtil.deparenthesize(expression);
         return InlineUtil.isInlineLambdaParameter(valueParameterDescriptor) &&
                isInlinableParameterExpression(deparenthesized);
     }
 
-    protected static boolean isInlinableParameterExpression(JetExpression deparenthesized) {
-        return deparenthesized instanceof JetFunctionLiteralExpression ||
-               deparenthesized instanceof JetNamedFunction ||
-               deparenthesized instanceof JetCallableReferenceExpression;
+    protected static boolean isInlinableParameterExpression(KtExpression deparenthesized) {
+        return deparenthesized instanceof KtFunctionLiteralExpression ||
+               deparenthesized instanceof KtNamedFunction ||
+               deparenthesized instanceof KtCallableReferenceExpression;
     }
 
-    public void rememberClosure(JetExpression expression, Type type, int parameterIndex) {
-        JetExpression lambda = JetPsiUtil.deparenthesize(expression);
+    public void rememberClosure(KtExpression expression, Type type, int parameterIndex) {
+        KtExpression lambda = KtPsiUtil.deparenthesize(expression);
         assert isInlinableParameterExpression(lambda) : "Couldn't find inline expression in " + expression.getText();
 
         LambdaInfo info = new LambdaInfo(lambda, typeMapper);
@@ -586,12 +587,12 @@ public class InlineCodegen extends CallGenerator {
         activeLambda = null;
     }
 
-    public static CodegenContext getContext(DeclarationDescriptor descriptor, GenerationState state) {
+    public static CodegenContext getContext(@NotNull DeclarationDescriptor descriptor, @NotNull GenerationState state, @Nullable KtFile sourceFile) {
         if (descriptor instanceof PackageFragmentDescriptor) {
-            return new PackageContext((PackageFragmentDescriptor) descriptor, state.getRootContext(), null);
+            return new PackageContext((PackageFragmentDescriptor) descriptor, state.getRootContext(), null, sourceFile);
         }
 
-        CodegenContext parent = getContext(descriptor.getContainingDeclaration(), state);
+        CodegenContext parent = getContext(descriptor.getContainingDeclaration(), state, sourceFile);
 
         if (descriptor instanceof ClassDescriptor) {
             OwnerKind kind = DescriptorUtils.isInterface(descriptor) ? OwnerKind.DEFAULT_IMPLS : OwnerKind.IMPLEMENTATION;
@@ -623,7 +624,7 @@ public class InlineCodegen extends CallGenerator {
     @Override
     public void genValueAndPut(
             @NotNull ValueParameterDescriptor valueParameterDescriptor,
-            @NotNull JetExpression argumentExpression,
+            @NotNull KtExpression argumentExpression,
             @NotNull Type parameterType,
             int parameterIndex
     ) {
@@ -769,9 +770,9 @@ public class InlineCodegen extends CallGenerator {
         if (incrementalCompilationComponents == null || targetId == null) return;
 
         IncrementalCache incrementalCache = incrementalCompilationComponents.getIncrementalCache(targetId);
-        String sourceFile = InlineCodegenUtilsKt.getClassFilePath(sourceDescriptor, incrementalCache);
-        String targetFile = InlineCodegenUtilsKt.getSourceFilePath(targetDescriptor);
-        incrementalCache.registerInline(sourceFile, jvmSignature.toString(), targetFile);
+        String classFilePath = InlineCodegenUtilsKt.getClassFilePath(sourceDescriptor, typeMapper, incrementalCache);
+        String sourceFilePath = InlineCodegenUtilsKt.getSourceFilePath(targetDescriptor);
+        incrementalCache.registerInline(classFilePath, jvmSignature.toString(), sourceFilePath);
     }
 
     @Override

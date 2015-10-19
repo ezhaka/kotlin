@@ -19,16 +19,9 @@ package org.jetbrains.kotlin.codegen
 import org.jetbrains.kotlin.fileClasses.JvmFileClassInfo
 import org.jetbrains.kotlin.fileClasses.JvmFileClassUtil
 import org.jetbrains.kotlin.fileClasses.JvmFileClassesProvider
-import org.jetbrains.kotlin.psi.JetFile
+import org.jetbrains.kotlin.psi.KtFile
 
-public class CodegenFileClassesProvider(private val packageFacadesAsMultifileClasses: Boolean) : JvmFileClassesProvider {
-    override public fun getFileClassInfo(file: JetFile): JvmFileClassInfo {
-        val fileClassInfo = JvmFileClassUtil.getFileClassInfoNoResolve(file)
-        if (packageFacadesAsMultifileClasses && !fileClassInfo.withJvmMultifileClass) {
-            return JvmFileClassUtil.getMultifilePackageFacadePartInfo(file)
-        }
-        else {
-            return fileClassInfo
-        }
-    }
+public class CodegenFileClassesProvider : JvmFileClassesProvider {
+    override public fun getFileClassInfo(file: KtFile): JvmFileClassInfo =
+            JvmFileClassUtil.getFileClassInfoNoResolve(file)
 }

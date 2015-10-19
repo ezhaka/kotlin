@@ -139,6 +139,12 @@ public class QuickFixTestGenerated extends AbstractQuickFixTest {
             JetTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("idea/testData/quickfix/abstract"), Pattern.compile("^([\\w\\-_]+)\\.kt$"), true);
         }
 
+        @TestMetadata("manyImpl.kt")
+        public void testManyImpl() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/abstract/manyImpl.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("mustBeInitializedOrBeAbstract.kt")
         public void testMustBeInitializedOrBeAbstract() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/abstract/mustBeInitializedOrBeAbstract.kt");
@@ -160,6 +166,18 @@ public class QuickFixTestGenerated extends AbstractQuickFixTest {
         @TestMetadata("nonMemberFunctionNoBody.kt")
         public void testNonMemberFunctionNoBody() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/abstract/nonMemberFunctionNoBody.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("notImplementedMember.kt")
+        public void testNotImplementedMember() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/abstract/notImplementedMember.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("notImplementedMemberFromAbstractClass.kt")
+        public void testNotImplementedMemberFromAbstractClass() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/abstract/notImplementedMemberFromAbstractClass.kt");
             doTest(fileName);
         }
 
@@ -3405,6 +3423,24 @@ public class QuickFixTestGenerated extends AbstractQuickFixTest {
                 doTest(fileName);
             }
 
+            @TestMetadata("annotation3.kt")
+            public void testAnnotation3() throws Exception {
+                String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/deprecatedSymbolUsage/classUsages/annotation3.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("annotation4.kt")
+            public void testAnnotation4() throws Exception {
+                String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/deprecatedSymbolUsage/classUsages/annotation4.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("annotationKeepNamedArgs.kt")
+            public void testAnnotationKeepNamedArgs() throws Exception {
+                String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/deprecatedSymbolUsage/classUsages/annotationKeepNamedArgs.kt");
+                doTest(fileName);
+            }
+
             @TestMetadata("constructorUsage1.kt")
             public void testConstructorUsage1() throws Exception {
                 String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/deprecatedSymbolUsage/classUsages/constructorUsage1.kt");
@@ -3420,6 +3456,12 @@ public class QuickFixTestGenerated extends AbstractQuickFixTest {
             @TestMetadata("constructorUsage3.kt")
             public void testConstructorUsage3() throws Exception {
                 String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/deprecatedSymbolUsage/classUsages/constructorUsage3.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("constructorUsage4.kt")
+            public void testConstructorUsage4() throws Exception {
+                String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/deprecatedSymbolUsage/classUsages/constructorUsage4.kt");
                 doTest(fileName);
             }
 
@@ -4277,51 +4319,6 @@ public class QuickFixTestGenerated extends AbstractQuickFixTest {
             }
         }
 
-        @TestMetadata("idea/testData/quickfix/migration/operatorModifier")
-        @TestDataPath("$PROJECT_ROOT")
-        @RunWith(JUnit3RunnerWithInners.class)
-        public static class OperatorModifier extends AbstractQuickFixTest {
-            public void testAllFilesPresentInOperatorModifier() throws Exception {
-                JetTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("idea/testData/quickfix/migration/operatorModifier"), Pattern.compile("^([\\w\\-_]+)\\.kt$"), true);
-            }
-
-            @TestMetadata("containsBool.kt")
-            public void testContainsBool() throws Exception {
-                String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/migration/operatorModifier/containsBool.kt");
-                doTest(fileName);
-            }
-
-            @TestMetadata("containsInt.kt")
-            public void testContainsInt() throws Exception {
-                String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/migration/operatorModifier/containsInt.kt");
-                doTest(fileName);
-            }
-
-            @TestMetadata("extension.kt")
-            public void testExtension() throws Exception {
-                String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/migration/operatorModifier/extension.kt");
-                doTest(fileName);
-            }
-
-            @TestMetadata("overridden.kt")
-            public void testOverridden() throws Exception {
-                String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/migration/operatorModifier/overridden.kt");
-                doTest(fileName);
-            }
-
-            @TestMetadata("simple.kt")
-            public void testSimple() throws Exception {
-                String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/migration/operatorModifier/simple.kt");
-                doTest(fileName);
-            }
-
-            @TestMetadata("toplevel.kt")
-            public void testToplevel() throws Exception {
-                String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/migration/operatorModifier/toplevel.kt");
-                doTest(fileName);
-            }
-        }
-
         @TestMetadata("idea/testData/quickfix/migration/removeNameFromFunctionExpression")
         @TestDataPath("$PROJECT_ROOT")
         @RunWith(JUnit3RunnerWithInners.class)
@@ -4752,6 +4749,18 @@ public class QuickFixTestGenerated extends AbstractQuickFixTest {
         @TestMetadata("changeToInvocation.kt")
         public void testChangeToInvocation() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/override/changeToInvocation.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("implementMember.kt")
+        public void testImplementMember() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/override/implementMember.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("implementMemberFromAbstractClass.kt")
+        public void testImplementMemberFromAbstractClass() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("idea/testData/quickfix/override/implementMemberFromAbstractClass.kt");
             doTest(fileName);
         }
 

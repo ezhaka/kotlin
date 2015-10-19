@@ -22,9 +22,10 @@ import org.jetbrains.kotlin.load.java.JvmAbi
 import org.jetbrains.kotlin.load.java.structure.reflect.classId
 import org.jetbrains.kotlin.load.java.structure.reflect.createArrayType
 import org.jetbrains.kotlin.load.java.structure.reflect.safeClassLoader
+import org.jetbrains.kotlin.load.kotlin.reflect.RuntimeModuleData
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.resolve.scopes.JetScope
+import org.jetbrains.kotlin.resolve.scopes.KtScope
 import org.jetbrains.kotlin.serialization.ProtoBuf
 import org.jetbrains.kotlin.serialization.deserialization.NameResolver
 import org.jetbrains.kotlin.serialization.jvm.JvmProtoBuf
@@ -36,10 +37,15 @@ import kotlin.reflect.KCallable
 import kotlin.reflect.KotlinReflectionInternalError
 
 internal abstract class KDeclarationContainerImpl : ClassBasedDeclarationContainer {
+    // NB: be careful not to introduce delegated properties in this class and subclasses, there are problems with circular dependencies
+
     // Note: this is stored here on a soft reference to prevent GC from destroying the weak reference to it in the moduleByClassLoader cache
-    val moduleData by ReflectProperties.lazySoft {
+    private val moduleData_ = ReflectProperties.lazySoft {
         jClass.getOrCreateModule()
     }
+
+    val moduleData: RuntimeModuleData
+        get() = moduleData_()
 
     abstract val constructorDescriptors: Collection<ConstructorDescriptor>
 
@@ -47,7 +53,7 @@ internal abstract class KDeclarationContainerImpl : ClassBasedDeclarationContain
 
     abstract fun getFunctions(name: Name): Collection<FunctionDescriptor>
 
-    fun getMembers(scope: JetScope, declaredOnly: Boolean, nonExtensions: Boolean, extensions: Boolean): Sequence<KCallable<*>> {
+    fun getMembers(scope: KtScope, declaredOnly: Boolean, nonExtensions: Boolean, extensions: Boolean): Sequence<KCallable<*>> {
         val visitor = object : DeclarationDescriptorVisitorEmptyBodies<KCallable<*>?, Unit>() {
             private fun skipCallable(descriptor: CallableMemberDescriptor): Boolean {
                 if (declaredOnly && !descriptor.getKind().isReal()) return true

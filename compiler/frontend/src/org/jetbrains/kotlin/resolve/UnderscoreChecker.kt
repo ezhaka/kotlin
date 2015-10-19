@@ -20,41 +20,41 @@ import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.diagnostics.DiagnosticSink
 import org.jetbrains.kotlin.diagnostics.Errors
-import org.jetbrains.kotlin.psi.JetCallableDeclaration
-import org.jetbrains.kotlin.psi.JetDeclaration
-import org.jetbrains.kotlin.psi.JetNamedDeclaration
-import org.jetbrains.kotlin.psi.JetTypeParameterListOwner
+import org.jetbrains.kotlin.psi.KtCallableDeclaration
+import org.jetbrains.kotlin.psi.KtDeclaration
+import org.jetbrains.kotlin.psi.KtNamedDeclaration
+import org.jetbrains.kotlin.psi.KtTypeParameterListOwner
 
 object UnderscoreChecker : DeclarationChecker {
 
     fun checkIdentifier(identifier: PsiElement?, diagnosticHolder: DiagnosticSink) {
         if (identifier == null || identifier.text.isEmpty()) return
         if (identifier.text.all { it == '_' }) {
-            diagnosticHolder.report(Errors.UNDERSCORE_IS_DEPRECATED.on(identifier))
+            diagnosticHolder.report(Errors.UNDERSCORE_IS_RESERVED.on(identifier))
         }
     }
 
-    fun checkNamed(declaration: JetNamedDeclaration, diagnosticHolder: DiagnosticSink) {
+    fun checkNamed(declaration: KtNamedDeclaration, diagnosticHolder: DiagnosticSink) {
         checkIdentifier(declaration.nameIdentifier, diagnosticHolder)
     }
 
     override fun check(
-            declaration: JetDeclaration,
+            declaration: KtDeclaration,
             descriptor: DeclarationDescriptor,
             diagnosticHolder: DiagnosticSink,
             bindingContext: BindingContext
     ) {
-        if (declaration is JetCallableDeclaration) {
+        if (declaration is KtCallableDeclaration) {
             for (parameter in declaration.valueParameters) {
                 checkNamed(parameter, diagnosticHolder)
             }
         }
-        if (declaration is JetTypeParameterListOwner) {
+        if (declaration is KtTypeParameterListOwner) {
             for (typeParameter in declaration.typeParameters) {
                 checkNamed(typeParameter, diagnosticHolder)
             }
         }
-        if (declaration !is JetNamedDeclaration) return
+        if (declaration !is KtNamedDeclaration) return
         checkNamed(declaration, diagnosticHolder)
     }
 }

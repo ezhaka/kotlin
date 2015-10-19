@@ -21,7 +21,7 @@ import org.jetbrains.kotlin.backend.common.output.OutputFile
 import org.jetbrains.kotlin.codegen.inline.InlineCodegenUtil
 import org.jetbrains.kotlin.load.kotlin.PackageClassUtils
 import org.jetbrains.kotlin.name.FqName
-import org.jetbrains.kotlin.psi.JetFile
+import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.test.InTextDirectivesUtils
 import org.jetbrains.org.objectweb.asm.ClassReader
 import org.jetbrains.org.objectweb.asm.ClassVisitor
@@ -33,24 +33,18 @@ public interface AbstractSMAPBaseTest {
 
     private fun extractSMAPFromClasses(outputFiles: Iterable<OutputFile>): List<SMAPAndFile> {
         return outputFiles.map { outputFile ->
-            if (PackageClassUtils.isPackageClassFqName(FqName(FileUtil.getNameWithoutExtension(outputFile.relativePath).replace('/', '.')))) {
-                // Don't test line numbers in *Package facade classes
-                null
-            }
-            else {
-                var debugInfo: String? = null
-                ClassReader(outputFile.asByteArray()).accept(object : ClassVisitor(Opcodes.ASM5) {
-                    override fun visitSource(source: String?, debug: String?) {
-                        debugInfo = debug
-                    }
-                }, 0)
+            var debugInfo: String? = null
+            ClassReader(outputFile.asByteArray()).accept(object : ClassVisitor(Opcodes.ASM5) {
+                override fun visitSource(source: String?, debug: String?) {
+                    debugInfo = debug
+                }
+            }, 0)
 
-                SMAPAndFile.SMAPAndFile(debugInfo, outputFile.sourceFiles.single())
-            }
+            SMAPAndFile.SMAPAndFile(debugInfo, outputFile.sourceFiles.single())
         }.filterNotNull()
     }
 
-    private fun extractSmapFromSource(file: JetFile): SMAPAndFile? {
+    private fun extractSmapFromSource(file: KtFile): SMAPAndFile? {
         val fileContent = file.getText()
         val smapPrefix = "//SMAP"
         if (InTextDirectivesUtils.isDirectiveDefined(fileContent, smapPrefix)) {
@@ -64,7 +58,7 @@ public interface AbstractSMAPBaseTest {
         return null;
     }
 
-    fun checkSMAP(inputFiles: List<JetFile>, outputFiles: Iterable<OutputFile>) {
+    fun checkSMAP(inputFiles: List<KtFile>, outputFiles: Iterable<OutputFile>) {
         if (!InlineCodegenUtil.GENERATE_SMAP) {
             return
         }

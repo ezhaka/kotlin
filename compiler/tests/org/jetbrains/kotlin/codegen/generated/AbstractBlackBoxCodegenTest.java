@@ -27,9 +27,11 @@ import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles;
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment;
 import org.jetbrains.kotlin.cli.jvm.config.JvmContentRootsKt;
 import org.jetbrains.kotlin.codegen.CodegenTestCase;
+import org.jetbrains.kotlin.codegen.GeneratedClassLoader;
 import org.jetbrains.kotlin.codegen.GenerationUtils;
 import org.jetbrains.kotlin.config.CompilerConfiguration;
-import org.jetbrains.kotlin.psi.JetFile;
+import org.jetbrains.kotlin.fileClasses.JvmFileClassUtil;
+import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.cli.jvm.compiler.JvmPackagePartProvider;
 import org.jetbrains.kotlin.test.ConfigurationKind;
 import org.jetbrains.kotlin.test.InTextDirectivesUtils;
@@ -44,7 +46,6 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.jetbrains.kotlin.codegen.CodegenTestUtil.compileJava;
-import static org.jetbrains.kotlin.load.kotlin.PackageClassUtils.getPackageClassFqName;
 
 public abstract class AbstractBlackBoxCodegenTest extends CodegenTestCase {
     public void doTest(@NotNull String filename) {
@@ -159,7 +160,7 @@ public abstract class AbstractBlackBoxCodegenTest extends CodegenTestCase {
         OutputUtilsKt.writeAllTo(classFileFactory, kotlinOut);
 
         List<String> javacOptions = new ArrayList<String>(0);
-        for (JetFile jetFile : myFiles.getPsiFiles()) {
+        for (KtFile jetFile : myFiles.getPsiFiles()) {
             javacOptions.addAll(InTextDirectivesUtils.findListWithPrefixes(jetFile.getText(), "// JAVAC_OPTIONS:"));
         }
 
@@ -176,19 +177,42 @@ public abstract class AbstractBlackBoxCodegenTest extends CodegenTestCase {
     }
 
     protected void blackBox() {
-        // If there are many files, the first of them should contain the 'box(): String' function
-        JetFile firstFile = myFiles.getPsiFiles().get(0);
-        String fqName = getPackageClassFqName(firstFile.getPackageFqName()).asString();
-
-        Class<?> aClass = generateClass(fqName);
-        try {
-            Method method = aClass.getMethod("box");
-            String r = (String) method.invoke(null);
-            assertEquals("OK", r);
+        // If there are many files, the first 'box(): String' function will be executed.
+        GeneratedClassLoader generatedClassLoader = generateAndCreateClassLoader();
+        for (KtFile firstFile : myFiles.getPsiFiles()) {
+            String className = JvmFileClassUtil.getFileClassInfoNoResolve(firstFile).getFacadeClassFqName().asString();
+            Class<?> aClass = getGeneratedClass(generatedClassLoader, className);
+            try {
+                Method method = getBoxMethodOrNull(aClass);
+                if (method != null) {
+                    String r = (String) method.invoke(null);
+                    assertEquals("OK", r);
+                    return;
+                }
+            }
+            catch (Throwable e) {
+                System.out.println(generateToText());
+                throw ExceptionUtilsKt.rethrow(e);
+            }
         }
-        catch (Throwable e) {
-            System.out.println(generateToText());
-            throw ExceptionUtilsKt.rethrow(e);
+    }
+
+    private static Class<?> getGeneratedClass(GeneratedClassLoader generatedClassLoader, String className) {
+        try {
+            return generatedClassLoader.loadClass(className);
+        }
+        catch (ClassNotFoundException e) {
+            fail("No class file was generated for: " + className);
+        }
+        return null;
+    }
+
+    private static Method getBoxMethodOrNull(Class<?> aClass) {
+        try {
+            return aClass.getMethod("box");
+        }
+        catch (NoSuchMethodException e){
+            return null;
         }
     }
 }

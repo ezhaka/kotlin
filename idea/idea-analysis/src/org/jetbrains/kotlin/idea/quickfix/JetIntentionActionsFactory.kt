@@ -18,18 +18,18 @@ package org.jetbrains.kotlin.idea.quickfix
 
 import com.intellij.codeInsight.intention.IntentionAction
 import org.jetbrains.kotlin.diagnostics.Diagnostic
-import org.jetbrains.kotlin.psi.JetCodeFragment
+import org.jetbrains.kotlin.psi.KtCodeFragment
 import java.util.Collections
 
 // TODO: Replace with trait when all subclasses are translated to Kotlin
 public abstract class JetIntentionActionsFactory {
     protected open fun isApplicableForCodeFragment(): Boolean = false
-    protected abstract fun doCreateActions(diagnostic: Diagnostic): List<IntentionAction>?
+    protected abstract fun doCreateActions(diagnostic: Diagnostic): List<IntentionAction>
 
     public fun createActions(diagnostic: Diagnostic): List<IntentionAction> {
-        if (diagnostic.getPsiElement().getContainingFile() is JetCodeFragment && !isApplicableForCodeFragment()) {
+        if (diagnostic.getPsiElement().getContainingFile() is KtCodeFragment && !isApplicableForCodeFragment()) {
             return emptyList()
         }
-        return doCreateActions(diagnostic) ?: emptyList()
+        return doCreateActions(diagnostic)
     }
 }
