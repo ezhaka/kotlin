@@ -874,6 +874,8 @@
 
         <sequential if:set="need.version.override">
             <local name="override.version.build.number"/>
+            <echo message="override.version.build.number!" />
+
             <loadresource property="override.version.build.number">
                 <url url="${override.version.url}"/>
                 <filterchain>
