@@ -2,7 +2,7 @@ language: java
 jdk:
   - openjdk6
 before_install:
-  - sudo apt-get -qq update
+  - sudo apt-get update
   - sudo apt-get install ant
 install:
   - ant -f update_dependencies.xml
