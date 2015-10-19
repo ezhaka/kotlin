@@ -1,5 +1,9 @@
 language: java
 jdk:
   - openjdk6
-install: ant -f update_dependencies.xml
+before_install:
+  - sudo apt-get -qq update
+  - sudo apt-get install ant
+install:
+  - ant -f update_dependencies.xml
 script: ant -f build.xml
