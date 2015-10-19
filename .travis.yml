@@ -1,0 +1,5 @@
+language: java
+jdk:
+  - openjdk6
+install: ant -f update_dependencies.xml
+script: ant -f build.xml
