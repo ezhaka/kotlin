@@ -20,7 +20,7 @@
     <!--
     <property name="override.version.url" value="https://teamcity.jetbrains.com/guestAuth/app/rest/builds/?locator=buildType:bt345,status:SUCCESS,count:1${kotlin.bootstrap.branch.locator}"/>
     -->
-    <!--<property name="override.version.disabled" value="true"/>-->
+    <property name="override.version.disabled" value="true"/>
 
     <condition property="isWindows">
         <os family="windows"/>
