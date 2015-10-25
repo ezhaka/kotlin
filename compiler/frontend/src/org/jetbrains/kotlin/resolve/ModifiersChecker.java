@@ -168,8 +168,24 @@ public class ModifiersChecker {
         ) {
             PsiElement valOrVar = parameter.getValOrVarKeyword();
             if (valOrVar != null) {
-                trace.report(diagnosticFactory.on(valOrVar, ((JetKeywordToken) valOrVar.getNode().getElementType())));
+                reportOnVarOnValElement(diagnosticFactory, valOrVar);
             }
+        }
+
+        public void checkMultiDeclarationHasNoValOrVar(
+                @NotNull JetMultiDeclaration multiDeclaration,
+                @NotNull DiagnosticFactory1<PsiElement, JetKeywordToken> diagnosticFactory
+        ) {
+            PsiElement valOrVar = multiDeclaration.getValOrVarKeyword();
+            if (valOrVar != null) {
+                reportOnVarOnValElement(diagnosticFactory, valOrVar);
+            }
+        }
+
+        private void reportOnVarOnValElement(
+                @NotNull DiagnosticFactory1<PsiElement, JetKeywordToken> diagnosticFactory,
+                PsiElement valOrVar) {
+            trace.report(diagnosticFactory.on(valOrVar, ((JetKeywordToken) valOrVar.getNode().getElementType())));
         }
 
         public void checkModifiersForDeclaration(@NotNull JetDeclaration modifierListOwner, @NotNull MemberDescriptor descriptor) {
