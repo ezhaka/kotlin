@@ -32,14 +32,14 @@ import org.jetbrains.kotlin.js.translate.utils.ManglingUtils.getMangledMemberNam
 import org.jetbrains.kotlin.js.translate.utils.TranslationUtils.simpleReturnFunction
 import org.jetbrains.kotlin.js.translate.utils.TranslationUtils.translateFunctionAsEcma5PropertyDescriptor
 import org.jetbrains.kotlin.js.translate.utils.generateDelegateCall
-import org.jetbrains.kotlin.psi.JetClassOrObject
-import org.jetbrains.kotlin.psi.JetDelegationSpecifier
-import org.jetbrains.kotlin.psi.JetDelegatorByExpressionSpecifier
+import org.jetbrains.kotlin.psi.KtClassOrObject
+import org.jetbrains.kotlin.psi.KtDelegationSpecifier
+import org.jetbrains.kotlin.psi.KtDelegatorByExpressionSpecifier
 import org.jetbrains.kotlin.resolve.DescriptorUtils
-import java.util.HashMap
+import java.util.*
 
 public class DelegationTranslator(
-        private val classDeclaration: JetClassOrObject,
+        private val classDeclaration: KtClassOrObject,
         context: TranslationContext
 ) : AbstractTranslator(context) {
 
@@ -47,10 +47,10 @@ public class DelegationTranslator(
             BindingUtils.getClassDescriptor(context.bindingContext(), classDeclaration);
 
     private val delegationBySpecifiers =
-            classDeclaration.getDelegationSpecifiers().filterIsInstance<JetDelegatorByExpressionSpecifier>();
+            classDeclaration.getDelegationSpecifiers().filterIsInstance<KtDelegatorByExpressionSpecifier>();
 
     private class Field (val name: String, val generateField: Boolean)
-    private val fields = HashMap<JetDelegatorByExpressionSpecifier, Field>()
+    private val fields = HashMap<KtDelegatorByExpressionSpecifier, Field>()
 
     init {
         for (specifier in delegationBySpecifiers) {
@@ -88,7 +88,7 @@ public class DelegationTranslator(
         }
     }
 
-    private fun getSuperClass(specifier: JetDelegationSpecifier): ClassDescriptor =
+    private fun getSuperClass(specifier: KtDelegationSpecifier): ClassDescriptor =
         CodegenUtil.getSuperClassByDelegationSpecifier(specifier, bindingContext())
 
     private fun generateDelegates(toClass: ClassDescriptor, field: Field, properties: MutableList<JsPropertyInitializer>) {
@@ -116,13 +116,14 @@ public class DelegationTranslator(
             val delegateRefName = context().getScopeForDescriptor(getterDescriptor).declareName(delegateName)
             val delegateRef = JsNameRef(delegateRefName, JsLiteral.THIS)
 
-            val returnExpression = if (DescriptorUtils.isExtension(descriptor)) {
+            val returnExpression: JsExpression = if (DescriptorUtils.isExtension(descriptor)) {
                 val getterName = context().getNameForDescriptor(getterDescriptor)
                 val receiver = Namer.getReceiverParameterName()
                 JsInvocation(JsNameRef(getterName, delegateRef), JsNameRef(receiver))
             }
             else {
-                JsNameRef(propertyName, delegateRef): JsExpression // TODO remove explicit type specification after resolving KT-5569
+                @Suppress("USELESS_CAST")
+                (JsNameRef(propertyName, delegateRef) as JsExpression)  // TODO remove explicit type specification after resolving KT-5569
             }
 
             val jsFunction = simpleReturnFunction(context().getScopeForDescriptor(getterDescriptor.getContainingDeclaration()), returnExpression)

@@ -34,14 +34,14 @@ import org.jetbrains.kotlin.load.java.JavaBindingContext;
 import org.jetbrains.kotlin.load.java.JvmAbi;
 import org.jetbrains.kotlin.load.java.components.TraceBasedErrorReporter;
 import org.jetbrains.kotlin.load.java.components.TraceBasedErrorReporter.AbiVersionErrorData;
-import org.jetbrains.kotlin.psi.JetFile;
+import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.resolve.AnalyzingUtils;
 import org.jetbrains.kotlin.resolve.BindingContext;
 import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
 import org.jetbrains.kotlin.resolve.diagnostics.Diagnostics;
 import org.jetbrains.kotlin.resolve.jvm.JvmClassName;
-import org.jetbrains.kotlin.utils.UtilsPackage;
+import org.jetbrains.kotlin.utils.StringsKt;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -114,7 +114,7 @@ public final class AnalyzerWithCompilerReport {
                 assert unresolved != null && !unresolved.isEmpty() :
                         "Incomplete hierarchy should be reported with names of unresolved superclasses: " + fqName;
                 message.append("    class ").append(fqName)
-                        .append(", unresolved supertypes: ").append(UtilsPackage.join(unresolved, ", "))
+                        .append(", unresolved supertypes: ").append(StringsKt.join(unresolved, ", "))
                         .append("\n");
             }
             messageCollector.report(CompilerMessageSeverity.ERROR, message.toString(), CompilerMessageLocation.NO_LOCATION);
@@ -195,8 +195,8 @@ public final class AnalyzerWithCompilerReport {
         return reportDiagnostics(diagnostics, new DefaultDiagnosticReporter(messageCollector), false);
     }
 
-    private void reportSyntaxErrors(@NotNull Collection<JetFile> files) {
-        for (JetFile file : files) {
+    private void reportSyntaxErrors(@NotNull Collection<KtFile> files) {
+        for (KtFile file : files) {
             reportSyntaxErrors(file, messageCollector);
         }
     }
@@ -262,7 +262,7 @@ public final class AnalyzerWithCompilerReport {
         return messageCollector.anyReported(CompilerMessageSeverity.ERROR);
     }
 
-    public void analyzeAndReport(@NotNull Collection<JetFile> files, @NotNull Function0<AnalysisResult> analyzer) {
+    public void analyzeAndReport(@NotNull Collection<KtFile> files, @NotNull Function0<AnalysisResult> analyzer) {
         analysisResult = analyzer.invoke();
         reportSyntaxErrors(files);
         List<AbiVersionErrorData> abiVersionErrors = getAbiVersionErrors();

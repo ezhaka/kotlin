@@ -25,18 +25,26 @@ import org.jetbrains.kotlin.descriptors.impl.ValueParameterDescriptorImpl
 import org.jetbrains.kotlin.incremental.components.LookupLocation
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
 import org.jetbrains.kotlin.load.java.*
+import org.jetbrains.kotlin.load.java.BuiltinSpecialProperties.getBuiltinSpecialPropertyGetterName
+import org.jetbrains.kotlin.load.java.BuiltinMethodsWithDifferentJvmName.sameAsRenamedInJvmBuiltin
+import org.jetbrains.kotlin.load.java.BuiltinMethodsWithDifferentJvmName.isRemoveAtByIndex
+import org.jetbrains.kotlin.load.java.BuiltinMethodsWithSpecialGenericSignature.sameAsBuiltinMethodWithErasedValueParameters
 import org.jetbrains.kotlin.load.java.components.DescriptorResolverUtils
 import org.jetbrains.kotlin.load.java.components.TypeUsage
 import org.jetbrains.kotlin.load.java.descriptors.JavaConstructorDescriptor
 import org.jetbrains.kotlin.load.java.descriptors.JavaMethodDescriptor
 import org.jetbrains.kotlin.load.java.descriptors.JavaPropertyDescriptor
+import org.jetbrains.kotlin.load.java.descriptors.copyValueParameters
 import org.jetbrains.kotlin.load.java.lazy.LazyJavaResolverContext
 import org.jetbrains.kotlin.load.java.lazy.child
 import org.jetbrains.kotlin.load.java.lazy.resolveAnnotations
 import org.jetbrains.kotlin.load.java.lazy.types.RawSubstitution
 import org.jetbrains.kotlin.load.java.lazy.types.toAttributes
 import org.jetbrains.kotlin.load.java.sources.JavaSourceElement
-import org.jetbrains.kotlin.load.java.structure.*
+import org.jetbrains.kotlin.load.java.structure.JavaArrayType
+import org.jetbrains.kotlin.load.java.structure.JavaClass
+import org.jetbrains.kotlin.load.java.structure.JavaConstructor
+import org.jetbrains.kotlin.load.java.structure.JavaMethod
 import org.jetbrains.kotlin.load.java.typeEnhacement.enhanceSignatures
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.resolve.DescriptorFactory
@@ -44,9 +52,9 @@ import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.resolve.OverridingUtil
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
 import org.jetbrains.kotlin.serialization.deserialization.ErrorReporter
-import org.jetbrains.kotlin.types.JetType
+import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.types.TypeUtils
-import org.jetbrains.kotlin.types.checker.JetTypeChecker
+import org.jetbrains.kotlin.types.checker.KotlinTypeChecker
 import org.jetbrains.kotlin.utils.*
 import org.jetbrains.kotlin.utils.addToStdlib.check
 import org.jetbrains.kotlin.utils.addToStdlib.firstNotNullResult
@@ -81,39 +89,46 @@ public class LazyJavaClassMemberScope(
     }
 
     override fun JavaMethodDescriptor.isVisibleAsFunction(): Boolean {
-        val nameAsString = name.asString()
+        // Do not load Java annotation methods as Kotlin functions (load them as properties instead)
+        if (jClass.isAnnotationType) return false
 
-        if (JvmAbi.isGetterName(nameAsString)) {
-            val propertyName = propertyNameByGetMethodName(name) ?: return true
-            return !doesClassOverrideAnyProperty(getPropertiesFromSupertypes(propertyName))
-        }
-
-        if (JvmAbi.isSetterName(nameAsString)) {
-            return propertyNamesBySetMethodName(name).none {
-                propertyName ->
-                getPropertiesFromSupertypes(propertyName).any {
-                    property -> property.isVar && doesClassOverridesProperty(property)
-                }
+        if (getPropertyNamesCandidatesByAccessorName(name).any {
+            propertyName ->
+            getPropertiesFromSupertypes(propertyName).any {
+                property ->
+                doesClassOverridesProperty(property) && (property.isVar || !JvmAbi.isSetterName(name.asString()))
             }
-        }
-
-        if (name.isBuiltinSpecialPropertyName) {
-            return !doesClassOverrideAnyProperty(getPropertiesFromSupertypes(name))
-        }
+        }) return false
 
         val javaMethod = (source as? JavaSourceElement)?.javaElement as? JavaMethod
         if (javaMethod?.doesOverrideRenamedBuiltins() ?: false) {
             return false
         }
 
+        if (name.sameAsBuiltinMethodWithErasedValueParameters && javaMethod != null) {
+            val originalMethodDescriptor = super.resolveMethodToFunctionDescriptor(javaMethod)
+            val overridden = firstOverriddenBuiltinFunctionWithErasedValueParameters(originalMethodDescriptor)
+            if (overridden != null) {
+                if (doesClassOverrideBuiltinWithoutMagic(overridden)) return false
+            }
+        }
+
         return true
     }
 
+    // E.g. it have explicit removeAt declaration in Java
+    private fun doesClassOverrideBuiltinWithoutMagic(callableMemberDescriptor: CallableMemberDescriptor): Boolean {
+        return memberIndex().findMethodsByName(callableMemberDescriptor.name).any {
+            otherJavaMethod ->
+            super.resolveMethodToFunctionDescriptor(otherJavaMethod).doesOverride(callableMemberDescriptor)
+        }
+    }
+
     private fun JavaMethod.doesOverrideRenamedBuiltins(): Boolean {
-        return getSpecialBuiltinFunctionsByJvmName(name).any {
+        return BuiltinMethodsWithDifferentJvmName.getBuiltinFunctionNamesByJvmName(name).any {
             builtinName ->
             val builtinSpecialFromSuperTypes =
-                    getFunctionsFromSupertypes(builtinName).filter { it.overridesBuiltinSpecialDeclaration() }
+                    getFunctionsFromSupertypes(builtinName).filter { it.doesOverrideBuiltinWithDifferentJvmName() }
             if (builtinSpecialFromSuperTypes.isEmpty()) return@any false
 
             val methodDescriptor = resolveMethodToFunctionDescriptorWithName(this, builtinName)
@@ -126,22 +141,35 @@ public class LazyJavaClassMemberScope(
         // if we check 'removeAt', get original sub-descriptor to distinct `remove(int)` and `remove(E)` in Java
         val subDescriptorToCheck = if (superDescriptor.isRemoveAtByIndex) subDescriptor.original else subDescriptor
 
+        return subDescriptorToCheck.doesOverride(superDescriptor)
+    }
+
+    private fun CallableDescriptor.doesOverride(superDescriptor: CallableDescriptor): Boolean {
         return OverridingUtil.DEFAULT.isOverridableByIncludingReturnType(
-                superDescriptor, subDescriptorToCheck
+                superDescriptor, this
         ).result == OverridingUtil.OverrideCompatibilityInfo.Result.OVERRIDABLE
     }
 
-    private fun doesClassOverrideAnyProperty(properties: Collection<PropertyDescriptor>)
-            = properties.any { property -> doesClassOverridesProperty(property) }
-
     private fun PropertyDescriptor.findGetterOverride(): JavaMethodDescriptor? {
-        val getterName = getter?.getBuiltinSpecialOverridden()?.getBuiltinSpecialPropertyAccessorName() ?: JvmAbi.getterName(name.asString())
+        val overriddenBuiltinProperty = getter?.getOverriddenBuiltinWithDifferentJvmName()
+        val specialGetterName = overriddenBuiltinProperty?.getBuiltinSpecialPropertyGetterName()
+        if (specialGetterName != null
+                && !this@LazyJavaClassMemberScope.getContainingDeclaration().hasRealKotlinSuperClassWithOverrideOf(
+                overriddenBuiltinProperty!!)
+        ) {
+            return findGetterByName(specialGetterName)
+        }
+
+        return findGetterByName(JvmAbi.getterName(name.asString()))
+    }
+
+    private fun PropertyDescriptor.findGetterByName(getterName: String): JavaMethodDescriptor? {
         return memberIndex().findMethodsByName(Name.identifier(getterName)).firstNotNullResult factory@{
             javaMethod ->
             val descriptor = resolveMethodToFunctionDescriptor(javaMethod)
             if (descriptor.valueParameters.size != 0) return@factory null
 
-            descriptor.check { JetTypeChecker.DEFAULT.isSubtypeOf(descriptor.returnType ?: return@check false, type) }
+            descriptor.check { KotlinTypeChecker.DEFAULT.isSubtypeOf(descriptor.returnType ?: return@check false, type) }
         }
     }
 
@@ -152,7 +180,7 @@ public class LazyJavaClassMemberScope(
             if (descriptor.valueParameters.size != 1) return@factory null
 
             if (!KotlinBuiltIns.isUnit(descriptor.returnType ?: return@factory null)) return@factory null
-            descriptor.check { JetTypeChecker.DEFAULT.equalTypes(descriptor.valueParameters.single().type, type) }
+            descriptor.check { KotlinTypeChecker.DEFAULT.equalTypes(descriptor.valueParameters.single().type, type) }
         }
     }
 
@@ -187,8 +215,11 @@ public class LazyJavaClassMemberScope(
                 name, functionsFromSupertypes, emptyList(), getContainingDeclaration(), ErrorReporter.DO_NOTHING)
 
         for (descriptor in mergedFunctionFromSuperTypes) {
-            val overriddenBuiltin = descriptor.getBuiltinSpecialOverridden() ?: continue
-            val nameInJava = overriddenBuiltin.getJvmMethodNameIfSpecial()!!
+            val overriddenBuiltin = descriptor.getOverriddenBuiltinWithDifferentJvmName() ?: continue
+
+            if (result.any { it.doesOverride(overriddenBuiltin) }) continue
+
+            val nameInJava = getJvmMethodNameIfSpecial(overriddenBuiltin)!!
             for (method in memberIndex().findMethodsByName(Name.identifier(nameInJava))) {
                 val renamedCopy = resolveMethodToFunctionDescriptorWithName(method, name)
 
@@ -236,7 +267,7 @@ public class LazyJavaClassMemberScope(
     }
 
     private fun createPropertyDescriptorWithDefaultGetter(
-            method: JavaMethod, givenType: JetType? = null, modality: Modality
+            method: JavaMethod, givenType: KotlinType? = null, modality: Modality
     ): JavaPropertyDescriptor {
         val annotations = c.resolveAnnotations(method)
 
@@ -250,7 +281,7 @@ public class LazyJavaClassMemberScope(
         propertyDescriptor.initialize(getter, null)
 
         val returnType = givenType ?: computeMethodReturnType(method, annotations, c.child(propertyDescriptor, method))
-        propertyDescriptor.setType(returnType, listOf(), getDispatchReceiverParameter(), null as JetType?)
+        propertyDescriptor.setType(returnType, listOf(), getDispatchReceiverParameter(), null as KotlinType?)
         getter.initialize(returnType)
 
         return propertyDescriptor
@@ -268,6 +299,11 @@ public class LazyJavaClassMemberScope(
                 else
                     null
 
+        assert(setterMethod?.let { it.modality == getterMethod.modality } ?: true) {
+            "Different accessors modalities when creating overrides for $overriddenProperty in ${getContainingDeclaration()}" +
+            "for getter is ${getterMethod.modality}, but for setter is ${setterMethod?.modality}"
+        }
+
         val propertyDescriptor = JavaPropertyDescriptor(
                 getContainingDeclaration(), Annotations.EMPTY, getterMethod.modality, getterMethod.visibility,
                 /* isVar = */ setterMethod != null, overriddenProperty.name, getterMethod.source,
@@ -275,16 +311,18 @@ public class LazyJavaClassMemberScope(
                 /* isStaticFinal = */ false
         )
 
-        propertyDescriptor.setType(getterMethod.returnType!!, listOf(), getDispatchReceiverParameter(), null as JetType?)
+        propertyDescriptor.setType(getterMethod.returnType!!, listOf(), getDispatchReceiverParameter(), null as KotlinType?)
 
         val getter = DescriptorFactory.createGetter(
-                propertyDescriptor, getterMethod.annotations, /* isDefault = */false, getterMethod.source
+                propertyDescriptor, getterMethod.annotations, /* isDefault = */false,
+                /* isExternal = */ false, getterMethod.source
         ).apply {
             initialize(propertyDescriptor.type)
         }
 
         val setter = setterMethod?.let { setterMethod ->
-            DescriptorFactory.createSetter(propertyDescriptor, setterMethod.annotations, /* isDefault = */false, setterMethod.visibility)
+            DescriptorFactory.createSetter(propertyDescriptor, setterMethod.annotations, /* isDefault = */false,
+            /* isExternal = */ false, setterMethod.visibility, setterMethod.source)
         }
 
         return propertyDescriptor.apply { initialize(getter, setter) }
@@ -297,7 +335,7 @@ public class LazyJavaClassMemberScope(
     }
 
     override fun resolveMethodSignature(
-            method: JavaMethod, methodTypeParameters: List<TypeParameterDescriptor>, returnType: JetType,
+            method: JavaMethod, methodTypeParameters: List<TypeParameterDescriptor>, returnType: KotlinType,
             valueParameters: LazyJavaScope.ResolvedValueParameters
     ): LazyJavaScope.MethodSignatureData {
         val propagated = c.components.externalSignatureResolver.resolvePropagatedSignature(
@@ -327,28 +365,38 @@ public class LazyJavaClassMemberScope(
             methodDescriptor: JavaMethodDescriptor
     ): JavaMethodDescriptor? {
 
-        val overriddenCandidates =
-                getFunctionsFromSupertypes(methodDescriptor.name).map { it.getOverriddenBuiltinFunctionWithErasedValueParametersInJava() }.filterNotNull()
+        val overridden = firstOverriddenBuiltinFunctionWithErasedValueParameters(methodDescriptor) ?: return null
 
-        if (overriddenCandidates.isEmpty()) return null
+        val newMethod = JavaMethodDescriptor.createJavaMethod(
+                methodDescriptor.containingDeclaration, methodDescriptor.annotations, methodDescriptor.name, methodDescriptor.source)
 
-        val overridden = firstOverriddenBuiltinFunctionWithErasedValueParameters(methodDescriptor, overriddenCandidates) ?: return null
 
-        return methodDescriptor
-                .enhance(
-                        methodDescriptor.extensionReceiverParameter?.type,
-                        overridden.valueParameters.map { it.type },
-                        methodDescriptor.returnType!!)
-                .copy(
-                        methodDescriptor.containingDeclaration,
-                        methodDescriptor.modality, methodDescriptor.visibility,
-                        CallableMemberDescriptor.Kind.SYNTHESIZED, false) as? JavaMethodDescriptor
+        assert(methodDescriptor.typeParameters.isEmpty()) { "There should be methods with no type parameters, but $methodDescriptor found" }
+
+        newMethod.initialize(
+                methodDescriptor.extensionReceiverParameter?.type,
+                methodDescriptor.dispatchReceiverParameter,
+                emptyList(),
+                copyValueParameters(overridden.valueParameters.map { it.type }, methodDescriptor.valueParameters, newMethod),
+                methodDescriptor.returnType,
+                methodDescriptor.modality,
+                methodDescriptor.visibility
+        )
+
+        newMethod.setParameterNamesStatus(methodDescriptor.hasStableParameterNames(), methodDescriptor.hasSynthesizedParameterNames())
+
+        return newMethod
     }
 
     private fun firstOverriddenBuiltinFunctionWithErasedValueParameters(
-            javaMethodDescriptor: JavaMethodDescriptor,
-            candidatesToOverride: Collection<FunctionDescriptor>
+            javaMethodDescriptor: JavaMethodDescriptor
     ): FunctionDescriptor? {
+        val candidatesToOverride =
+                getFunctionsFromSupertypes(javaMethodDescriptor.name).map {
+                    BuiltinMethodsWithSpecialGenericSignature.getOverriddenBuiltinFunctionWithErasedValueParametersInJava(it)
+                }.filterNotNull()
+
+        if (candidatesToOverride.isEmpty()) return null
         return candidatesToOverride.firstNotNullResult overrides@{
             candidate ->
             candidate.check { javaMethodDescriptor.doesOverrideBuiltinFunctionWithErasedValueParameters(candidate) }
@@ -367,12 +415,12 @@ public class LazyJavaClassMemberScope(
             val currentType = valueParameters[index].type
             val overriddenCandidate = RawSubstitution.eraseType(
                     builtinWithErasedParameters.original.valueParameters[index].type)
-            JetTypeChecker.DEFAULT.equalTypes(currentType, overriddenCandidate)
+            KotlinTypeChecker.DEFAULT.equalTypes(currentType, overriddenCandidate)
         } && returnType.isSubtypeOf(builtinWithErasedParameters.returnType)
     }
 
-    private fun JetType?.isSubtypeOf(other: JetType?): Boolean {
-        return JetTypeChecker.DEFAULT.isSubtypeOf(this ?: return false, other ?: return false)
+    private fun KotlinType?.isSubtypeOf(other: KotlinType?): Boolean {
+        return KotlinTypeChecker.DEFAULT.isSubtypeOf(this ?: return false, other ?: return false)
     }
 
     private fun resolveConstructor(constructor: JavaConstructor): JavaConstructorDescriptor {
@@ -471,8 +519,8 @@ public class LazyJavaClassMemberScope(
             constructor: ConstructorDescriptor,
             index: Int,
             method: JavaMethod,
-            returnType: JetType,
-            varargElementType: JetType?
+            returnType: KotlinType,
+            varargElementType: KotlinType?
     ) {
         add(ValueParameterDescriptorImpl(
                 constructor,
@@ -483,6 +531,8 @@ public class LazyJavaClassMemberScope(
                 // Parameters of annotation constructors in Java are never nullable
                 TypeUtils.makeNotNullable(returnType),
                 method.hasAnnotationParameterDefaultValue(),
+                /* isCrossinline = */ false,
+                /* isNoinline = */ false,
                 // Nulls are not allowed in annotation arguments in Java
                 varargElementType?.let { TypeUtils.makeNotNullable(it) },
                 c.components.sourceElementFactory.source(method)

@@ -20,14 +20,10 @@ import com.intellij.openapi.diagnostic.Logger;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.descriptors.*;
-import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor;
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationWithTarget;
 import org.jetbrains.kotlin.descriptors.annotations.Annotations;
-import org.jetbrains.kotlin.resolve.scopes.JetScope;
-import org.jetbrains.kotlin.types.JetType;
-import org.jetbrains.kotlin.types.TypeConstructor;
-import org.jetbrains.kotlin.types.TypeProjection;
-import org.jetbrains.kotlin.types.TypesPackage;
+import org.jetbrains.kotlin.resolve.scopes.KtScope;
+import org.jetbrains.kotlin.types.*;
 
 import java.util.Collection;
 
@@ -41,7 +37,7 @@ public class ForceResolveUtil {
         return descriptor;
     }
 
-    public static void forceResolveAllContents(@NotNull JetScope scope) {
+    public static void forceResolveAllContents(@NotNull KtScope scope) {
         forceResolveAllContents(scope.getAllDescriptors());
     }
 
@@ -51,8 +47,8 @@ public class ForceResolveUtil {
         }
     }
 
-    public static void forceResolveAllContents(@NotNull Collection<JetType> types) {
-        for (JetType type : types) {
+    public static void forceResolveAllContents(@NotNull Collection<KotlinType> types) {
+        for (KotlinType type : types) {
             forceResolveAllContents(type);
         }
     }
@@ -91,13 +87,13 @@ public class ForceResolveUtil {
     }
 
     @Nullable
-    public static JetType forceResolveAllContents(@Nullable JetType type) {
+    public static KotlinType forceResolveAllContents(@Nullable KotlinType type) {
         if (type == null) return null;
 
         forceResolveAllContents(type.getAnnotations());
-        if (TypesPackage.isFlexible(type)) {
-            forceResolveAllContents(TypesPackage.flexibility(type).getLowerBound());
-            forceResolveAllContents(TypesPackage.flexibility(type).getUpperBound());
+        if (FlexibleTypesKt.isFlexible(type)) {
+            forceResolveAllContents(FlexibleTypesKt.flexibility(type).getLowerBound());
+            forceResolveAllContents(FlexibleTypesKt.flexibility(type).getUpperBound());
         }
         else {
             forceResolveAllContents(type.getConstructor());

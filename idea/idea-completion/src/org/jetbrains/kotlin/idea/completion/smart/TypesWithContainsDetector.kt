@@ -25,15 +25,16 @@ import org.jetbrains.kotlin.idea.util.FuzzyType
 import org.jetbrains.kotlin.idea.util.nullability
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.resolve.scopes.JetScope
-import org.jetbrains.kotlin.types.JetType
+import org.jetbrains.kotlin.resolve.scopes.LexicalScope
+import org.jetbrains.kotlin.resolve.scopes.utils.collectFunctions
+import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.types.TypeUtils
 import org.jetbrains.kotlin.types.typeUtil.TypeNullability
 import java.util.*
 
 class TypesWithContainsDetector(
-        private val scope: JetScope,
-        private val argumentType: JetType,
+        private val scope: LexicalScope,
+        private val argumentType: KotlinType,
         private val resolutionFacade: ResolutionFacade
 ) {
     private val cache = HashMap<FuzzyType, Boolean>()
@@ -41,7 +42,8 @@ class TypesWithContainsDetector(
     private val booleanType = resolutionFacade.moduleDescriptor.builtIns.booleanType
     private val heuristicSignatures = resolutionFacade.ideService<HeuristicSignatures>()
 
-    private val typesWithExtensionContains: Collection<JetType> = scope.getFunctions(containsName, NoLookupLocation.FROM_IDE)
+    private val typesWithExtensionContains: Collection<KotlinType> = scope
+            .collectFunctions(containsName, NoLookupLocation.FROM_IDE)
             .filter { it.getExtensionReceiverParameter() != null && isGoodContainsFunction(it, listOf()) }
             .map { it.getExtensionReceiverParameter()!!.getType() }
 

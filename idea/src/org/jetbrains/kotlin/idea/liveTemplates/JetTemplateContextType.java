@@ -31,7 +31,7 @@ import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.idea.KotlinLanguage;
-import org.jetbrains.kotlin.lexer.JetTokens;
+import org.jetbrains.kotlin.lexer.KtTokens;
 import org.jetbrains.kotlin.psi.*;
 
 public abstract class JetTemplateContextType extends TemplateContextType {
@@ -52,22 +52,20 @@ public abstract class JetTemplateContextType extends TemplateContextType {
             else if (PsiTreeUtil.getParentOfType(element, PsiComment.class, false) != null) {
                 return isCommentInContext();
             }
-            else if (PsiTreeUtil.getParentOfType(element, JetPackageDirective.class) != null
-                    || PsiTreeUtil.getParentOfType(element, JetImportDirective.class) != null) {
+            else if (PsiTreeUtil.getParentOfType(element, KtPackageDirective.class) != null
+                    || PsiTreeUtil.getParentOfType(element, KtImportDirective.class) != null) {
                 return false;
             }
             else if (element instanceof LeafPsiElement) {
                 IElementType elementType = ((LeafPsiElement) element).getElementType();
-                if (elementType == JetTokens.IDENTIFIER) {
-                    if (element.getParent() instanceof JetReferenceExpression) {
-                        PsiElement parentOfParent = element.getParent().getParent();
-                        JetQualifiedExpression qualifiedExpression = PsiTreeUtil.getParentOfType(element, JetQualifiedExpression.class);
+                if (elementType == KtTokens.IDENTIFIER) {
+                    PsiElement parent = element.getParent();
+                    if (parent instanceof KtReferenceExpression) {
+                        PsiElement parentOfParent = parent.getParent();
+                        KtQualifiedExpression qualifiedExpression = PsiTreeUtil.getParentOfType(element, KtQualifiedExpression.class);
                         if (qualifiedExpression != null && qualifiedExpression.getSelectorExpression() == parentOfParent) {
                             return false;
                         }
-                    }
-                    else {
-                        return false;
                     }
                 }
             }
@@ -108,7 +106,7 @@ public abstract class JetTemplateContextType extends TemplateContextType {
         protected boolean isInContext(@NotNull PsiElement element) {
             PsiElement e = element;
             while (e != null) {
-                if (e instanceof JetModifierList) {
+                if (e instanceof KtModifierList) {
                     // skip property/function/class or object which is owner of modifier list
                     e = e.getParent();
                     if (e != null) {
@@ -116,8 +114,8 @@ public abstract class JetTemplateContextType extends TemplateContextType {
                     }
                     continue;
                 }
-                if (e instanceof JetProperty || e instanceof JetNamedFunction
-                    || e instanceof JetClassOrObject) {
+                if (e instanceof KtProperty || e instanceof KtNamedFunction
+                    || e instanceof KtClassOrObject) {
                     return false;
                 }
                 e = e.getParent();
@@ -134,8 +132,8 @@ public abstract class JetTemplateContextType extends TemplateContextType {
         @Override
         protected boolean isInContext(@NotNull PsiElement element) {
             PsiElement e = element;
-            while (e != null && !(e instanceof JetClassOrObject)) {
-                if (e instanceof JetModifierList) {
+            while (e != null && !(e instanceof KtClassOrObject)) {
+                if (e instanceof KtModifierList) {
                     // skip property/function/class or object which is owner of modifier list
                     e = e.getParent();
                     if (e != null) {
@@ -143,7 +141,7 @@ public abstract class JetTemplateContextType extends TemplateContextType {
                     }
                     continue;
                 }
-                if (e instanceof JetProperty || e instanceof JetNamedFunction) {
+                if (e instanceof KtProperty || e instanceof KtNamedFunction) {
                     return false;
                 }
                 e = e.getParent();
@@ -162,7 +160,7 @@ public abstract class JetTemplateContextType extends TemplateContextType {
             PsiElement parentStatement = PsiTreeUtil.findFirstParent(element, new Condition<PsiElement>() {
                 @Override
                 public boolean value(PsiElement element) {
-                    return element instanceof JetExpression && (element.getParent() instanceof JetBlockExpression);
+                    return element instanceof KtExpression && (element.getParent() instanceof KtBlockExpression);
                 }
             });
 
@@ -180,9 +178,9 @@ public abstract class JetTemplateContextType extends TemplateContextType {
 
         @Override
         protected boolean isInContext(@NotNull PsiElement element) {
-            return element.getParent() instanceof JetExpression && !(element.getParent() instanceof JetConstantExpression) &&
-                   !(element.getParent().getParent() instanceof JetDotQualifiedExpression)
-                   && !(element.getParent() instanceof JetParameter);
+            return element.getParent() instanceof KtExpression && !(element.getParent() instanceof KtConstantExpression) &&
+                   !(element.getParent().getParent() instanceof KtDotQualifiedExpression)
+                   && !(element.getParent() instanceof KtParameter);
         }
     }
 

@@ -375,7 +375,7 @@ public inline operator fun ShortArray.component5(): Short {
 /**
  * Returns `true` if [element] is found in the collection.
  */
-public operator fun <T> Array<out T>.contains(element: T): Boolean {
+public operator fun <T> Array<out T>.contains(element: @kotlin.internal.NoInfer T): Boolean {
     return indexOf(element) >= 0
 }
 
@@ -433,6 +433,25 @@ public operator fun LongArray.contains(element: Long): Boolean {
  */
 public operator fun ShortArray.contains(element: Short): Boolean {
     return indexOf(element) >= 0
+}
+
+/**
+ * Returns `true` if [element] is found in the collection.
+ */
+@Deprecated("Use 'containsRaw' instead.", ReplaceWith("containsRaw(element)"))
+@kotlin.jvm.JvmName("containsAny")
+@kotlin.internal.LowPriorityInOverloadResolution
+public operator fun <T> Array<out T>.contains(element: T): Boolean {
+    return containsRaw(element)
+}
+
+/**
+ * Returns `true` if [element] is found in the collection.
+ * Allows to overcome type-safety restriction of `contains` that requires to pass an element of type `T`.
+ */
+@Suppress("NOTHING_TO_INLINE")
+public inline fun <T> Array<out T>.containsRaw(element: Any?): Boolean {
+    return contains<Any?>(element)
 }
 
 /**
@@ -1185,7 +1204,7 @@ public fun ShortArray.getOrNull(index: Int): Short? {
 /**
  * Returns first index of [element], or -1 if the collection does not contain element.
  */
-public fun <T> Array<out T>.indexOf(element: T): Int {
+public fun <T> Array<out T>.indexOf(element: @kotlin.internal.NoInfer T): Int {
     if (element == null) {
         for (index in indices) {
             if (this[index] == null) {
@@ -1296,6 +1315,17 @@ public fun ShortArray.indexOf(element: Short): Int {
         }
     }
     return -1
+}
+
+/**
+ * Returns first index of [element], or -1 if the collection does not contain element.
+ */
+@Deprecated("Use 'indexOfRaw' instead.", ReplaceWith("indexOfRaw(element)"))
+@kotlin.jvm.JvmName("indexOfAny")
+@kotlin.internal.LowPriorityInOverloadResolution
+@Suppress("NOTHING_TO_INLINE")
+public fun <T> Array<out T>.indexOf(element: T): Int {
+    return indexOfRaw(element)
 }
 
 /**
@@ -1515,6 +1545,15 @@ public inline fun ShortArray.indexOfLast(predicate: (Short) -> Boolean): Int {
 }
 
 /**
+ * Returns first index of [element], or -1 if the collection does not contain element.
+ * Allows to overcome type-safety restriction of `indexOf` that requires to pass an element of type `T`.
+ */
+@Suppress("NOTHING_TO_INLINE")
+public inline fun <T> Array<out T>.indexOfRaw(element: Any?): Int {
+    return indexOf<Any?>(element)
+}
+
+/**
  * Returns the last element.
  * @throws [NoSuchElementException] if the collection is empty.
  */
@@ -1715,7 +1754,7 @@ public inline fun ShortArray.last(predicate: (Short) -> Boolean): Short {
 /**
  * Returns last index of [element], or -1 if the collection does not contain element.
  */
-public fun <T> Array<out T>.lastIndexOf(element: T): Int {
+public fun <T> Array<out T>.lastIndexOf(element: @kotlin.internal.NoInfer T): Int {
     if (element == null) {
         for (index in indices.reversed()) {
             if (this[index] == null) {
@@ -1826,6 +1865,26 @@ public fun ShortArray.lastIndexOf(element: Short): Int {
         }
     }
     return -1
+}
+
+/**
+ * Returns last index of [element], or -1 if the collection does not contain element.
+ */
+@Deprecated("Use 'indexOfRaw' instead.", ReplaceWith("indexOfRaw(element)"))
+@kotlin.jvm.JvmName("lastIndexOfAny")
+@kotlin.internal.LowPriorityInOverloadResolution
+@Suppress("NOTHING_TO_INLINE")
+public fun <T> Array<out T>.lastIndexOf(element: T): Int {
+    return indexOfRaw(element)
+}
+
+/**
+ * Returns last index of [element], or -1 if the collection does not contain element.
+ * Allows to overcome type-safety restriction of `lastIndexOf` that requires to pass an element of type `T`.
+ */
+@Suppress("NOTHING_TO_INLINE")
+public inline fun <T> Array<out T>.lastIndexOfRaw(element: Any?): Int {
+    return lastIndexOf<Any?>(element)
 }
 
 /**
@@ -5160,7 +5219,7 @@ public fun Array<out Short>.toShortArray(): ShortArray {
  * Returns an [ArrayList] of all elements.
  */
 public fun <T> Array<out T>.toArrayList(): ArrayList<T> {
-    return this.asList().toArrayList()
+    return ArrayList(this.asCollection())
 }
 
 /**
@@ -10165,7 +10224,7 @@ public fun ShortArray.asSequence(): Sequence<Short> {
  */
 @kotlin.jvm.JvmVersion
 public fun <T> Array<out T>.asList(): List<T> {
-    return Arrays.asList(*this)
+    return ArraysUtilJVM.asList(this)
 }
 
 /**
@@ -10175,12 +10234,12 @@ public fun <T> Array<out T>.asList(): List<T> {
 public fun BooleanArray.asList(): List<Boolean> {
     return object : AbstractList<Boolean>(), RandomAccess {
         override val size: Int get() = this@asList.size()
-        override val isEmpty: Boolean get() = this@asList.isEmpty()
+        override fun isEmpty(): Boolean = this@asList.isEmpty()
         override fun contains(o: Boolean): Boolean = this@asList.contains(o)
         override fun iterator(): MutableIterator<Boolean> = this@asList.iterator() as MutableIterator<Boolean>
         override fun get(index: Int): Boolean = this@asList[index]
-        override fun indexOf(o: Any?): Int = this@asList.indexOf(o as Boolean)
-        override fun lastIndexOf(o: Any?): Int = this@asList.lastIndexOf(o as Boolean)
+        override fun indexOf(o: Boolean): Int = this@asList.indexOf(o)
+        override fun lastIndexOf(o: Boolean): Int = this@asList.lastIndexOf(o)
     }
 }
 
@@ -10191,12 +10250,12 @@ public fun BooleanArray.asList(): List<Boolean> {
 public fun ByteArray.asList(): List<Byte> {
     return object : AbstractList<Byte>(), RandomAccess {
         override val size: Int get() = this@asList.size()
-        override val isEmpty: Boolean get() = this@asList.isEmpty()
+        override fun isEmpty(): Boolean = this@asList.isEmpty()
         override fun contains(o: Byte): Boolean = this@asList.contains(o)
         override fun iterator(): MutableIterator<Byte> = this@asList.iterator() as MutableIterator<Byte>
         override fun get(index: Int): Byte = this@asList[index]
-        override fun indexOf(o: Any?): Int = this@asList.indexOf(o as Byte)
-        override fun lastIndexOf(o: Any?): Int = this@asList.lastIndexOf(o as Byte)
+        override fun indexOf(o: Byte): Int = this@asList.indexOf(o)
+        override fun lastIndexOf(o: Byte): Int = this@asList.lastIndexOf(o)
     }
 }
 
@@ -10207,12 +10266,12 @@ public fun ByteArray.asList(): List<Byte> {
 public fun CharArray.asList(): List<Char> {
     return object : AbstractList<Char>(), RandomAccess {
         override val size: Int get() = this@asList.size()
-        override val isEmpty: Boolean get() = this@asList.isEmpty()
+        override fun isEmpty(): Boolean = this@asList.isEmpty()
         override fun contains(o: Char): Boolean = this@asList.contains(o)
         override fun iterator(): MutableIterator<Char> = this@asList.iterator() as MutableIterator<Char>
         override fun get(index: Int): Char = this@asList[index]
-        override fun indexOf(o: Any?): Int = this@asList.indexOf(o as Char)
-        override fun lastIndexOf(o: Any?): Int = this@asList.lastIndexOf(o as Char)
+        override fun indexOf(o: Char): Int = this@asList.indexOf(o)
+        override fun lastIndexOf(o: Char): Int = this@asList.lastIndexOf(o)
     }
 }
 
@@ -10223,12 +10282,12 @@ public fun CharArray.asList(): List<Char> {
 public fun DoubleArray.asList(): List<Double> {
     return object : AbstractList<Double>(), RandomAccess {
         override val size: Int get() = this@asList.size()
-        override val isEmpty: Boolean get() = this@asList.isEmpty()
+        override fun isEmpty(): Boolean = this@asList.isEmpty()
         override fun contains(o: Double): Boolean = this@asList.contains(o)
         override fun iterator(): MutableIterator<Double> = this@asList.iterator() as MutableIterator<Double>
         override fun get(index: Int): Double = this@asList[index]
-        override fun indexOf(o: Any?): Int = this@asList.indexOf(o as Double)
-        override fun lastIndexOf(o: Any?): Int = this@asList.lastIndexOf(o as Double)
+        override fun indexOf(o: Double): Int = this@asList.indexOf(o)
+        override fun lastIndexOf(o: Double): Int = this@asList.lastIndexOf(o)
     }
 }
 
@@ -10239,12 +10298,12 @@ public fun DoubleArray.asList(): List<Double> {
 public fun FloatArray.asList(): List<Float> {
     return object : AbstractList<Float>(), RandomAccess {
         override val size: Int get() = this@asList.size()
-        override val isEmpty: Boolean get() = this@asList.isEmpty()
+        override fun isEmpty(): Boolean = this@asList.isEmpty()
         override fun contains(o: Float): Boolean = this@asList.contains(o)
         override fun iterator(): MutableIterator<Float> = this@asList.iterator() as MutableIterator<Float>
         override fun get(index: Int): Float = this@asList[index]
-        override fun indexOf(o: Any?): Int = this@asList.indexOf(o as Float)
-        override fun lastIndexOf(o: Any?): Int = this@asList.lastIndexOf(o as Float)
+        override fun indexOf(o: Float): Int = this@asList.indexOf(o)
+        override fun lastIndexOf(o: Float): Int = this@asList.lastIndexOf(o)
     }
 }
 
@@ -10255,12 +10314,12 @@ public fun FloatArray.asList(): List<Float> {
 public fun IntArray.asList(): List<Int> {
     return object : AbstractList<Int>(), RandomAccess {
         override val size: Int get() = this@asList.size()
-        override val isEmpty: Boolean get() = this@asList.isEmpty()
+        override fun isEmpty(): Boolean = this@asList.isEmpty()
         override fun contains(o: Int): Boolean = this@asList.contains(o)
         override fun iterator(): MutableIterator<Int> = this@asList.iterator() as MutableIterator<Int>
         override fun get(index: Int): Int = this@asList[index]
-        override fun indexOf(o: Any?): Int = this@asList.indexOf(o as Int)
-        override fun lastIndexOf(o: Any?): Int = this@asList.lastIndexOf(o as Int)
+        override fun indexOf(o: Int): Int = this@asList.indexOf(o)
+        override fun lastIndexOf(o: Int): Int = this@asList.lastIndexOf(o)
     }
 }
 
@@ -10271,12 +10330,12 @@ public fun IntArray.asList(): List<Int> {
 public fun LongArray.asList(): List<Long> {
     return object : AbstractList<Long>(), RandomAccess {
         override val size: Int get() = this@asList.size()
-        override val isEmpty: Boolean get() = this@asList.isEmpty()
+        override fun isEmpty(): Boolean = this@asList.isEmpty()
         override fun contains(o: Long): Boolean = this@asList.contains(o)
         override fun iterator(): MutableIterator<Long> = this@asList.iterator() as MutableIterator<Long>
         override fun get(index: Int): Long = this@asList[index]
-        override fun indexOf(o: Any?): Int = this@asList.indexOf(o as Long)
-        override fun lastIndexOf(o: Any?): Int = this@asList.lastIndexOf(o as Long)
+        override fun indexOf(o: Long): Int = this@asList.indexOf(o)
+        override fun lastIndexOf(o: Long): Int = this@asList.lastIndexOf(o)
     }
 }
 
@@ -10287,12 +10346,12 @@ public fun LongArray.asList(): List<Long> {
 public fun ShortArray.asList(): List<Short> {
     return object : AbstractList<Short>(), RandomAccess {
         override val size: Int get() = this@asList.size()
-        override val isEmpty: Boolean get() = this@asList.isEmpty()
+        override fun isEmpty(): Boolean = this@asList.isEmpty()
         override fun contains(o: Short): Boolean = this@asList.contains(o)
         override fun iterator(): MutableIterator<Short> = this@asList.iterator() as MutableIterator<Short>
         override fun get(index: Int): Short = this@asList[index]
-        override fun indexOf(o: Any?): Int = this@asList.indexOf(o as Short)
-        override fun lastIndexOf(o: Any?): Int = this@asList.lastIndexOf(o as Short)
+        override fun indexOf(o: Short): Int = this@asList.indexOf(o)
+        override fun lastIndexOf(o: Short): Int = this@asList.lastIndexOf(o)
     }
 }
 

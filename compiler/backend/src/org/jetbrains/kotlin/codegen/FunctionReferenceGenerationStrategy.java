@@ -21,10 +21,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.codegen.state.GenerationState;
 import org.jetbrains.kotlin.descriptors.*;
-import org.jetbrains.kotlin.psi.Call;
-import org.jetbrains.kotlin.psi.JetCallExpression;
-import org.jetbrains.kotlin.psi.JetExpression;
-import org.jetbrains.kotlin.psi.ValueArgument;
+import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.resolve.calls.model.DelegatingResolvedCall;
 import org.jetbrains.kotlin.resolve.calls.model.ExpressionValueArgument;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
@@ -38,7 +35,6 @@ import org.jetbrains.org.objectweb.asm.commons.InstructionAdapter;
 
 import java.util.*;
 
-import static org.jetbrains.kotlin.psi.PsiPackage.JetPsiFactory;
 import static org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue.NO_RECEIVER;
 
 public class FunctionReferenceGenerationStrategy extends FunctionGenerationStrategy.CodegenBased<FunctionDescriptor> {
@@ -65,7 +61,7 @@ public class FunctionReferenceGenerationStrategy extends FunctionGenerationStrat
          every argument boils down to calling LOAD with the corresponding index
          */
 
-        JetCallExpression fakeExpression = constructFakeFunctionCall();
+        KtCallExpression fakeExpression = constructFakeFunctionCall();
         final List<? extends ValueArgument> fakeArguments = fakeExpression.getValueArguments();
 
         final ReceiverValue dispatchReceiver = computeAndSaveReceiver(signature, codegen, referencedFunction.getDispatchReceiverParameter());
@@ -132,7 +128,7 @@ public class FunctionReferenceGenerationStrategy extends FunctionGenerationStrat
     }
 
     @NotNull
-    private JetCallExpression constructFakeFunctionCall() {
+    private KtCallExpression constructFakeFunctionCall() {
         StringBuilder fakeFunctionCall = new StringBuilder("callableReferenceFakeCall(");
         for (Iterator<ValueParameterDescriptor> iterator = referencedFunction.getValueParameters().iterator(); iterator.hasNext(); ) {
             ValueParameterDescriptor descriptor = iterator.next();
@@ -142,7 +138,7 @@ public class FunctionReferenceGenerationStrategy extends FunctionGenerationStrat
             }
         }
         fakeFunctionCall.append(")");
-        return (JetCallExpression) JetPsiFactory(state.getProject()).createExpression(fakeFunctionCall.toString());
+        return (KtCallExpression) KtPsiFactoryKt.KtPsiFactory(state.getProject()).createExpression(fakeFunctionCall.toString());
     }
 
     private void computeAndSaveArguments(@NotNull List<? extends ValueArgument> fakeArguments, @NotNull ExpressionCodegen codegen) {
@@ -168,7 +164,8 @@ public class FunctionReferenceGenerationStrategy extends FunctionGenerationStrat
     ) {
         if (receiver == null) return NO_RECEIVER;
 
-        JetExpression receiverExpression = JetPsiFactory(state.getProject()).createExpression("callableReferenceFakeReceiver");
+        KtExpression receiverExpression = KtPsiFactoryKt
+                .KtPsiFactory(state.getProject()).createExpression("callableReferenceFakeReceiver");
         codegen.tempVariables.put(receiverExpression, receiverParameterStackValue(signature));
         return new ExpressionReceiver(receiverExpression, receiver.getType());
     }

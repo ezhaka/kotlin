@@ -24,23 +24,18 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.diagnostics.Diagnostic;
 import org.jetbrains.kotlin.idea.JetBundle;
 import org.jetbrains.kotlin.idea.core.quickfix.QuickFixUtil;
-import org.jetbrains.kotlin.psi.JetBinaryExpressionWithTypeRHS;
-import org.jetbrains.kotlin.psi.JetFile;
-import org.jetbrains.kotlin.psi.JetTypeElement;
-import org.jetbrains.kotlin.psi.JetTypeReference;
+import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.types.expressions.TypeReconstructionUtil;
 
-import static org.jetbrains.kotlin.psi.PsiPackage.JetPsiFactory;
-
-public class ChangeToStarProjectionFix extends JetIntentionAction<JetTypeElement> {
-    public ChangeToStarProjectionFix(@NotNull JetTypeElement element) {
+public class ChangeToStarProjectionFix extends KotlinQuickFixAction<KtTypeElement> {
+    public ChangeToStarProjectionFix(@NotNull KtTypeElement element) {
         super(element);
     }
 
     @NotNull
     @Override
     public String getText() {
-        String stars = TypeReconstructionUtil.getTypeNameAndStarProjectionsString("", element.getTypeArgumentsAsTypes().size());
+        String stars = TypeReconstructionUtil.getTypeNameAndStarProjectionsString("", getElement().getTypeArgumentsAsTypes().size());
         return JetBundle.message("change.to.star.projection", stars);
     }
 
@@ -51,10 +46,10 @@ public class ChangeToStarProjectionFix extends JetIntentionAction<JetTypeElement
     }
 
     @Override
-    public void invoke(@NotNull Project project, Editor editor, JetFile file) throws IncorrectOperationException {
-        for (JetTypeReference typeReference : element.getTypeArgumentsAsTypes()) {
+    public void invoke(@NotNull Project project, Editor editor, KtFile file) throws IncorrectOperationException {
+        for (KtTypeReference typeReference : getElement().getTypeArgumentsAsTypes()) {
             if (typeReference != null) {
-                typeReference.replace(JetPsiFactory(file).createStar());
+                typeReference.replace(KtPsiFactoryKt.KtPsiFactory(file).createStar());
             }
         }
     }
@@ -63,17 +58,17 @@ public class ChangeToStarProjectionFix extends JetIntentionAction<JetTypeElement
         return new JetSingleIntentionActionFactory() {
             @Override
             public IntentionAction createAction(Diagnostic diagnostic) {
-                JetBinaryExpressionWithTypeRHS expression = QuickFixUtil
-                        .getParentElementOfType(diagnostic, JetBinaryExpressionWithTypeRHS.class);
-                JetTypeReference typeReference;
+                KtBinaryExpressionWithTypeRHS expression = QuickFixUtil
+                        .getParentElementOfType(diagnostic, KtBinaryExpressionWithTypeRHS.class);
+                KtTypeReference typeReference;
                 if (expression == null) {
-                    typeReference = QuickFixUtil.getParentElementOfType(diagnostic, JetTypeReference.class);
+                    typeReference = QuickFixUtil.getParentElementOfType(diagnostic, KtTypeReference.class);
                 }
                 else {
                     typeReference = expression.getRight();
                 }
                 if (typeReference == null) return null;
-                JetTypeElement typeElement = typeReference.getTypeElement();
+                KtTypeElement typeElement = typeReference.getTypeElement();
                 assert typeElement != null;
                 return new ChangeToStarProjectionFix(typeElement);
             }

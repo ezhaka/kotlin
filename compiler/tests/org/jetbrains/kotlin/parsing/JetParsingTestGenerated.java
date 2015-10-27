@@ -169,6 +169,12 @@ public class JetParsingTestGenerated extends AbstractJetParsingTest {
             doParsingTest(fileName);
         }
 
+        @TestMetadata("DuplicateAccessor.kt")
+        public void testDuplicateAccessor() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("compiler/testData/psi/DuplicateAccessor.kt");
+            doParsingTest(fileName);
+        }
+
         @TestMetadata("DynamicReceiver.kt")
         public void testDynamicReceiver() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("compiler/testData/psi/DynamicReceiver.kt");
@@ -202,6 +208,12 @@ public class JetParsingTestGenerated extends AbstractJetParsingTest {
         @TestMetadata("EmptyFile.kt")
         public void testEmptyFile() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("compiler/testData/psi/EmptyFile.kt");
+            doParsingTest(fileName);
+        }
+
+        @TestMetadata("EmptyName.kt")
+        public void testEmptyName() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("compiler/testData/psi/EmptyName.kt");
             doParsingTest(fileName);
         }
 
@@ -448,6 +460,12 @@ public class JetParsingTestGenerated extends AbstractJetParsingTest {
         @TestMetadata("Imports_ERR.kt")
         public void testImports_ERR() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("compiler/testData/psi/Imports_ERR.kt");
+            doParsingTest(fileName);
+        }
+
+        @TestMetadata("IncompleteFunctionLiteral.kt")
+        public void testIncompleteFunctionLiteral() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("compiler/testData/psi/IncompleteFunctionLiteral.kt");
             doParsingTest(fileName);
         }
 
@@ -765,6 +783,12 @@ public class JetParsingTestGenerated extends AbstractJetParsingTest {
                 doParsingTest(fileName);
             }
 
+            @TestMetadata("annotationsOnNullableTypes.kt")
+            public void testAnnotationsOnNullableTypes() throws Exception {
+                String fileName = JetTestUtils.navigationMetadata("compiler/testData/psi/annotation/annotationsOnNullableTypes.kt");
+                doParsingTest(fileName);
+            }
+
             @TestMetadata("AnnotationsOnPatterns.kt")
             public void testAnnotationsOnPatterns() throws Exception {
                 String fileName = JetTestUtils.navigationMetadata("compiler/testData/psi/annotation/AnnotationsOnPatterns.kt");
@@ -798,6 +822,12 @@ public class JetParsingTestGenerated extends AbstractJetParsingTest {
             @TestMetadata("multiDeclaration.kt")
             public void testMultiDeclaration() throws Exception {
                 String fileName = JetTestUtils.navigationMetadata("compiler/testData/psi/annotation/multiDeclaration.kt");
+                doParsingTest(fileName);
+            }
+
+            @TestMetadata("noParameterYet.kt")
+            public void testNoParameterYet() throws Exception {
+                String fileName = JetTestUtils.navigationMetadata("compiler/testData/psi/annotation/noParameterYet.kt");
                 doParsingTest(fileName);
             }
 

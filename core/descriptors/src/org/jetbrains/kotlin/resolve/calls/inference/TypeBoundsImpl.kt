@@ -19,17 +19,14 @@ package org.jetbrains.kotlin.resolve.calls.inference
 import org.jetbrains.kotlin.descriptors.TypeParameterDescriptor
 import org.jetbrains.kotlin.resolve.calls.inference.TypeBounds.Bound
 import org.jetbrains.kotlin.resolve.calls.inference.TypeBounds.BoundKind
-import org.jetbrains.kotlin.resolve.calls.inference.TypeBounds.BoundKind.EXACT_BOUND
-import org.jetbrains.kotlin.resolve.calls.inference.TypeBounds.BoundKind.LOWER_BOUND
-import org.jetbrains.kotlin.resolve.calls.inference.TypeBounds.BoundKind.UPPER_BOUND
+import org.jetbrains.kotlin.resolve.calls.inference.TypeBounds.BoundKind.*
 import org.jetbrains.kotlin.resolve.calls.inference.constraintPosition.ConstraintPosition
 import org.jetbrains.kotlin.resolve.constants.IntegerValueTypeConstructor
-import org.jetbrains.kotlin.resolve.descriptorUtil.builtIns
+import org.jetbrains.kotlin.resolve.descriptorUtil.hasOnlyInputTypesAnnotation
 import org.jetbrains.kotlin.types.*
-import org.jetbrains.kotlin.types.checker.JetTypeChecker
+import org.jetbrains.kotlin.types.checker.KotlinTypeChecker
 import org.jetbrains.kotlin.utils.addIfNotNull
-import java.util.ArrayList
-import java.util.LinkedHashSet
+import java.util.*
 
 public class TypeBoundsImpl(
         override val typeVariable: TypeParameterDescriptor,
@@ -37,7 +34,7 @@ public class TypeBoundsImpl(
 ) : TypeBounds {
     override val bounds = ArrayList<Bound>()
 
-    private var resultValues: Collection<JetType>? = null
+    private var resultValues: Collection<KotlinType>? = null
 
     var isFixed: Boolean = false
         private set
@@ -54,12 +51,8 @@ public class TypeBoundsImpl(
         bounds.add(bound)
     }
 
-    private fun filterBounds(bounds: Collection<Bound>, kind: BoundKind): Set<JetType> {
-        return filterBounds(bounds, kind, null)
-    }
-
-    private fun filterBounds(bounds: Collection<Bound>, kind: BoundKind, errorValues: MutableCollection<JetType>?): Set<JetType> {
-        val result = LinkedHashSet<JetType>()
+    private fun filterBounds(bounds: Collection<Bound>, kind: BoundKind, errorValues: MutableCollection<KotlinType>? = null): Set<KotlinType> {
+        val result = LinkedHashSet<KotlinType>()
         for (bound in bounds) {
             if (bound.kind == kind) {
                 if (!ErrorUtils.containsErrorType(bound.constrainingType)) {
@@ -79,7 +72,7 @@ public class TypeBoundsImpl(
         return result
     }
 
-    override val values: Collection<JetType>
+    override val values: Collection<KotlinType>
         get() {
             if (resultValues == null) {
                 resultValues = computeValues()
@@ -87,8 +80,8 @@ public class TypeBoundsImpl(
             return resultValues!!
         }
 
-    private fun computeValues(): Collection<JetType> {
-        val values = LinkedHashSet<JetType>()
+    private fun computeValues(): Collection<KotlinType> {
+        val values = LinkedHashSet<KotlinType>()
         val bounds = bounds.filter { it.isProper }
 
         if (bounds.isEmpty()) {
@@ -109,7 +102,7 @@ public class TypeBoundsImpl(
         values.addAll(exactBounds)
 
         val (numberLowerBounds, generalLowerBounds) =
-                filterBounds(bounds, LOWER_BOUND, values).partition { it.getConstructor() is IntegerValueTypeConstructor }
+                filterBounds(bounds, LOWER_BOUND, values).partition { it.constructor is IntegerValueTypeConstructor }
 
         val superTypeOfLowerBounds = CommonSupertypes.commonSupertypeForNonDenotableTypes(generalLowerBounds)
         if (tryPossibleAnswer(bounds, superTypeOfLowerBounds)) {
@@ -136,7 +129,7 @@ public class TypeBoundsImpl(
 
         val upperBounds = filterBounds(bounds, TypeBounds.BoundKind.UPPER_BOUND, values)
         if (upperBounds.isNotEmpty()) {
-            val intersectionOfUpperBounds = TypeIntersector.intersectTypes(JetTypeChecker.DEFAULT, upperBounds)
+            val intersectionOfUpperBounds = TypeIntersector.intersectTypes(KotlinTypeChecker.DEFAULT, upperBounds)
             if (intersectionOfUpperBounds != null && tryPossibleAnswer(bounds, intersectionOfUpperBounds)) {
                 return setOf(intersectionOfUpperBounds)
             }
@@ -144,25 +137,45 @@ public class TypeBoundsImpl(
 
         values.addAll(filterBounds(bounds, TypeBounds.BoundKind.UPPER_BOUND))
 
+        if (values.size == 1 && typeVariable.hasOnlyInputTypesAnnotation() && !tryPossibleAnswer(bounds, values.first())) return listOf()
+
         return values
     }
 
-    private fun tryPossibleAnswer(bounds: Collection<Bound>, possibleAnswer: JetType?): Boolean {
+    private fun checkOnlyInputTypes(bounds: Collection<Bound>, possibleAnswer: KotlinType): Boolean {
+        if (!typeVariable.hasOnlyInputTypesAnnotation()) return true
+
+        // Only type mentioned in bounds might be the result
+        val typesInBoundsSet = bounds.filter { it.isProper && it.constrainingType.constructor.isDenotable }.map { it.constrainingType }.toSet()
+        // Flexible types are equal to inflexible
+        if (typesInBoundsSet.any { KotlinTypeChecker.DEFAULT.equalTypes(it, possibleAnswer) }) return true
+
+        // For non-denotable number types only, no valid types are mentioned, so common supertype is valid
+        val numberLowerBounds = filterBounds(bounds, LOWER_BOUND).filter { it.constructor is IntegerValueTypeConstructor }
+        val superTypeOfNumberLowerBounds = TypeUtils.commonSupertypeForNumberTypes(numberLowerBounds)
+        if (possibleAnswer == superTypeOfNumberLowerBounds) return true
+
+        return false
+    }
+
+    private fun tryPossibleAnswer(bounds: Collection<Bound>, possibleAnswer: KotlinType?): Boolean {
         if (possibleAnswer == null) return false
         // a captured type might be an answer
-        if (!possibleAnswer.getConstructor().isDenotable() && !possibleAnswer.isCaptured()) return false
+        if (!possibleAnswer.constructor.isDenotable && !possibleAnswer.isCaptured()) return false
+
+        if (!checkOnlyInputTypes(bounds, possibleAnswer)) return false
 
         for (bound in bounds) {
             when (bound.kind) {
-                LOWER_BOUND -> if (!JetTypeChecker.DEFAULT.isSubtypeOf(bound.constrainingType, possibleAnswer)) {
+                LOWER_BOUND -> if (!KotlinTypeChecker.DEFAULT.isSubtypeOf(bound.constrainingType, possibleAnswer)) {
                     return false
                 }
 
-                UPPER_BOUND -> if (!JetTypeChecker.DEFAULT.isSubtypeOf(possibleAnswer, bound.constrainingType)) {
+                UPPER_BOUND -> if (!KotlinTypeChecker.DEFAULT.isSubtypeOf(possibleAnswer, bound.constrainingType)) {
                     return false
                 }
 
-                EXACT_BOUND -> if (!JetTypeChecker.DEFAULT.equalTypes(bound.constrainingType, possibleAnswer)) {
+                EXACT_BOUND -> if (!KotlinTypeChecker.DEFAULT.equalTypes(bound.constrainingType, possibleAnswer)) {
                     return false
                 }
             }

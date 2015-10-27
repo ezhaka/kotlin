@@ -16,6 +16,7 @@
 
 package org.jetbrains.kotlin.idea.util
 
+import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.idea.imports.importableFqName
 import org.jetbrains.kotlin.idea.resolve.ResolutionFacade
@@ -32,7 +33,7 @@ import org.jetbrains.kotlin.resolve.calls.context.ContextDependency
 import org.jetbrains.kotlin.resolve.scopes.ExplicitImportsScope
 import org.jetbrains.kotlin.resolve.scopes.receivers.ExpressionReceiver
 import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue
-import org.jetbrains.kotlin.resolve.scopes.utils.addImportScope
+import org.jetbrains.kotlin.resolve.scopes.utils.addImportingScope
 import org.jetbrains.kotlin.types.TypeUtils
 import org.jetbrains.kotlin.util.descriptorsEqualWithSubstitution
 import java.util.*
@@ -40,14 +41,14 @@ import java.util.*
 public class ShadowedDeclarationsFilter private constructor(
         private val bindingContext: BindingContext,
         private val resolutionFacade: ResolutionFacade,
-        private val context: JetExpression,
+        private val context: PsiElement,
         private val explicitReceiverValue: ReceiverValue
 ) {
     companion object {
         fun create(
                 bindingContext: BindingContext,
                 resolutionFacade: ResolutionFacade,
-                context: JetExpression,
+                context: PsiElement,
                 callTypeAndReceiver: CallTypeAndReceiver<*, *>
         ): ShadowedDeclarationsFilter? {
             val receiverExpression = when (callTypeAndReceiver) {
@@ -55,7 +56,7 @@ public class ShadowedDeclarationsFilter private constructor(
                 is CallTypeAndReceiver.DOT -> callTypeAndReceiver.receiver
                 is CallTypeAndReceiver.SAFE -> callTypeAndReceiver.receiver
                 is CallTypeAndReceiver.INFIX -> callTypeAndReceiver.receiver
-                is CallTypeAndReceiver.TYPE -> null // need filtering of classes with the same FQ-name
+                is CallTypeAndReceiver.TYPE, is CallTypeAndReceiver.ANNOTATION -> null // need filtering of classes with the same FQ-name
                 else -> return null // TODO: support shadowed declarations filtering for callable references
             }
 
@@ -67,7 +68,7 @@ public class ShadowedDeclarationsFilter private constructor(
         }
     }
 
-    private val psiFactory = JetPsiFactory(resolutionFacade.project)
+    private val psiFactory = KtPsiFactory(resolutionFacade.project)
     private val dummyExpressionFactory = DummyExpressionFactory(psiFactory)
 
     public fun <TDescriptor : DeclarationDescriptor> filter(declarations: Collection<TDescriptor>): Collection<TDescriptor> {
@@ -173,7 +174,7 @@ public class ShadowedDeclarationsFilter private constructor(
 
             override fun getFunctionLiteralArguments() = emptyList<FunctionLiteralArgument>()
 
-            override fun getTypeArguments() = emptyList<JetTypeProjection>()
+            override fun getTypeArguments() = emptyList<KtTypeProjection>()
 
             override fun getTypeArgumentList() = null
 
@@ -188,14 +189,14 @@ public class ShadowedDeclarationsFilter private constructor(
             override fun getCallType() = Call.CallType.DEFAULT
         }
 
-        var lexicalScope = bindingContext[BindingContext.LEXICAL_SCOPE, context] ?: return descriptors
+        var scope = context.getResolutionScope(bindingContext, resolutionFacade)
 
         if (descriptorsToImport.isNotEmpty()) {
-            lexicalScope = lexicalScope.addImportScope(ExplicitImportsScope(descriptorsToImport))
+            scope = scope.addImportingScope(ExplicitImportsScope(descriptorsToImport))
         }
 
         val dataFlowInfo = bindingContext.getDataFlowInfo(context)
-        val context = BasicCallResolutionContext.create(bindingTrace, lexicalScope, newCall, TypeUtils.NO_EXPECTED_TYPE, dataFlowInfo,
+        val context = BasicCallResolutionContext.create(bindingTrace, scope, newCall, TypeUtils.NO_EXPECTED_TYPE, dataFlowInfo,
                                                         ContextDependency.INDEPENDENT, CheckArgumentTypesMode.CHECK_VALUE_ARGUMENTS,
                                                         CallChecker.DoNothing, false)
         val callResolver = resolutionFacade.frontendService<CallResolver>()
@@ -209,10 +210,10 @@ public class ShadowedDeclarationsFilter private constructor(
         return if (filtered.isNotEmpty()) filtered else descriptors /* something went wrong, none of our declarations among resolve candidates, let's not filter anything */
     }
 
-    private class DummyExpressionFactory(val factory: JetPsiFactory) {
-        private val expressions = ArrayList<JetExpression>()
+    private class DummyExpressionFactory(val factory: KtPsiFactory) {
+        private val expressions = ArrayList<KtExpression>()
 
-        fun createDummyExpressions(count: Int): List<JetExpression> {
+        fun createDummyExpressions(count: Int): List<KtExpression> {
             while (expressions.size() < count) {
                 expressions.add(factory.createExpression("dummy"))
             }

@@ -23,9 +23,9 @@ import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.js.translate.context.Namer;
 import org.jetbrains.kotlin.js.translate.context.TranslationContext;
 import org.jetbrains.kotlin.js.translate.utils.JsAstUtils;
-import org.jetbrains.kotlin.psi.JetClassOrObject;
-import org.jetbrains.kotlin.psi.JetParameter;
-import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilPackage;
+import org.jetbrains.kotlin.psi.KtClassOrObject;
+import org.jetbrains.kotlin.psi.KtParameter;
+import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,7 +34,7 @@ class JsDataClassGenerator extends DataClassMethodGenerator {
     private final TranslationContext context;
     private final List<? super JsPropertyInitializer> output;
 
-    JsDataClassGenerator(JetClassOrObject klass, TranslationContext context, List<? super JsPropertyInitializer> output) {
+    JsDataClassGenerator(KtClassOrObject klass, TranslationContext context, List<? super JsPropertyInitializer> output) {
         super(klass, context.bindingContext());
         this.context = context;
         this.output = output;
@@ -48,7 +48,7 @@ class JsDataClassGenerator extends DataClassMethodGenerator {
     }
 
     @Override
-    public void generateCopyFunction(@NotNull FunctionDescriptor function, @NotNull List<JetParameter> constructorParameters) {
+    public void generateCopyFunction(@NotNull FunctionDescriptor function, @NotNull List<KtParameter> constructorParameters) {
         JsFunction functionObj = generateJsMethod(function);
         JsFunctionScope funScope = functionObj.getScope();
 
@@ -56,7 +56,7 @@ class JsDataClassGenerator extends DataClassMethodGenerator {
 
         List<JsExpression> constructorArguments = new ArrayList<JsExpression>(constructorParameters.size());
         for (int i = 0; i < constructorParameters.size(); i++) {
-            JetParameter constructorParam = constructorParameters.get(i);
+            KtParameter constructorParam = constructorParameters.get(i);
             JsName paramName = funScope.declareName(constructorParam.getName());
 
             functionObj.getParameters().add(new JsParameter(paramName));
@@ -64,7 +64,7 @@ class JsDataClassGenerator extends DataClassMethodGenerator {
             JsExpression argumentValue;
             JsExpression parameterValue = new JsNameRef(paramName);
             if (!constructorParam.hasValOrVar()) {
-                assert !DescriptorUtilPackage.hasDefaultValue(function.getValueParameters().get(i));
+                assert !DescriptorUtilsKt.hasDefaultValue(function.getValueParameters().get(i));
                 // Caller cannot rely on default value and pass undefined here.
                 argumentValue = parameterValue;
             }

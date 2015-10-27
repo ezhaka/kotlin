@@ -28,9 +28,10 @@ import org.jetbrains.kotlin.idea.decompiler.navigation.JsMetaFileUtils
 import org.jetbrains.kotlin.idea.decompiler.textBuilder.DirectoryBasedKotlinJavaScriptDataFinder
 import org.jetbrains.kotlin.idea.decompiler.textBuilder.DirectoryBasedKotlinJavaScriptMetaFileFinder
 import org.jetbrains.kotlin.name.FqName
-import org.jetbrains.kotlin.psi.JetFile
+import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.serialization.deserialization.NameResolver
 import org.jetbrains.kotlin.serialization.deserialization.NameResolverImpl
+import org.jetbrains.kotlin.serialization.deserialization.TypeTable
 import org.jetbrains.kotlin.serialization.js.KotlinJavascriptSerializedResourcePaths
 import org.jetbrains.kotlin.serialization.js.toClassData
 import org.jetbrains.kotlin.serialization.js.toPackageData
@@ -47,7 +48,7 @@ public open class KotlinJavaScriptStubBuilder : ClsStubBuilder() {
         return doBuildFileStub(file)
     }
 
-    fun doBuildFileStub(file: VirtualFile): PsiFileStub<JetFile>? {
+    fun doBuildFileStub(file: VirtualFile): PsiFileStub<KtFile>? {
         val packageFqName = JsMetaFileUtils.getPackageFqName(file)
 
         val content = file.contentsToByteArray(false)
@@ -63,12 +64,14 @@ public open class KotlinJavaScriptStubBuilder : ClsStubBuilder() {
 
         if (isPackageHeader) {
             val packageData = content.toPackageData(nameResolver)
-            val context = components.createContext(packageData.nameResolver, packageFqName)
+            val context = components.createContext(
+                    packageData.nameResolver, packageFqName, TypeTable(packageData.packageProto.typeTable)
+            )
             return createPackageFacadeStub(packageData.packageProto, packageFqName, context)
         }
         else {
             val classData = content.toClassData(nameResolver)
-            val context = components.createContext(classData.nameResolver, packageFqName)
+            val context = components.createContext(classData.nameResolver, packageFqName, TypeTable(classData.classProto.typeTable))
             val classId = JsMetaFileUtils.getClassId(file)
             return createTopLevelClassStub(classId, classData.classProto, context)
         }

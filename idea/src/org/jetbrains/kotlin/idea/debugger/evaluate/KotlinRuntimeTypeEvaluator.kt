@@ -34,20 +34,20 @@ import com.intellij.psi.CommonClassNames
 import com.sun.jdi.ClassType
 import com.sun.jdi.Value
 import org.jetbrains.eval4j.jdi.asValue
-import org.jetbrains.kotlin.psi.JetExpression
-import org.jetbrains.kotlin.psi.JetPsiFactory
-import org.jetbrains.kotlin.types.JetType
+import org.jetbrains.kotlin.psi.KtExpression
+import org.jetbrains.kotlin.psi.KtPsiFactory
+import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.org.objectweb.asm.Type as AsmType
 
 public abstract class KotlinRuntimeTypeEvaluator(
         editor: Editor?,
-        expression: JetExpression,
+        expression: KtExpression,
         context: DebuggerContextImpl,
         indicator: ProgressIndicator
-) : EditorEvaluationCommand<JetType>(editor, expression, context, indicator) {
+) : EditorEvaluationCommand<KotlinType>(editor, expression, context, indicator) {
 
     override fun threadAction() {
-        var type: JetType? = null
+        var type: KotlinType? = null
         try {
             type = evaluate()
         }
@@ -60,13 +60,13 @@ public abstract class KotlinRuntimeTypeEvaluator(
         }
     }
 
-    protected abstract fun typeCalculationFinished(type: JetType?)
+    protected abstract fun typeCalculationFinished(type: KotlinType?)
 
-    override fun evaluate(evaluationContext: EvaluationContextImpl): JetType? {
+    override fun evaluate(evaluationContext: EvaluationContextImpl): KotlinType? {
         val project = evaluationContext.getProject()
 
         val evaluator = DebuggerInvocationUtil.commitAndRunReadAction<ExpressionEvaluator>(project, EvaluatingComputable {
-                val codeFragment = JetPsiFactory(myElement.getProject()).createExpressionCodeFragment(
+                val codeFragment = KtPsiFactory(myElement.getProject()).createExpressionCodeFragment(
                         myElement.getText(), myElement.getContainingFile().getContext())
                 KotlinEvaluationBuilder.build(codeFragment, ContextUtil.getSourcePosition(evaluationContext))
         })
@@ -80,7 +80,7 @@ public abstract class KotlinRuntimeTypeEvaluator(
     }
 
     companion object {
-        private fun getCastableRuntimeType(project: Project, value: Value): JetType? {
+        private fun getCastableRuntimeType(project: Project, value: Value): KotlinType? {
             val myValue = value.asValue()
             var psiClass = myValue.asmType.getClassDescriptor(project)
             if (psiClass != null) {

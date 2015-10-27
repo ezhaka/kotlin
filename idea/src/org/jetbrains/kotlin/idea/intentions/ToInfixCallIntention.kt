@@ -17,15 +17,18 @@
 package org.jetbrains.kotlin.idea.intentions
 
 import com.intellij.openapi.editor.Editor
+import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.resolve.calls.callUtil.getResolvedCall
+import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 
-public class ToInfixCallIntention : JetSelfTargetingIntention<JetCallExpression>(javaClass(), "Replace with infix function call") {
-    override fun isApplicableTo(element: JetCallExpression, caretOffset: Int): Boolean {
-        val calleeExpr = element.getCalleeExpression() as? JetSimpleNameExpression ?: return false
+public class ToInfixCallIntention : JetSelfTargetingIntention<KtCallExpression>(javaClass(), "Replace with infix function call") {
+    override fun isApplicableTo(element: KtCallExpression, caretOffset: Int): Boolean {
+        val calleeExpr = element.getCalleeExpression() as? KtNameReferenceExpression ?: return false
         if (!calleeExpr.getTextRange().containsOffset(caretOffset)) return false
 
-        val dotQualified = element.getParent() as? JetDotQualifiedExpression ?: return false
+        val dotQualified = element.getParent() as? KtDotQualifiedExpression ?: return false
 
         if (element.getTypeArgumentList() != null) return false
 
@@ -33,20 +36,24 @@ public class ToInfixCallIntention : JetSelfTargetingIntention<JetCallExpression>
         if (argument.isNamed()) return false
         if (argument.getArgumentExpression() == null) return false
 
+        val bindingContext = element.analyze(BodyResolveMode.PARTIAL)
+        val resolvedCall = element.getResolvedCall(bindingContext) ?: return false
+        val function = resolvedCall.resultingDescriptor as? FunctionDescriptor ?: return false
+        if (!function.isInfix) return false
+
         // check that receiver has type to filter out calls with package/java class qualifier
-        val receiver = dotQualified.getReceiverExpression()
-        if (element.analyze().getType(receiver) == null) return false
+        if (bindingContext.getType(dotQualified.receiverExpression) == null) return false
 
         return true
     }
 
-    override fun applyTo(element: JetCallExpression, editor: Editor) {
-        val dotQualified = element.getParent() as JetDotQualifiedExpression
+    override fun applyTo(element: KtCallExpression, editor: Editor) {
+        val dotQualified = element.getParent() as KtDotQualifiedExpression
         val receiver = dotQualified.getReceiverExpression()
         val argument = element.getValueArguments().single().getArgumentExpression()!!
         val name = element.getCalleeExpression()!!.getText()
 
-        val newCall = JetPsiFactory(element).createExpressionByPattern("$0 $name $1", receiver, argument)
+        val newCall = KtPsiFactory(element).createExpressionByPattern("$0 $name $1", receiver, argument)
         dotQualified.replace(newCall)
     }
 }

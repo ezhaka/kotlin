@@ -27,26 +27,26 @@ import org.jetbrains.kotlin.cli.common.messages.PrintingMessageCollector;
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles;
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment;
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinToJVMBytecodeCompiler;
+import org.jetbrains.kotlin.cli.jvm.config.JvmContentRootsKt;
 import org.jetbrains.kotlin.codegen.forTestCompile.ForTestCompileRuntime;
 import org.jetbrains.kotlin.codegen.state.GenerationState;
 import org.jetbrains.kotlin.codegen.state.JetTypeMapper;
 import org.jetbrains.kotlin.config.CompilerConfiguration;
+import org.jetbrains.kotlin.config.ContentRootsKt;
 import org.jetbrains.kotlin.descriptors.ClassDescriptor;
-import org.jetbrains.kotlin.psi.JetClass;
-import org.jetbrains.kotlin.psi.JetDeclaration;
-import org.jetbrains.kotlin.psi.JetFile;
+import org.jetbrains.kotlin.psi.KtClass;
+import org.jetbrains.kotlin.psi.KtDeclaration;
+import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.resolve.BindingContext;
 import org.jetbrains.kotlin.resolve.BindingContextUtils;
 import org.jetbrains.kotlin.test.ConfigurationKind;
 import org.jetbrains.kotlin.test.JetTestUtils;
 import org.jetbrains.kotlin.test.TestJdkKind;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 
 import java.io.File;
 import java.lang.reflect.Modifier;
 
-import static org.jetbrains.kotlin.cli.jvm.config.ConfigPackage.addJvmClasspathRoot;
-import static org.jetbrains.kotlin.config.ConfigPackage.addKotlinSourceRoot;
 import static org.jetbrains.kotlin.types.TypeUtils.getAllSupertypes;
 
 @SuppressWarnings("JUnitTestCaseWithNoTests")
@@ -83,14 +83,14 @@ public class TestlibTest extends UsefulTestCase {
         super.setUp();
 
         CompilerConfiguration configuration = JetTestUtils.compilerConfigurationForTests(ConfigurationKind.ALL, TestJdkKind.FULL_JDK);
-        addJvmClasspathRoot(configuration, JetTestUtils.getAnnotationsJar());
+        JvmContentRootsKt.addJvmClasspathRoot(configuration, JetTestUtils.getAnnotationsJar());
 
         junitJar = new File("libraries/lib/junit-4.11.jar");
         assertTrue(junitJar.exists());
-        addJvmClasspathRoot(configuration, junitJar);
+        JvmContentRootsKt.addJvmClasspathRoot(configuration, junitJar);
 
-        addKotlinSourceRoot(configuration, JetTestUtils.getHomeDirectory() + "/libraries/stdlib/test");
-        addKotlinSourceRoot(configuration, JetTestUtils.getHomeDirectory() + "/libraries/kunit/src");
+        ContentRootsKt.addKotlinSourceRoot(configuration, JetTestUtils.getHomeDirectory() + "/libraries/stdlib/test");
+        ContentRootsKt.addKotlinSourceRoot(configuration, JetTestUtils.getHomeDirectory() + "/libraries/kunit/src");
         configuration.put(CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY, PrintingMessageCollector.PLAIN_TEXT_TO_SYSTEM_ERR);
 
         myEnvironment = KotlinCoreEnvironment.createForTests(getTestRootDisposable(), configuration, EnvironmentConfigFiles.JVM_CONFIG_FILES);
@@ -113,15 +113,15 @@ public class TestlibTest extends UsefulTestCase {
 
         typeMapper = generationState.getTypeMapper();
 
-        for (JetFile jetFile : myEnvironment.getSourceFiles()) {
-            for (JetDeclaration declaration : jetFile.getDeclarations()) {
-                if (!(declaration instanceof JetClass)) continue;
+        for (KtFile jetFile : myEnvironment.getSourceFiles()) {
+            for (KtDeclaration declaration : jetFile.getDeclarations()) {
+                if (!(declaration instanceof KtClass)) continue;
 
                 ClassDescriptor descriptor = (ClassDescriptor) BindingContextUtils.getNotNull(generationState.getBindingContext(),
                                                                                               BindingContext.DECLARATION_TO_DESCRIPTOR,
                                                                                               declaration);
 
-                for (JetType superType : getAllSupertypes(descriptor.getDefaultType())) {
+                for (KotlinType superType : getAllSupertypes(descriptor.getDefaultType())) {
                     if (!"junit/framework/Test".equals(typeMapper.mapType(superType).getInternalName())) continue;
 
                     String name = typeMapper.mapClass(descriptor).getInternalName();

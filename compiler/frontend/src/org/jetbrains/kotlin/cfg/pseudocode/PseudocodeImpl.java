@@ -32,8 +32,8 @@ import org.jetbrains.kotlin.cfg.pseudocode.instructions.special.LocalFunctionDec
 import org.jetbrains.kotlin.cfg.pseudocode.instructions.special.SubroutineEnterInstruction;
 import org.jetbrains.kotlin.cfg.pseudocode.instructions.special.SubroutineExitInstruction;
 import org.jetbrains.kotlin.cfg.pseudocode.instructions.special.SubroutineSinkInstruction;
-import org.jetbrains.kotlin.cfg.pseudocodeTraverser.PseudocodeTraverserPackage;
-import org.jetbrains.kotlin.psi.JetElement;
+import org.jetbrains.kotlin.cfg.pseudocodeTraverser.PseudocodeTraverserKt;
+import org.jetbrains.kotlin.psi.KtElement;
 
 import java.util.*;
 
@@ -95,7 +95,7 @@ public class PseudocodeImpl implements Pseudocode {
     private final List<Instruction> mutableInstructionList = new ArrayList<Instruction>();
     private final List<Instruction> instructions = new ArrayList<Instruction>();
 
-    private final BidirectionalMap<JetElement, PseudoValue> elementsToValues = new BidirectionalMap<JetElement, PseudoValue>();
+    private final BidirectionalMap<KtElement, PseudoValue> elementsToValues = new BidirectionalMap<KtElement, PseudoValue>();
 
     private final Map<PseudoValue, List<Instruction>> valueUsages = Maps.newHashMap();
     private final Map<PseudoValue, Set<PseudoValue>> mergedValues = Maps.newHashMap();
@@ -104,23 +104,23 @@ public class PseudocodeImpl implements Pseudocode {
     private Pseudocode parent = null;
     private Set<LocalFunctionDeclarationInstruction> localDeclarations = null;
     //todo getters
-    private final Map<JetElement, Instruction> representativeInstructions = new HashMap<JetElement, Instruction>();
+    private final Map<KtElement, Instruction> representativeInstructions = new HashMap<KtElement, Instruction>();
 
     private final List<PseudocodeLabel> labels = new ArrayList<PseudocodeLabel>();
 
-    private final JetElement correspondingElement;
+    private final KtElement correspondingElement;
     private SubroutineExitInstruction exitInstruction;
     private SubroutineSinkInstruction sinkInstruction;
     private SubroutineExitInstruction errorInstruction;
     private boolean postPrecessed = false;
 
-    public PseudocodeImpl(JetElement correspondingElement) {
+    public PseudocodeImpl(KtElement correspondingElement) {
         this.correspondingElement = correspondingElement;
     }
 
     @NotNull
     @Override
-    public JetElement getCorrespondingElement() {
+    public KtElement getCorrespondingElement() {
         return correspondingElement;
     }
 
@@ -181,13 +181,13 @@ public class PseudocodeImpl implements Pseudocode {
     @Override
     public List<Instruction> getReversedInstructions() {
         LinkedHashSet<Instruction> traversedInstructions = Sets.newLinkedHashSet();
-        PseudocodeTraverserPackage.traverseFollowingInstructions(sinkInstruction, traversedInstructions, BACKWARD, null);
+        PseudocodeTraverserKt.traverseFollowingInstructions(sinkInstruction, traversedInstructions, BACKWARD, null);
         if (traversedInstructions.size() < instructions.size()) {
             List<Instruction> simplyReversedInstructions = Lists.newArrayList(instructions);
             Collections.reverse(simplyReversedInstructions);
             for (Instruction instruction : simplyReversedInstructions) {
                 if (!traversedInstructions.contains(instruction)) {
-                    PseudocodeTraverserPackage.traverseFollowingInstructions(instruction, traversedInstructions, BACKWARD, null);
+                    PseudocodeTraverserKt.traverseFollowingInstructions(instruction, traversedInstructions, BACKWARD, null);
                 }
             }
         }
@@ -243,7 +243,7 @@ public class PseudocodeImpl implements Pseudocode {
                 addValueUsage(mergedValue, instruction);
             }
         }
-        if (PseudocodePackage.calcSideEffectFree(instruction)) {
+        if (PseudocodeUtilsKt.calcSideEffectFree(instruction)) {
             sideEffectFree.add(instruction);
         }
     }
@@ -268,15 +268,15 @@ public class PseudocodeImpl implements Pseudocode {
 
     @Nullable
     @Override
-    public PseudoValue getElementValue(@Nullable JetElement element) {
+    public PseudoValue getElementValue(@Nullable KtElement element) {
         return elementsToValues.get(element);
     }
 
     @NotNull
     @Override
-    public List<? extends JetElement> getValueElements(@Nullable PseudoValue value) {
-        List<? extends JetElement> result = elementsToValues.getKeysByValue(value);
-        return result != null ? result : Collections.<JetElement>emptyList();
+    public List<? extends KtElement> getValueElements(@Nullable PseudoValue value) {
+        List<? extends KtElement> result = elementsToValues.getKeysByValue(value);
+        return result != null ? result : Collections.<KtElement>emptyList();
     }
 
     @NotNull
@@ -291,7 +291,7 @@ public class PseudocodeImpl implements Pseudocode {
         return sideEffectFree.contains(instruction);
     }
 
-    /*package*/ void bindElementToValue(@NotNull JetElement element, @NotNull PseudoValue value) {
+    /*package*/ void bindElementToValue(@NotNull KtElement element, @NotNull PseudoValue value) {
         elementsToValues.put(element, value);
     }
 
@@ -421,7 +421,7 @@ public class PseudocodeImpl implements Pseudocode {
 
     private Set<Instruction> collectReachableInstructions() {
         Set<Instruction> visited = Sets.newHashSet();
-        PseudocodeTraverserPackage.traverseFollowingInstructions(getEnterInstruction(), visited, FORWARD, null);
+        PseudocodeTraverserKt.traverseFollowingInstructions(getEnterInstruction(), visited, FORWARD, null);
         if (!visited.contains(getExitInstruction())) {
             visited.add(getExitInstruction());
         }

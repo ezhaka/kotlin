@@ -11,10 +11,8 @@ class B {
 }
 
 /*
-  One DEPRECATED is for _DefaultPackage
-  One is for _DefaultPackage.getCONST_VAL
+  Two DEPRECATED are for INSTANCE$ and INSTANCE temporarily
   3 others are for getCONST_VAL
-  One more for INSTANCE$ temporarily
 */
 
-// 6 DEPRECATED
+// 5 DEPRECATED

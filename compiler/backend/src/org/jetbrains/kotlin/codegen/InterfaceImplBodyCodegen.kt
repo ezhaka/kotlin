@@ -28,29 +28,34 @@ import org.jetbrains.kotlin.load.java.JvmAnnotationNames
 import org.jetbrains.kotlin.load.java.JvmAnnotationNames.KOTLIN_INTERFACE_DEFAULT_IMPLS
 import org.jetbrains.kotlin.load.java.descriptors.JavaMethodDescriptor
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.psi.JetClassOrObject
+import org.jetbrains.kotlin.psi.KtClassOrObject
 import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils
 import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.DelegationToTraitImpl
+import org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOrigin
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodSignature
-import org.jetbrains.kotlin.resolve.scopes.JetScope
+import org.jetbrains.kotlin.resolve.scopes.KtScope
+import org.jetbrains.org.objectweb.asm.AnnotationVisitor
+import org.jetbrains.org.objectweb.asm.FieldVisitor
+import org.jetbrains.org.objectweb.asm.MethodVisitor
 import org.jetbrains.org.objectweb.asm.Opcodes.ACC_FINAL
 import org.jetbrains.org.objectweb.asm.Opcodes.ACC_PUBLIC
-import org.jetbrains.org.objectweb.asm.Opcodes.ACC_STATIC
 import org.jetbrains.org.objectweb.asm.Opcodes.V1_6
 import java.util.*
 
 public class InterfaceImplBodyCodegen(
-        aClass: JetClassOrObject,
+        aClass: KtClassOrObject,
         context: ClassContext,
         v: ClassBuilder,
         state: GenerationState,
         parentCodegen: MemberCodegen<*>?
-) : ClassBodyCodegen(aClass, context, v, state, parentCodegen) {
+) : ClassBodyCodegen(aClass, context, InterfaceImplBodyCodegen.InterfaceImplClassBuilder(v), state, parentCodegen) {
+    private var isAnythingGenerated: Boolean = false
+        get() = (v as InterfaceImplClassBuilder).isAnythingGenerated
 
     override fun generateDeclaration() {
         v.defineClass(
-                myClass, V1_6, ACC_PUBLIC or ACC_FINAL or ACC_STATIC,
+                myClass, V1_6, ACC_PUBLIC or ACC_FINAL,
                 typeMapper.mapDefaultImpls(descriptor).internalName,
                 null, "java/lang/Object", ArrayUtil.EMPTY_STRING_ARRAY
         )
@@ -58,12 +63,13 @@ public class InterfaceImplBodyCodegen(
     }
 
     override fun classForInnerClassRecord(): ClassDescriptor? {
+        if (!isAnythingGenerated) return null
         if (DescriptorUtils.isLocal(descriptor)) return null
         val classDescriptorImpl = ClassDescriptorImpl(
                 descriptor, Name.identifier(JvmAbi.DEFAULT_IMPLS_CLASS_NAME),
                 Modality.FINAL, Collections.emptyList(), SourceElement.NO_SOURCE)
 
-        classDescriptorImpl.initialize(JetScope.Empty, emptySet(), null)
+        classDescriptorImpl.initialize(KtScope.Empty, emptySet(), null)
         return classDescriptorImpl
     }
 
@@ -145,9 +151,44 @@ public class InterfaceImplBodyCodegen(
     }
 
     override fun generateKotlinAnnotation() {
+        (v as InterfaceImplClassBuilder).stopCounting()
+
         val av = v.newAnnotation(AsmUtil.asmDescByFqNameWithoutInnerClasses(KOTLIN_INTERFACE_DEFAULT_IMPLS), true)
         av.visit(JvmAnnotationNames.VERSION_FIELD_NAME, JvmAbi.VERSION.toArray())
         av.visitEnd()
         AsmUtil.writeKotlinSyntheticClassAnnotation(v, state)
+    }
+
+    override fun done() {
+        super.done()
+        if (!isAnythingGenerated) {
+            state.factory.removeClasses(setOf(typeMapper.mapDefaultImpls(descriptor).internalName))
+        }
+    }
+
+    private class InterfaceImplClassBuilder(private val v: ClassBuilder) : DelegatingClassBuilder() {
+        private var shouldCount: Boolean = true
+        var isAnythingGenerated: Boolean = false
+            private set
+
+        fun stopCounting() {
+            shouldCount = false
+        }
+
+        override fun getDelegate() = v
+
+        override fun newMethod(
+                origin: JvmDeclarationOrigin,
+                access: Int,
+                name: String,
+                desc: String,
+                signature: String?,
+                exceptions: Array<out String>?
+        ): MethodVisitor {
+            if (shouldCount) {
+                isAnythingGenerated = true
+            }
+            return super.newMethod(origin, access, name, desc, signature, exceptions)
+        }
     }
 }

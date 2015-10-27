@@ -17,7 +17,7 @@
 package org.jetbrains.kotlin.name;
 
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.kotlin.utils.UtilsPackage;
+import org.jetbrains.kotlin.utils.StringsKt;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -26,7 +26,7 @@ public final class FqName extends FqNameBase {
 
     @NotNull
     public static FqName fromSegments(@NotNull List<String> names) {
-        return new FqName(UtilsPackage.join(names, "."));
+        return new FqName(StringsKt.join(names, "."));
     }
 
     public static final FqName ROOT = new FqName("");
@@ -39,28 +39,15 @@ public final class FqName extends FqNameBase {
 
     public FqName(@NotNull String fqName) {
         this.fqName = new FqNameUnsafe(fqName, this);
-
-        validateFqName();
     }
 
     public FqName(@NotNull FqNameUnsafe fqName) {
         this.fqName = fqName;
-
-        validateFqName();
     }
 
     private FqName(@NotNull FqNameUnsafe fqName, FqName parent) {
         this.fqName = fqName;
         this.parent = parent;
-
-        validateFqName();
-    }
-
-
-    private void validateFqName() {
-        if (!isValidAfterUnsafeCheck(fqName.asString())) {
-            throw new IllegalArgumentException("incorrect fq name: " + fqName);
-        }
     }
 
     /*package*/ static boolean isValidAfterUnsafeCheck(@NotNull String qualifiedName) {

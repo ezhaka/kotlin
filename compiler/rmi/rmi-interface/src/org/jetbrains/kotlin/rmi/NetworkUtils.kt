@@ -32,8 +32,8 @@ public object LoopbackNetworkInterface {
     val IPV4_LOOPBACK_INET_ADDRESS = "127.0.0.1"
     val IPV6_LOOPBACK_INET_ADDRESS = "::1"
 
-    val SERVER_SOCKET_BACKLOG_SIZE = 5 // size of the requests queue for daemon services, so far seems that we don't need any big numbers here
-                                       // but if we'll start getting "connection refused" errors, that could be the first place to try to fix it
+    val SERVER_SOCKET_BACKLOG_SIZE = 10 // size of the requests queue for daemon services, so far seems that we don't need any big numbers here
+                                        // but if we'll start getting "connection refused" errors, that could be the first place to try to fix it
 
     public val serverLoopbackSocketFactory by lazy { ServerLoopbackSocketFactory() }
     public val clientLoopbackSocketFactory by lazy { ClientLoopbackSocketFactory() }
@@ -50,15 +50,19 @@ public object LoopbackNetworkInterface {
         }
     }
 
+    // base socket factories by default don't implement equals properly (see e.g. http://stackoverflow.com/questions/21555710/rmi-and-jmx-socket-factories)
+    // so implementing it in derived classes using the fact that they are singletons
 
-    data class ServerLoopbackSocketFactory : RMIServerSocketFactory, Serializable {
+    class ServerLoopbackSocketFactory : RMIServerSocketFactory, Serializable {
+        override fun equals(other: Any?): Boolean = other === this || super.equals(other)
 
         @Throws(IOException::class)
         override fun createServerSocket(port: Int): ServerSocket = ServerSocket(port, SERVER_SOCKET_BACKLOG_SIZE, InetAddress.getByName(loopbackInetAddressName))
     }
 
 
-    data class ClientLoopbackSocketFactory : RMIClientSocketFactory, Serializable {
+    class ClientLoopbackSocketFactory : RMIClientSocketFactory, Serializable {
+        override fun equals(other: Any?): Boolean = other === this || super.equals(other)
 
         @Throws(IOException::class)
         override fun createSocket(host: String, port: Int): Socket = Socket(InetAddress.getByName(loopbackInetAddressName), port)

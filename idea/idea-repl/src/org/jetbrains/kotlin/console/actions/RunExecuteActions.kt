@@ -40,7 +40,7 @@ public class RunKotlinConsoleAction : AnAction() {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return errorNotification(null, "Project not found")
 
-        KotlinConsoleModuleDialog(project).showIfNeeded(e.dataContext)
+        ConsoleModuleDialog(project).showIfNeeded(e.dataContext)
     }
 }
 
@@ -57,5 +57,5 @@ public class BuildAndRestartConsoleAction(
         private val runner: KotlinConsoleRunner
 ) : AnAction("Build and restart", "Build module '${runner.module.name}' and restart", AllIcons.Actions.Restart) {
 
-    override fun actionPerformed(_: AnActionEvent) = runner.compilerHelper.compileModule()
+    override fun actionPerformed(e: AnActionEvent) = runner.compilerHelper.compileModule()
 }

@@ -23,7 +23,7 @@ package kotlin
  * See [Kotlin language documentation](http://kotlinlang.org/docs/reference/basic-types.html#arrays)
  * for more information on arrays.
  */
-public class Array<reified T> private (): Cloneable {
+public class Array<T> private (): Cloneable {
     /**
      * Returns the array element at the specified [index]. This method can be called using the
      * index operator:
@@ -45,7 +45,7 @@ public class Array<reified T> private (): Cloneable {
     /**
      * Returns the number of elements in the array.
      */
-    public fun size(): Int
+    public val size: Int
 
     /**
      * Creates an iterator for iterating over the elements of the array.

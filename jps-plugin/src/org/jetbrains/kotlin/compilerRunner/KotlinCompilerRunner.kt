@@ -128,14 +128,18 @@ public object KotlinCompilerRunner {
     internal class DaemonConnection(public val daemon: CompileService?)
 
     internal object getDaemonConnection {
-        private var connection: DaemonConnection? = null
+        private @Volatile var connection: DaemonConnection? = null
 
-        operator fun invoke(environment: CompilerEnvironment, messageCollector: MessageCollector): DaemonConnection? {
+        @Synchronized operator fun invoke(environment: CompilerEnvironment, messageCollector: MessageCollector): DaemonConnection? {
             if (connection == null) {
                 val libPath = CompilerRunnerUtil.getLibPath(environment.kotlinPaths, messageCollector)
                 val compilerId = CompilerId.makeCompilerId(File(libPath, "kotlin-compiler.jar"))
                 val daemonOptions = configureDaemonOptions()
                 val daemonJVMOptions = configureDaemonJVMOptions(true)
+                // the property should be set by default for daemon builds to avoid parallel building problems
+                // but it cannot be currently set by default globally, because it seems breaks many tests
+                // TODO: find out how to get rid of the property and make it the default behavior
+                daemonJVMOptions.jvmParams.add("Dkotlin.environment.keepalive")
 
                 val daemonReportMessages = ArrayList<DaemonReportMessage>()
 

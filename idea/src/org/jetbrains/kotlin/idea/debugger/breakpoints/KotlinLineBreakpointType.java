@@ -16,7 +16,6 @@
 
 package org.jetbrains.kotlin.idea.debugger.breakpoints;
 
-import com.intellij.debugger.DebuggerBundle;
 import com.intellij.debugger.SourcePosition;
 import com.intellij.debugger.ui.breakpoints.JavaLineBreakpointType;
 import com.intellij.debugger.ui.breakpoints.LineBreakpoint;
@@ -27,7 +26,7 @@ import com.intellij.psi.PsiElement;
 import com.intellij.psi.util.PsiTreeUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.kotlin.psi.JetFunction;
+import org.jetbrains.kotlin.psi.KtFunction;
 
 public class KotlinLineBreakpointType extends JavaLineBreakpointType {
     public KotlinLineBreakpointType() {
@@ -55,7 +54,7 @@ public class KotlinLineBreakpointType extends JavaLineBreakpointType {
     @Nullable
     public static PsiElement getContainingMethod(@Nullable PsiElement elem) {
         //noinspection unchecked
-        return PsiTreeUtil.getParentOfType(elem, JetFunction.class);
+        return PsiTreeUtil.getParentOfType(elem, KtFunction.class);
     }
 
     public static boolean inTheMethod(@NotNull SourcePosition pos, @NotNull PsiElement method) {
@@ -66,7 +65,7 @@ public class KotlinLineBreakpointType extends JavaLineBreakpointType {
 
     @Override
     public boolean canPutAt(@NotNull VirtualFile file, int line, @NotNull Project project) {
-        return BreakpointsPackage.canPutAt(file, line, project, getClass());
+        return BreakpointTypeUtilsKt.canPutAt(file, line, project, getClass());
     }
 
 

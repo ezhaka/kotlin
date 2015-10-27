@@ -36,64 +36,63 @@ import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers;
 import org.jetbrains.kotlin.idea.util.ShortenReferences;
 import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.resolve.BindingContext;
-import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilPackage;
+import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilKt;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.types.TypeProjection;
 import org.jetbrains.kotlin.types.TypeUtils;
-import org.jetbrains.kotlin.types.checker.JetTypeChecker;
+import org.jetbrains.kotlin.types.checker.KotlinTypeChecker;
 
 import java.util.LinkedList;
 import java.util.List;
 
 import static org.jetbrains.kotlin.idea.project.PlatformKt.getPlatform;
-import static org.jetbrains.kotlin.psi.PsiPackage.JetPsiFactory;
 
-public class ChangeFunctionLiteralReturnTypeFix extends JetIntentionAction<JetFunctionLiteralExpression> {
-    private final JetType type;
-    private final JetTypeReference functionLiteralReturnTypeRef;
+public class ChangeFunctionLiteralReturnTypeFix extends KotlinQuickFixAction<KtFunctionLiteralExpression> {
+    private final KotlinType type;
+    private final KtTypeReference functionLiteralReturnTypeRef;
     private IntentionAction appropriateQuickFix = null;
 
-    public ChangeFunctionLiteralReturnTypeFix(@NotNull JetFunctionLiteralExpression functionLiteralExpression, @NotNull JetType type) {
+    public ChangeFunctionLiteralReturnTypeFix(@NotNull KtFunctionLiteralExpression functionLiteralExpression, @NotNull KotlinType type) {
         super(functionLiteralExpression);
         this.type = type;
         functionLiteralReturnTypeRef = functionLiteralExpression.getFunctionLiteral().getTypeReference();
 
         AnalysisResult analysisResult = ResolutionUtils.analyzeFullyAndGetResult(functionLiteralExpression.getContainingJetFile());
         BindingContext context = analysisResult.getBindingContext();
-        JetType functionLiteralType = context.getType(functionLiteralExpression);
+        KotlinType functionLiteralType = context.getType(functionLiteralExpression);
         assert functionLiteralType != null : "Type of function literal not available in binding context";
 
         KotlinBuiltIns builtIns = analysisResult.getModuleDescriptor().getBuiltIns();
         ClassDescriptor functionClass = builtIns.getFunction(functionLiteralType.getArguments().size() - 1);
-        List<JetType> functionClassTypeParameters = new LinkedList<JetType>();
+        List<KotlinType> functionClassTypeParameters = new LinkedList<KotlinType>();
         for (TypeProjection typeProjection: functionLiteralType.getArguments()) {
             functionClassTypeParameters.add(typeProjection.getType());
         }
         // Replacing return type:
         functionClassTypeParameters.remove(functionClassTypeParameters.size() - 1);
         functionClassTypeParameters.add(type);
-        JetType eventualFunctionLiteralType = TypeUtils.substituteParameters(functionClass, functionClassTypeParameters);
+        KotlinType eventualFunctionLiteralType = TypeUtils.substituteParameters(functionClass, functionClassTypeParameters);
 
-        JetProperty correspondingProperty = PsiTreeUtil.getParentOfType(functionLiteralExpression, JetProperty.class);
+        KtProperty correspondingProperty = PsiTreeUtil.getParentOfType(functionLiteralExpression, KtProperty.class);
         if (correspondingProperty != null && QuickFixUtil.canEvaluateTo(correspondingProperty.getInitializer(), functionLiteralExpression)) {
-            JetTypeReference correspondingPropertyTypeRef = correspondingProperty.getTypeReference();
-            JetType propertyType = context.get(BindingContext.TYPE, correspondingPropertyTypeRef);
-            if (propertyType != null && !JetTypeChecker.DEFAULT.isSubtypeOf(eventualFunctionLiteralType, propertyType)) {
+            KtTypeReference correspondingPropertyTypeRef = correspondingProperty.getTypeReference();
+            KotlinType propertyType = context.get(BindingContext.TYPE, correspondingPropertyTypeRef);
+            if (propertyType != null && !KotlinTypeChecker.DEFAULT.isSubtypeOf(eventualFunctionLiteralType, propertyType)) {
                 appropriateQuickFix = new ChangeVariableTypeFix(correspondingProperty, eventualFunctionLiteralType);
             }
             return;
         }
 
-        ResolvedCall<? extends CallableDescriptor> resolvedCall = CallUtilPackage.getParentResolvedCall(
+        ResolvedCall<? extends CallableDescriptor> resolvedCall = CallUtilKt.getParentResolvedCall(
                 functionLiteralExpression, context, true);
         if (resolvedCall != null) {
-            ValueArgument valueArgument = CallUtilPackage.getValueArgumentForExpression(resolvedCall.getCall(), functionLiteralExpression);
-            JetParameter correspondingParameter = QuickFixUtil.getParameterDeclarationForValueArgument(resolvedCall, valueArgument);
+            ValueArgument valueArgument = CallUtilKt.getValueArgumentForExpression(resolvedCall.getCall(), functionLiteralExpression);
+            KtParameter correspondingParameter = QuickFixUtil.getParameterDeclarationForValueArgument(resolvedCall, valueArgument);
             if (correspondingParameter != null) {
-                JetTypeReference correspondingParameterTypeRef = correspondingParameter.getTypeReference();
-                JetType parameterType = context.get(BindingContext.TYPE, correspondingParameterTypeRef);
-                if (parameterType != null && !JetTypeChecker.DEFAULT.isSubtypeOf(eventualFunctionLiteralType, parameterType)) {
+                KtTypeReference correspondingParameterTypeRef = correspondingParameter.getTypeReference();
+                KotlinType parameterType = context.get(BindingContext.TYPE, correspondingParameterTypeRef);
+                if (parameterType != null && !KotlinTypeChecker.DEFAULT.isSubtypeOf(eventualFunctionLiteralType, parameterType)) {
                     appropriateQuickFix = new ChangeParameterTypeFix(correspondingParameter, eventualFunctionLiteralType);
                 }
                 return;
@@ -101,11 +100,11 @@ public class ChangeFunctionLiteralReturnTypeFix extends JetIntentionAction<JetFu
         }
 
 
-        JetFunction parentFunction = PsiTreeUtil.getParentOfType(functionLiteralExpression, JetFunction.class, true);
+        KtFunction parentFunction = PsiTreeUtil.getParentOfType(functionLiteralExpression, KtFunction.class, true);
         if (parentFunction != null && QuickFixUtil.canFunctionOrGetterReturnExpression(parentFunction, functionLiteralExpression)) {
-            JetTypeReference parentFunctionReturnTypeRef = parentFunction.getTypeReference();
-            JetType parentFunctionReturnType = context.get(BindingContext.TYPE, parentFunctionReturnTypeRef);
-            if (parentFunctionReturnType != null && !JetTypeChecker.DEFAULT.isSubtypeOf(eventualFunctionLiteralType, parentFunctionReturnType)) {
+            KtTypeReference parentFunctionReturnTypeRef = parentFunction.getTypeReference();
+            KotlinType parentFunctionReturnType = context.get(BindingContext.TYPE, parentFunctionReturnTypeRef);
+            if (parentFunctionReturnType != null && !KotlinTypeChecker.DEFAULT.isSubtypeOf(eventualFunctionLiteralType, parentFunctionReturnType)) {
                 appropriateQuickFix = new ChangeFunctionReturnTypeFix(parentFunction, eventualFunctionLiteralType);
             }
         }
@@ -133,10 +132,10 @@ public class ChangeFunctionLiteralReturnTypeFix extends JetIntentionAction<JetFu
     }
 
     @Override
-    public void invoke(@NotNull Project project, Editor editor, JetFile file) throws IncorrectOperationException {
+    public void invoke(@NotNull Project project, Editor editor, KtFile file) throws IncorrectOperationException {
         if (functionLiteralReturnTypeRef != null) {
-            JetTypeReference newTypeRef = JetPsiFactory(file).createType(IdeDescriptorRenderers.SOURCE_CODE.renderType(type));
-            newTypeRef = (JetTypeReference) functionLiteralReturnTypeRef.replace(newTypeRef);
+            KtTypeReference newTypeRef = KtPsiFactoryKt.KtPsiFactory(file).createType(IdeDescriptorRenderers.SOURCE_CODE.renderType(type));
+            newTypeRef = (KtTypeReference) functionLiteralReturnTypeRef.replace(newTypeRef);
             ShortenReferences.DEFAULT.process(newTypeRef);
         }
         if (appropriateQuickFix != null && appropriateQuickFix.isAvailable(project, editor, file)) {
@@ -150,7 +149,8 @@ public class ChangeFunctionLiteralReturnTypeFix extends JetIntentionAction<JetFu
             @Nullable
             @Override
             public IntentionAction createAction(@NotNull Diagnostic diagnostic) {
-                JetFunctionLiteralExpression functionLiteralExpression = QuickFixUtil.getParentElementOfType(diagnostic, JetFunctionLiteralExpression.class);
+                KtFunctionLiteralExpression
+                        functionLiteralExpression = QuickFixUtil.getParentElementOfType(diagnostic, KtFunctionLiteralExpression.class);
                 if (functionLiteralExpression == null) return null;
                 return new ChangeFunctionLiteralReturnTypeFix(functionLiteralExpression, getPlatform(functionLiteralExpression).getBuiltIns().getUnitType());
             }

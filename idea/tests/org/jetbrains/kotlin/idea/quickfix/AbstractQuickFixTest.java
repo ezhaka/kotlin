@@ -41,11 +41,11 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.idea.KotlinLightQuickFixTestCase;
 import org.jetbrains.kotlin.idea.js.KotlinJavaScriptLibraryManager;
-import org.jetbrains.kotlin.idea.quickfix.utils.UtilsPackage;
+import org.jetbrains.kotlin.idea.quickfix.utils.QuickfixTestUtilsKt;
 import org.jetbrains.kotlin.idea.test.ConfigLibraryUtil;
 import org.jetbrains.kotlin.idea.test.DirectiveBasedActionUtils;
 import org.jetbrains.kotlin.idea.test.PluginTestCaseBase;
-import org.jetbrains.kotlin.psi.JetFile;
+import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.test.InTextDirectivesUtils;
 import org.jetbrains.kotlin.test.TestMetadata;
 import org.junit.Assert;
@@ -176,7 +176,7 @@ public abstract class AbstractQuickFixTest extends KotlinLightQuickFixTestCase {
     }
 
     private void enableInspections(String beforeFileName) throws IOException, ClassNotFoundException {
-        File inspectionFile = UtilsPackage.findInspectionFile(new File(beforeFileName).getParentFile());
+        File inspectionFile = QuickfixTestUtilsKt.findInspectionFile(new File(beforeFileName).getParentFile());
         if (inspectionFile != null) {
             String className = FileUtil.loadFile(inspectionFile).trim();
             Class<?> inspectionClass = Class.forName(className);
@@ -206,13 +206,13 @@ public abstract class AbstractQuickFixTest extends KotlinLightQuickFixTestCase {
             }
             else {
                 // Action shouldn't be found. Check that other actions are expected and thus tested action isn't there under another name.
-                DirectiveBasedActionUtils.INSTANCE$.checkAvailableActionsAreExpected((JetFile) getFile(), actions);
+                DirectiveBasedActionUtils.INSTANCE$.checkAvailableActionsAreExpected((KtFile) getFile(), actions);
             }
         }
     }
 
     public static void checkForUnexpectedErrors() {
-        DirectiveBasedActionUtils.INSTANCE$.checkForUnexpectedErrors((JetFile) getFile());
+        DirectiveBasedActionUtils.INSTANCE$.checkForUnexpectedErrors((KtFile) getFile());
     }
 
     @Override

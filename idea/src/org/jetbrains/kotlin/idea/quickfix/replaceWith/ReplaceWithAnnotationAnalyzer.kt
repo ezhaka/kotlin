@@ -24,7 +24,8 @@ import org.jetbrains.kotlin.idea.core.copied
 import org.jetbrains.kotlin.idea.core.replaced
 import org.jetbrains.kotlin.idea.imports.importableFqName
 import org.jetbrains.kotlin.idea.intentions.InsertExplicitTypeArgumentsIntention
-import org.jetbrains.kotlin.idea.references.JetSimpleNameReference
+import org.jetbrains.kotlin.idea.references.KtSimpleNameReference
+import org.jetbrains.kotlin.idea.references.canBeResolvedViaImport
 import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.idea.resolve.ResolutionFacade
 import org.jetbrains.kotlin.name.FqName
@@ -44,12 +45,12 @@ import org.jetbrains.kotlin.resolve.lazy.FileScopeProvider
 import org.jetbrains.kotlin.resolve.lazy.descriptors.ClassResolutionScopesSupport
 import org.jetbrains.kotlin.resolve.scopes.*
 import org.jetbrains.kotlin.resolve.scopes.receivers.ThisReceiver
-import org.jetbrains.kotlin.resolve.scopes.utils.asJetScope
-import org.jetbrains.kotlin.resolve.scopes.utils.asLexicalScope
+import org.jetbrains.kotlin.resolve.scopes.utils.chainImportingScopes
+import org.jetbrains.kotlin.resolve.scopes.utils.memberScopeAsImportingScope
 import org.jetbrains.kotlin.storage.LockBasedStorageManager
 import org.jetbrains.kotlin.types.TypeUtils
 import org.jetbrains.kotlin.types.expressions.ExpressionTypingServices
-import org.jetbrains.kotlin.utils.addIfNotNull
+import org.jetbrains.kotlin.types.expressions.PreliminaryDeclarationVisitor
 import java.util.*
 
 data class ReplaceWith(val pattern: String, val imports: List<String>)
@@ -59,7 +60,7 @@ object ReplaceWithAnnotationAnalyzer {
     public val TYPE_PARAMETER_USAGE_KEY: Key<Name> = Key("TYPE_PARAMETER_USAGE")
 
     public data class ReplacementExpression(
-            val expression: JetExpression,
+            val expression: KtExpression,
             val fqNamesToImport: Collection<FqName>
     ) {
         fun copy() = ReplacementExpression(expression.copied(), fqNamesToImport)
@@ -82,7 +83,7 @@ object ReplaceWithAnnotationAnalyzer {
             symbolDescriptor: CallableDescriptor,
             resolutionFacade: ResolutionFacade
     ): ReplacementExpression? {
-        val psiFactory = JetPsiFactory(resolutionFacade.project)
+        val psiFactory = KtPsiFactory(resolutionFacade.project)
         var expression = try {
             psiFactory.createExpression(annotation.pattern)
         }
@@ -98,8 +99,8 @@ object ReplaceWithAnnotationAnalyzer {
 
         var bindingContext = analyzeInContext(expression, module, scope, resolutionFacade)
 
-        val typeArgsToAdd = ArrayList<Pair<JetCallExpression, JetTypeArgumentList>>()
-        expression.forEachDescendantOfType<JetCallExpression> {
+        val typeArgsToAdd = ArrayList<Pair<KtCallExpression, KtTypeArgumentList>>()
+        expression.forEachDescendantOfType<KtCallExpression> {
             if (InsertExplicitTypeArgumentsIntention.isApplicableTo(it, bindingContext)) {
                 typeArgsToAdd.add(it to InsertExplicitTypeArgumentsIntention.createTypeArguments(it, bindingContext)!!)
             }
@@ -114,14 +115,15 @@ object ReplaceWithAnnotationAnalyzer {
             bindingContext = analyzeInContext(expression, module, scope, resolutionFacade)
         }
 
-        val receiversToAdd = ArrayList<Pair<JetExpression, JetExpression>>()
+        val receiversToAdd = ArrayList<Pair<KtExpression, KtExpression>>()
         val importFqNames = importFqNames(annotation).toMutableSet()
 
-        expression.forEachDescendantOfType<JetSimpleNameExpression> { expression ->
+        expression.forEachDescendantOfType<KtSimpleNameExpression> { expression ->
             val target = bindingContext[BindingContext.REFERENCE_TARGET, expression] ?: return@forEachDescendantOfType
 
-            if (target.isExtension || expression.getReceiverExpression() == null) {
-                importFqNames.addIfNotNull(target.importableFqName)
+            //TODO: other types of references ('[]' etc)
+            if (expression.mainReference.canBeResolvedViaImport(target)) {
+                importFqNames.add(target.importableFqName!!)
             }
 
             if (expression.getReceiverExpression() == null) {
@@ -139,7 +141,7 @@ object ReplaceWithAnnotationAnalyzer {
                     else
                         resolvedCall.dispatchReceiver
                     if (receiver is ThisReceiver) {
-                        val receiverExpression = receiver.asExpression(scope.asJetScope(), psiFactory)
+                        val receiverExpression = receiver.asExpression(scope, psiFactory)
                         if (receiverExpression != null) {
                             receiversToAdd.add(expression to receiverExpression)
                         }
@@ -150,7 +152,7 @@ object ReplaceWithAnnotationAnalyzer {
 
         // add receivers in reverse order because arguments of a call were processed after the callee's name
         for ((expr, receiverExpression) in receiversToAdd.reversed()) {
-            val expressionToReplace = expr.parent as? JetCallExpression ?: expr
+            val expressionToReplace = expr.parent as? KtCallExpression ?: expr
             val newExpr = expressionToReplace.replaced(psiFactory.createExpressionByPattern("$0.$1", receiverExpression, expressionToReplace))
             if (expressionToReplace == expression) {
                 expression = newExpr
@@ -164,15 +166,15 @@ object ReplaceWithAnnotationAnalyzer {
             annotation: ReplaceWith,
             symbolDescriptor: ClassDescriptor,
             resolutionFacade: ResolutionFacade
-    ): JetUserType? {
-        val psiFactory = JetPsiFactory(resolutionFacade.project)
+    ): KtUserType? {
+        val psiFactory = KtPsiFactory(resolutionFacade.project)
         val typeReference = try {
             psiFactory.createType(annotation.pattern)
         }
         catch(e: Exception) {
             return null
         }
-        if (typeReference.typeElement !is JetUserType) return null
+        if (typeReference.typeElement !is KtUserType) return null
 
         val module = symbolDescriptor.module
 
@@ -183,10 +185,10 @@ object ReplaceWithAnnotationAnalyzer {
         val bindingTrace = BindingTraceContext()
         typeResolver.resolvePossiblyBareType(TypeResolutionContext(scope, bindingTrace, false, true), typeReference)
 
-        val typesToQualify = ArrayList<Pair<JetNameReferenceExpression, FqName>>()
+        val typesToQualify = ArrayList<Pair<KtNameReferenceExpression, FqName>>()
 
-        typeReference.forEachDescendantOfType<JetNameReferenceExpression> { expression ->
-            val parentType = expression.parent as? JetUserType ?: return@forEachDescendantOfType
+        typeReference.forEachDescendantOfType<KtNameReferenceExpression> { expression ->
+            val parentType = expression.parent as? KtUserType ?: return@forEachDescendantOfType
             if (parentType.qualifier != null) return@forEachDescendantOfType
             val targetClass = bindingTrace.bindingContext[BindingContext.REFERENCE_TARGET, expression] as? ClassDescriptor ?: return@forEachDescendantOfType
             val fqName = targetClass.fqNameUnsafe
@@ -196,10 +198,10 @@ object ReplaceWithAnnotationAnalyzer {
         }
 
         for ((nameExpression, fqName) in typesToQualify) {
-            nameExpression.mainReference.bindToFqName(fqName, JetSimpleNameReference.ShorteningMode.NO_SHORTENING)
+            nameExpression.mainReference.bindToFqName(fqName, KtSimpleNameReference.ShorteningMode.NO_SHORTENING)
         }
 
-        return typeReference.typeElement as JetUserType
+        return typeReference.typeElement as KtUserType
     }
 
     private fun buildExplicitImportsScope(annotation: ReplaceWith, resolutionFacade: ResolutionFacade, module: ModuleDescriptor): ExplicitImportsScope {
@@ -217,7 +219,7 @@ object ReplaceWithAnnotationAnalyzer {
     }
 
     private fun analyzeInContext(
-            expression: JetExpression,
+            expression: KtExpression,
             module: ModuleDescriptor,
             scope: LexicalScope,
             resolutionFacade: ResolutionFacade
@@ -230,11 +232,12 @@ object ReplaceWithAnnotationAnalyzer {
         else {
             resolutionFacade.getFrontendService(module, ExpressionTypingServices::class.java)
         }
+        PreliminaryDeclarationVisitor.createForExpression(expression, traceContext)
         frontendService.getTypeInfo(scope, expression, TypeUtils.NO_EXPECTED_TYPE, DataFlowInfo.EMPTY, traceContext, false)
         return traceContext.bindingContext
     }
 
-    private fun getResolutionScope(descriptor: DeclarationDescriptor, ownerDescriptor: DeclarationDescriptor, additionalScopes: Collection<JetScope>): LexicalScope? {
+    private fun getResolutionScope(descriptor: DeclarationDescriptor, ownerDescriptor: DeclarationDescriptor, additionalScopes: Collection<ImportingScope>): LexicalScope? {
         return when (descriptor) {
             is PackageFragmentDescriptor -> {
                 val moduleDescriptor = descriptor.containingDeclaration
@@ -242,7 +245,7 @@ object ReplaceWithAnnotationAnalyzer {
             }
 
             is PackageViewDescriptor ->
-                ChainedScope(ownerDescriptor, "ReplaceWith resolution scope", descriptor.memberScope, *additionalScopes.toTypedArray()).asLexicalScope()
+                chainImportingScopes(listOf(descriptor.memberScope.memberScopeAsImportingScope()) + additionalScopes)
 
             is ClassDescriptor -> {
                 val outerScope = getResolutionScope(descriptor.containingDeclaration, ownerDescriptor, additionalScopes) ?: return null

@@ -34,7 +34,7 @@ import org.jetbrains.kotlin.descriptors.CallableDescriptor
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.descriptors.PackageFragmentDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
-import org.jetbrains.kotlin.idea.caches.resolve.getFileTopLevelScope
+import org.jetbrains.kotlin.idea.util.getFileResolutionScope
 import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
 import org.jetbrains.kotlin.idea.caches.resolve.resolveImportReference
 import org.jetbrains.kotlin.idea.codeInsight.shorten.performDelayedShortening
@@ -42,10 +42,7 @@ import org.jetbrains.kotlin.idea.conversion.copy.end
 import org.jetbrains.kotlin.idea.conversion.copy.range
 import org.jetbrains.kotlin.idea.conversion.copy.start
 import org.jetbrains.kotlin.idea.imports.importableFqName
-import org.jetbrains.kotlin.idea.references.JetMultiReference
-import org.jetbrains.kotlin.idea.references.JetReference
-import org.jetbrains.kotlin.idea.references.JetSimpleNameReference
-import org.jetbrains.kotlin.idea.references.mainReference
+import org.jetbrains.kotlin.idea.references.*
 import org.jetbrains.kotlin.idea.util.ImportInsertHelper
 import org.jetbrains.kotlin.idea.util.application.runWriteAction
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
@@ -53,11 +50,11 @@ import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.elementsInRange
 import org.jetbrains.kotlin.psi.psiUtil.forEachDescendantOfType
-import org.jetbrains.kotlin.psi.psiUtil.getReceiverExpression
 import org.jetbrains.kotlin.psi.psiUtil.parentsWithSelf
 import org.jetbrains.kotlin.resolve.DescriptorUtils
-import org.jetbrains.kotlin.resolve.descriptorUtil.isExtension
-import org.jetbrains.kotlin.resolve.scopes.JetScope
+import org.jetbrains.kotlin.resolve.scopes.LexicalScope
+import org.jetbrains.kotlin.resolve.scopes.utils.findFunction
+import org.jetbrains.kotlin.resolve.scopes.utils.findVariable
 import org.jetbrains.kotlin.types.ErrorUtils
 import org.jetbrains.kotlin.utils.addIfNotNull
 import org.jetbrains.kotlin.utils.addToStdlib.firstIsInstanceOrNull
@@ -70,9 +67,9 @@ import java.util.*
 public class KotlinCopyPasteReferenceProcessor() : CopyPastePostProcessor<KotlinReferenceTransferableData>() {
     private val LOG = Logger.getInstance(javaClass<KotlinCopyPasteReferenceProcessor>())
 
-    private val IGNORE_REFERENCES_INSIDE: Array<Class<out JetElement>> = arrayOf(
-            javaClass<JetImportList>(),
-            javaClass<JetPackageDirective>()
+    private val IGNORE_REFERENCES_INSIDE: Array<Class<out KtElement>> = arrayOf(
+            javaClass<KtImportList>(),
+            javaClass<KtPackageDirective>()
     )
 
     override fun extractTransferableData(content: Transferable): List<KotlinReferenceTransferableData> {
@@ -98,7 +95,7 @@ public class KotlinCopyPasteReferenceProcessor() : CopyPastePostProcessor<Kotlin
             startOffsets: IntArray,
             endOffsets: IntArray
     ): List<KotlinReferenceTransferableData> {
-        if (file !is JetFile || DumbService.getInstance(file.getProject()).isDumb()) return listOf()
+        if (file !is KtFile || DumbService.getInstance(file.getProject()).isDumb()) return listOf()
 
         val collectedData = try {
             collectReferenceData(file, startOffsets, endOffsets)
@@ -120,7 +117,7 @@ public class KotlinCopyPasteReferenceProcessor() : CopyPastePostProcessor<Kotlin
     }
 
     public fun collectReferenceData(
-            file: JetFile,
+            file: KtFile,
             startOffsets: IntArray,
             endOffsets: IntArray
     ): List<KotlinReferenceData> {
@@ -135,32 +132,28 @@ public class KotlinCopyPasteReferenceProcessor() : CopyPastePostProcessor<Kotlin
 
     private fun MutableCollection<KotlinReferenceData>.addReferenceDataInsideElement(
             element: PsiElement,
-            file: JetFile,
+            file: KtFile,
             startOffset: Int,
             startOffsets: IntArray,
             endOffsets: IntArray
     ) {
         if (PsiTreeUtil.getNonStrictParentOfType(element, *IGNORE_REFERENCES_INSIDE) != null) return
 
-        element.forEachDescendantOfType<JetElement>(canGoInside = { it.javaClass !in IGNORE_REFERENCES_INSIDE }) { element ->
+        element.forEachDescendantOfType<KtElement>(canGoInside = { it.javaClass !in IGNORE_REFERENCES_INSIDE }) { element ->
             val reference = element.mainReference ?: return@forEachDescendantOfType
 
             val descriptors = reference.resolveToDescriptors(element.analyze()) //TODO: we could use partial body resolve for all references together
             //check whether this reference is unambiguous
-            if (reference !is JetMultiReference<*> && descriptors.size() > 1) return@forEachDescendantOfType
+            if (reference !is KtMultiReference<*> && descriptors.size() > 1) return@forEachDescendantOfType
 
             for (descriptor in descriptors) {
                 val declarations = DescriptorToSourceUtilsIde.getAllDeclarations(file.getProject(), descriptor)
                 val declaration = declarations.singleOrNull()
                 if (declaration != null && declaration.isInCopiedArea(file, startOffsets, endOffsets)) continue
 
-                if (!descriptor.isExtension) {
-                    if (element !is JetNameReferenceExpression) continue
-                    if (element.getIdentifier() == null) continue // skip 'this' etc
-                    if (element.getReceiverExpression() != null) continue
-                }
+                if (!reference.canBeResolvedViaImport(descriptor)) continue
 
-                val fqName = descriptor.importableFqName ?: continue
+                val fqName = descriptor.importableFqName!!
 
                 val kind = KotlinReferenceData.Kind.fromDescriptor(descriptor) ?: continue
                 add(KotlinReferenceData(element.range.start - startOffset, element.range.end - startOffset, fqName.asString(), kind))
@@ -169,7 +162,7 @@ public class KotlinCopyPasteReferenceProcessor() : CopyPastePostProcessor<Kotlin
     }
 
     private data class ReferenceToRestoreData(
-            val reference: JetReference,
+            val reference: KtReference,
             val refData: KotlinReferenceData
     )
 
@@ -185,14 +178,14 @@ public class KotlinCopyPasteReferenceProcessor() : CopyPastePostProcessor<Kotlin
 
         val document = editor.getDocument()
         val file = PsiDocumentManager.getInstance(project).getPsiFile(document)
-        if (file !is JetFile) return
+        if (file !is KtFile) return
 
         val referenceData = values.single().data
 
         processReferenceData(project, file, bounds.getStartOffset(), referenceData)
     }
 
-    public fun processReferenceData(project: Project, file: JetFile, blockStart: Int, referenceData: Array<KotlinReferenceData>) {
+    public fun processReferenceData(project: Project, file: KtFile, blockStart: Int, referenceData: Array<KotlinReferenceData>) {
         PsiDocumentManager.getInstance(project).commitAllDocuments()
 
         val referencesPossibleToRestore = findReferencesToRestore(file, blockStart, referenceData)
@@ -206,9 +199,9 @@ public class KotlinCopyPasteReferenceProcessor() : CopyPastePostProcessor<Kotlin
     }
 
     private fun findReferencesToRestore(file: PsiFile, blockStart: Int, referenceData: Array<out KotlinReferenceData>): List<ReferenceToRestoreData> {
-        if (file !is JetFile) return listOf()
+        if (file !is KtFile) return listOf()
 
-        val fileResolutionScope = file.getResolutionFacade().getFileTopLevelScope(file)
+        val fileResolutionScope = file.getResolutionFacade().getFileResolutionScope(file)
         return referenceData.map {
             val reference = findReference(it, file, blockStart)
             if (reference != null)
@@ -218,14 +211,14 @@ public class KotlinCopyPasteReferenceProcessor() : CopyPastePostProcessor<Kotlin
         }.filterNotNull()
     }
 
-    private fun findReference(data: KotlinReferenceData, file: JetFile, blockStart: Int): JetReference? {
+    private fun findReference(data: KotlinReferenceData, file: KtFile, blockStart: Int): KtReference? {
         val startOffset = data.startOffset + blockStart
         val endOffset = data.endOffset + blockStart
         val element = file.findElementAt(startOffset) ?: return null
         val desiredRange = TextRange(startOffset, endOffset)
         for (current in element.parentsWithSelf) {
             val range = current.range
-            if (current is JetElement && range == desiredRange) {
+            if (current is KtElement && range == desiredRange) {
                 current.mainReference?.let { return it }
             }
             if (range !in desiredRange) return null
@@ -233,16 +226,19 @@ public class KotlinCopyPasteReferenceProcessor() : CopyPastePostProcessor<Kotlin
         return null
     }
 
-    private fun createReferenceToRestoreData(reference: JetReference, refData: KotlinReferenceData, file: JetFile, fileResolutionScope: JetScope): ReferenceToRestoreData? {
+    private fun createReferenceToRestoreData(reference: KtReference, refData: KotlinReferenceData, file: KtFile, fileResolutionScope: LexicalScope): ReferenceToRestoreData? {
         val originalFqName = FqName(refData.fqName)
+        val name = originalFqName.shortName()
 
         if (refData.kind == KotlinReferenceData.Kind.EXTENSION_FUNCTION) {
-            val functions = fileResolutionScope.getFunctions(originalFqName.shortName(), NoLookupLocation.FROM_IDE)
-            if (functions.any { it.importableFqName == originalFqName }) return null // already imported
+            if (fileResolutionScope.findFunction(name, NoLookupLocation.FROM_IDE) { it.importableFqName == originalFqName } != null) {
+                return null // already imported
+            }
         }
         else if (refData.kind == KotlinReferenceData.Kind.EXTENSION_PROPERTY) {
-            val properties = fileResolutionScope.getProperties(originalFqName.shortName(), NoLookupLocation.FROM_IDE)
-            if (properties.any { it.importableFqName == originalFqName }) return null // already imported
+            if (fileResolutionScope.findVariable(name, NoLookupLocation.FROM_IDE) { it.importableFqName == originalFqName } != null) {
+                return null // already imported
+            }
         }
 
         val referencedDescriptors = try {
@@ -267,12 +263,12 @@ public class KotlinCopyPasteReferenceProcessor() : CopyPastePostProcessor<Kotlin
         return ReferenceToRestoreData(reference, refData)
     }
 
-    private fun restoreReferences(referencesToRestore: Collection<ReferenceToRestoreData>, file: JetFile) {
+    private fun restoreReferences(referencesToRestore: Collection<ReferenceToRestoreData>, file: KtFile) {
         val importHelper = ImportInsertHelper.getInstance(file.getProject())
         val smartPointerManager = SmartPointerManager.getInstance(file.getProject())
 
         data class BindingRequest(
-                val pointer: SmartPsiElementPointer<JetSimpleNameExpression>,
+                val pointer: SmartPsiElementPointer<KtSimpleNameExpression>,
                 val fqName: FqName
         )
 
@@ -281,7 +277,7 @@ public class KotlinCopyPasteReferenceProcessor() : CopyPastePostProcessor<Kotlin
         for ((reference, refData) in referencesToRestore) {
             val fqName = FqName(refData.fqName)
 
-            if (!refData.kind.isExtension() && reference is JetSimpleNameReference) {
+            if (!refData.kind.isExtension() && reference is KtSimpleNameReference) {
                 val pointer = smartPointerManager.createSmartPsiElementPointer(reference.getElement(), file)
                 bindingRequests.add(BindingRequest(pointer, fqName))
             }
@@ -296,7 +292,7 @@ public class KotlinCopyPasteReferenceProcessor() : CopyPastePostProcessor<Kotlin
         }
         for ((pointer, fqName) in bindingRequests) {
             val reference = pointer.getElement()!!.mainReference
-            reference.bindToFqName(fqName, JetSimpleNameReference.ShorteningMode.DELAYED_SHORTENING)
+            reference.bindToFqName(fqName, KtSimpleNameReference.ShorteningMode.DELAYED_SHORTENING)
         }
         performDelayedShortening(file.getProject())
     }
@@ -304,14 +300,14 @@ public class KotlinCopyPasteReferenceProcessor() : CopyPastePostProcessor<Kotlin
     private fun KotlinReferenceData.Kind.isExtension()
             = this == KotlinReferenceData.Kind.EXTENSION_FUNCTION || this == KotlinReferenceData.Kind.EXTENSION_PROPERTY
 
-    private fun findImportableDescriptors(fqName: FqName, file: JetFile): Collection<DeclarationDescriptor> {
+    private fun findImportableDescriptors(fqName: FqName, file: KtFile): Collection<DeclarationDescriptor> {
         return file.resolveImportReference(fqName).filterNot {
             /*TODO: temporary hack until we don't have ability to insert qualified reference into root package*/
             DescriptorUtils.getParentOfType(it, javaClass<PackageFragmentDescriptor>())?.fqName?.isRoot() ?: false
         }
     }
 
-    private fun findCallableToImport(fqName: FqName, file: JetFile): CallableDescriptor?
+    private fun findCallableToImport(fqName: FqName, file: KtFile): CallableDescriptor?
             = findImportableDescriptors(fqName, file).firstIsInstanceOrNull<CallableDescriptor>()
 
     private fun showRestoreReferencesDialog(project: Project, referencesToRestore: List<ReferenceToRestoreData>): Collection<ReferenceToRestoreData> {
@@ -338,7 +334,7 @@ public class KotlinCopyPasteReferenceProcessor() : CopyPastePostProcessor<Kotlin
         return startOffsets.indices.map { TextRange(startOffsets[it], endOffsets[it]) }
     }
 
-    private fun PsiElement.isInCopiedArea(fileCopiedFrom: JetFile, startOffsets: IntArray, endOffsets: IntArray): Boolean {
+    private fun PsiElement.isInCopiedArea(fileCopiedFrom: KtFile, startOffsets: IntArray, endOffsets: IntArray): Boolean {
         if (getContainingFile() != fileCopiedFrom) return false
         return toTextRanges(startOffsets, endOffsets).any { this.range in it }
     }

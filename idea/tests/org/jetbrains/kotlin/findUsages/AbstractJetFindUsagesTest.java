@@ -34,7 +34,6 @@ import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.openapi.util.io.FileUtilRt;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.*;
-import com.intellij.psi.PsiPackage;
 import com.intellij.psi.search.GlobalSearchScope;
 import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.testFramework.LightProjectDescriptor;
@@ -53,6 +52,7 @@ import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.idea.findUsages.KotlinClassFindUsagesOptions;
+import org.jetbrains.kotlin.idea.findUsages.KotlinFindUsagesHandlerFactory;
 import org.jetbrains.kotlin.idea.findUsages.KotlinFunctionFindUsagesOptions;
 import org.jetbrains.kotlin.idea.findUsages.KotlinPropertyFindUsagesOptions;
 import org.jetbrains.kotlin.idea.test.JetLightCodeInsightFixtureTestCase;
@@ -250,13 +250,13 @@ public abstract class AbstractJetFindUsagesTest extends JetLightCodeInsightFixtu
 
         @Nullable
         public static OptionsParser getParserByPsiElementClass(@NotNull Class<? extends PsiElement> klass) {
-            if (klass == JetNamedFunction.class) {
+            if (klass == KtNamedFunction.class) {
                 return FUNCTION;
             }
-            if (klass == JetProperty.class || klass == JetParameter.class) {
+            if (klass == KtProperty.class || klass == KtParameter.class) {
                 return PROPERTY;
             }
-            if (klass == JetClass.class) {
+            if (klass == KtClass.class) {
                 return CLASS;
             }
             if (klass == PsiMethod.class) {
@@ -271,7 +271,7 @@ public abstract class AbstractJetFindUsagesTest extends JetLightCodeInsightFixtu
             if (klass == PsiPackage.class) {
                 return JAVA_PACKAGE;
             }
-            if (klass == JetTypeParameter.class) {
+            if (klass == KtTypeParameter.class) {
                 return DEFAULT;
             }
 
@@ -376,7 +376,9 @@ public abstract class AbstractJetFindUsagesTest extends JetLightCodeInsightFixtu
             @NotNull T caretElement,
             @Nullable FindUsagesOptions options
     ) throws ClassNotFoundException, InstantiationException, IllegalAccessException {
-        Collection<UsageInfo> usageInfos = findUsages(caretElement, options);
+        boolean highlightingMode = InTextDirectivesUtils.isDirectiveDefined(mainFileText, "// HIGHLIGHTING");
+
+        Collection<UsageInfo> usageInfos = findUsages(caretElement, options, highlightingMode);
 
         Collection<UsageFilteringRule> filteringRules = instantiateClasses(mainFileText, "// FILTERING_RULES: ");
         final Collection<UsageGroupingRule> groupingRules = instantiateClasses(mainFileText, "// GROUPING_RULES: ");
@@ -431,10 +433,23 @@ public abstract class AbstractJetFindUsagesTest extends JetLightCodeInsightFixtu
         JetTestUtils.assertEqualsToFile(new File(rootPath, prefix + "results.txt"), StringUtil.join(finalUsages, "\n"));
     }
 
-    protected Collection<UsageInfo> findUsages(@NotNull PsiElement targetElement, @Nullable FindUsagesOptions options) {
+    protected Collection<UsageInfo> findUsages(
+            @NotNull PsiElement targetElement,
+            @Nullable FindUsagesOptions options,
+            boolean highlightingMode
+    ) {
         Project project = getProject();
-        FindUsagesHandler handler =
-                ((FindManagerImpl) FindManager.getInstance(project)).getFindUsagesManager().getFindUsagesHandler(targetElement, false);
+
+        FindUsagesHandler handler;
+        if (targetElement instanceof PsiMember) {
+            handler = new JavaFindUsagesHandler(targetElement, new JavaFindUsagesHandlerFactory(project));
+        }
+        else if (targetElement instanceof KtDeclaration) {
+            handler = new KotlinFindUsagesHandlerFactory(project).createFindUsagesHandlerNoQuestions(targetElement);
+        }
+        else {
+            handler = ((FindManagerImpl) FindManager.getInstance(project)).getFindUsagesManager().getFindUsagesHandler(targetElement, false);
+        }
         assert handler != null : "Cannot find handler for: " + targetElement;
 
         if (options == null) {
@@ -447,7 +462,14 @@ public abstract class AbstractJetFindUsagesTest extends JetLightCodeInsightFixtu
         PsiElement[] psiElements = ArrayUtil.mergeArrays(handler.getPrimaryElements(), handler.getSecondaryElements());
 
         for (PsiElement psiElement : psiElements) {
-            handler.processElementUsages(psiElement, processor, options);
+            if (highlightingMode) {
+                for (PsiReference reference : handler.findReferencesToHighlight(psiElement, options.searchScope)) {
+                    processor.process(new UsageInfo(reference));
+                }
+            }
+            else {
+                handler.processElementUsages(psiElement, processor, options);
+            }
         }
 
         return processor.getResults();

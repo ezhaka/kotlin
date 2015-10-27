@@ -23,24 +23,22 @@ import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.idea.JetBundle;
-import org.jetbrains.kotlin.idea.util.ShortenReferences;
 import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers;
+import org.jetbrains.kotlin.idea.util.ShortenReferences;
 import org.jetbrains.kotlin.name.FqName;
 import org.jetbrains.kotlin.psi.*;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 
-import static org.jetbrains.kotlin.psi.PsiPackage.JetPsiFactory;
-
-public class ChangeParameterTypeFix extends JetIntentionAction<JetParameter> {
-    private final JetType type;
+public class ChangeParameterTypeFix extends KotlinQuickFixAction<KtParameter> {
+    private final KotlinType type;
     private final String containingDeclarationName;
     private final boolean isPrimaryConstructorParameter;
 
-    public ChangeParameterTypeFix(@NotNull JetParameter element, @NotNull JetType type) {
+    public ChangeParameterTypeFix(@NotNull KtParameter element, @NotNull KotlinType type) {
         super(element);
         this.type = type;
-        JetNamedDeclaration declaration = PsiTreeUtil.getParentOfType(element, JetNamedDeclaration.class);
-        isPrimaryConstructorParameter = declaration instanceof JetPrimaryConstructor;
+        KtNamedDeclaration declaration = PsiTreeUtil.getParentOfType(element, KtNamedDeclaration.class);
+        isPrimaryConstructorParameter = declaration instanceof KtPrimaryConstructor;
         FqName declarationFQName = declaration == null ? null : declaration.getFqName();
         containingDeclarationName = declarationFQName == null ? declaration.getName() : declarationFQName.asString();
     }
@@ -55,8 +53,8 @@ public class ChangeParameterTypeFix extends JetIntentionAction<JetParameter> {
     public String getText() {
         String renderedType = IdeDescriptorRenderers.SOURCE_CODE_SHORT_NAMES_IN_TYPES.renderType(type);
         return isPrimaryConstructorParameter ?
-            JetBundle.message("change.primary.constructor.parameter.type", element.getName(), containingDeclarationName, renderedType) :
-            JetBundle.message("change.function.parameter.type", element.getName(), containingDeclarationName, renderedType);
+            JetBundle.message("change.primary.constructor.parameter.type", getElement().getName(), containingDeclarationName, renderedType) :
+            JetBundle.message("change.function.parameter.type", getElement().getName(), containingDeclarationName, renderedType);
     }
 
     @NotNull
@@ -66,9 +64,9 @@ public class ChangeParameterTypeFix extends JetIntentionAction<JetParameter> {
     }
 
     @Override
-    public void invoke(@NotNull Project project, Editor editor, JetFile file) throws IncorrectOperationException {
-        JetTypeReference newTypeRef = JetPsiFactory(file).createType(IdeDescriptorRenderers.SOURCE_CODE.renderType(type));
-        newTypeRef = element.setTypeReference(newTypeRef);
+    public void invoke(@NotNull Project project, Editor editor, KtFile file) throws IncorrectOperationException {
+        KtTypeReference newTypeRef = KtPsiFactoryKt.KtPsiFactory(file).createType(IdeDescriptorRenderers.SOURCE_CODE.renderType(type));
+        newTypeRef = getElement().setTypeReference(newTypeRef);
         assert newTypeRef != null;
         ShortenReferences.DEFAULT.process(newTypeRef);
     }

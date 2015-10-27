@@ -31,18 +31,21 @@ public class LexicalChainedScope(
         override val isOwnerDescriptorAccessibleByLabel: Boolean,
         override val implicitReceiver: ReceiverParameterDescriptor?,
         private val debugName: String,
-        vararg memberScopes: JetScope // todo JetScope -> MemberScope
+        vararg memberScopes: KtScope, // todo JetScope -> MemberScope
+        @Deprecated("This value is temporary hack for resolve -- don't use it!")
+        val isStaticScope: Boolean = false
 ): LexicalScope {
     override val parent = parent.takeSnapshot()
     private val scopeChain = memberScopes.clone()
 
-    override fun getDeclaredDescriptors() = getFromAllScopes(scopeChain) { it.getAllDescriptors() }
+    override fun getContributedDescriptors(kindFilter: DescriptorKindFilter, nameFilter: (Name) -> Boolean)
+            = getFromAllScopes(scopeChain) { it.getAllDescriptors() }
 
-    override fun getDeclaredClassifier(name: Name, location: LookupLocation) = getFirstMatch(scopeChain) { it.getClassifier(name, location) }
+    override fun getContributedClassifier(name: Name, location: LookupLocation) = getFirstMatch(scopeChain) { it.getClassifier(name, location) }
 
-    override fun getDeclaredVariables(name: Name, location: LookupLocation) = getFromAllScopes(scopeChain) { it.getProperties(name, location) }
+    override fun getContributedVariables(name: Name, location: LookupLocation) = getFromAllScopes(scopeChain) { it.getProperties(name, location) }
 
-    override fun getDeclaredFunctions(name: Name, location: LookupLocation) = getFromAllScopes(scopeChain) { it.getFunctions(name, location) }
+    override fun getContributedFunctions(name: Name, location: LookupLocation) = getFromAllScopes(scopeChain) { it.getFunctions(name, location) }
 
     override fun toString(): String = debugName
 

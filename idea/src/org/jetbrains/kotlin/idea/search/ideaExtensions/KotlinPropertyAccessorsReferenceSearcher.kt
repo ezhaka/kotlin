@@ -19,15 +19,14 @@ package org.jetbrains.kotlin.idea.search.ideaExtensions
 import com.intellij.openapi.application.QueryExecutorBase
 import com.intellij.psi.PsiMethod
 import com.intellij.psi.PsiReference
-import com.intellij.psi.search.GlobalSearchScope
-import com.intellij.psi.search.SearchScope
 import com.intellij.psi.search.UsageSearchContext
 import com.intellij.psi.search.searches.MethodReferencesSearch
 import com.intellij.util.Processor
 import org.jetbrains.kotlin.asJava.namedUnwrappedElement
-import org.jetbrains.kotlin.idea.JetFileType
 import org.jetbrains.kotlin.idea.caches.resolve.getJavaMethodDescriptor
-import org.jetbrains.kotlin.psi.JetProperty
+import org.jetbrains.kotlin.idea.search.restrictToKotlinSources
+import org.jetbrains.kotlin.incremental.components.LookupTracker
+import org.jetbrains.kotlin.psi.KtProperty
 import org.jetbrains.kotlin.storage.LockBasedStorageManager
 import org.jetbrains.kotlin.synthetic.JavaSyntheticPropertiesScope
 import org.jetbrains.kotlin.synthetic.SyntheticJavaPropertyDescriptor
@@ -37,7 +36,7 @@ public class KotlinPropertyAccessorsReferenceSearcher() : QueryExecutorBase<PsiR
         val method = queryParameters.getMethod()
         val propertyName = propertyName(method) ?: return
 
-        val onlyKotlinFiles = restrictToKotlinSources(queryParameters.getEffectiveSearchScope())
+        val onlyKotlinFiles = queryParameters.getEffectiveSearchScope().restrictToKotlinSources()
 
         queryParameters.getOptimizer()!!.searchWord(
                 propertyName,
@@ -49,20 +48,13 @@ public class KotlinPropertyAccessorsReferenceSearcher() : QueryExecutorBase<PsiR
 
     private fun propertyName(method: PsiMethod): String? {
         val unwrapped = method.namedUnwrappedElement
-        if (unwrapped is JetProperty) {
+        if (unwrapped is KtProperty) {
             return unwrapped.getName()
         }
 
         val functionDescriptor = method.getJavaMethodDescriptor() ?: return null
-        val syntheticExtensionsScope = JavaSyntheticPropertiesScope(LockBasedStorageManager())
+        val syntheticExtensionsScope = JavaSyntheticPropertiesScope(LockBasedStorageManager(), LookupTracker.DO_NOTHING)
         val property = SyntheticJavaPropertyDescriptor.findByGetterOrSetter(functionDescriptor, syntheticExtensionsScope) ?: return null
         return property.getName().asString()
-    }
-
-    private fun restrictToKotlinSources(originalScope: SearchScope): SearchScope {
-        return when (originalScope) {
-            is GlobalSearchScope -> GlobalSearchScope.getScopeRestrictedByFileTypes(originalScope, JetFileType.INSTANCE)
-            else -> originalScope
-        }
     }
 }

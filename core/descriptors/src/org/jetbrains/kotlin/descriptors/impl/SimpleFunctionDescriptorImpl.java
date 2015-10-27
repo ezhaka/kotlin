@@ -21,7 +21,7 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.descriptors.annotations.Annotations;
 import org.jetbrains.kotlin.name.Name;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.types.TypeSubstitutor;
 
 import java.util.List;
@@ -52,11 +52,11 @@ public class SimpleFunctionDescriptorImpl extends FunctionDescriptorImpl impleme
     @NotNull
     @Override
     public SimpleFunctionDescriptorImpl initialize(
-            @Nullable JetType receiverParameterType,
+            @Nullable KotlinType receiverParameterType,
             @Nullable ReceiverParameterDescriptor dispatchReceiverParameter,
             @NotNull List<? extends TypeParameterDescriptor> typeParameters,
             @NotNull List<ValueParameterDescriptor> unsubstitutedValueParameters,
-            @Nullable JetType unsubstitutedReturnType,
+            @Nullable KotlinType unsubstitutedReturnType,
             @Nullable Modality modality,
             @NotNull Visibility visibility
     ) {
@@ -99,7 +99,9 @@ public class SimpleFunctionDescriptorImpl extends FunctionDescriptorImpl impleme
             boolean copyOverrides
     ) {
         return (SimpleFunctionDescriptorImpl) doSubstitute(
-                TypeSubstitutor.EMPTY, newOwner, modality, visibility, isOperator(), isInfix(), null, copyOverrides, kind
+                TypeSubstitutor.EMPTY, newOwner, modality, visibility,
+                isOperator(), isInfix(), isExternal(), isInline(), isTailrec(),
+                null, copyOverrides, kind
         );
     }
 }

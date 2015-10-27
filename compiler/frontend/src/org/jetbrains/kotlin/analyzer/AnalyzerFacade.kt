@@ -29,7 +29,7 @@ import org.jetbrains.kotlin.descriptors.impl.LazyModuleDependencies
 import org.jetbrains.kotlin.descriptors.impl.ModuleDescriptorImpl
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.psi.JetFile
+import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.resolve.TargetEnvironment
 import org.jetbrains.kotlin.resolve.TargetPlatform
 import org.jetbrains.kotlin.resolve.createModule
@@ -40,35 +40,50 @@ public class ResolverForModule(
     public val componentProvider: ComponentProvider
 )
 
-public interface ResolverForProject<M : ModuleInfo> {
-    public fun resolverForModule(moduleInfo: M): ResolverForModule = resolverForModuleDescriptor(descriptorForModule(moduleInfo))
-    public fun descriptorForModule(moduleInfo: M): ModuleDescriptor
-    public fun resolverForModuleDescriptor(descriptor: ModuleDescriptor): ResolverForModule
+abstract class ResolverForProject<M : ModuleInfo> {
+    fun resolverForModule(moduleInfo: M): ResolverForModule = resolverForModuleDescriptor(descriptorForModule(moduleInfo))
+    abstract fun tryGetResolverForModule(moduleInfo: M): ResolverForModule?
+    abstract fun descriptorForModule(moduleInfo: M): ModuleDescriptor
+    abstract fun resolverForModuleDescriptor(descriptor: ModuleDescriptor): ResolverForModule
 
-    val allModules: Collection<M>
+    abstract val name: String
+    abstract val allModules: Collection<M>
+
+    override fun toString() = "$name"
 }
 
-public class EmptyResolverForProject<M : ModuleInfo> : ResolverForProject<M> {
+public class EmptyResolverForProject<M : ModuleInfo> : ResolverForProject<M>() {
+    override val name: String
+        get() = "Empty resolver"
+
+    override fun tryGetResolverForModule(moduleInfo: M): ResolverForModule? = null
     override fun resolverForModuleDescriptor(descriptor: ModuleDescriptor): ResolverForModule = throw IllegalStateException("$descriptor is not contained in this resolver")
     override fun descriptorForModule(moduleInfo: M) = throw IllegalStateException("Should not be called for $moduleInfo")
     override val allModules: Collection<M> = listOf()
 }
 
 public class ResolverForProjectImpl<M : ModuleInfo>(
+        private val debugName: String,
         val descriptorByModule: Map<M, ModuleDescriptorImpl>,
         val delegateResolver: ResolverForProject<M> = EmptyResolverForProject()
-) : ResolverForProject<M> {
-    val resolverByModuleDescriptor: MutableMap<ModuleDescriptor, () -> ResolverForModule> = HashMap()
+) : ResolverForProject<M>() {
+    override fun tryGetResolverForModule(moduleInfo: M): ResolverForModule? {
+        if (!isCorrectModuleInfo(moduleInfo)) {
+            return null
+        }
+        return resolverForModuleDescriptor(doGetDescriptorForModule(moduleInfo))
+    }
+
+    internal val resolverByModuleDescriptor: MutableMap<ModuleDescriptor, () -> ResolverForModule> = HashMap()
 
     override val allModules: Collection<M> by lazy {
-        (descriptorByModule.keySet() + delegateResolver.allModules).toSet()
+        (descriptorByModule.keys + delegateResolver.allModules).toSet()
     }
 
-    private fun assertCorrectModuleInfo(moduleInfo: M) {
-        if (moduleInfo !in allModules) {
-            throw AssertionError("Requested data for $moduleInfo not contained in this resolver.\nThis resolver was created for following infos:\n${allModules.joinToString("\n")}")
-        }
-    }
+    override val name: String
+        get() = "Resolver for '$debugName'"
+
+    private fun isCorrectModuleInfo(moduleInfo: M) = moduleInfo in allModules
 
     override fun resolverForModuleDescriptor(descriptor: ModuleDescriptor): ResolverForModule {
         val computation = resolverByModuleDescriptor[descriptor] ?: return delegateResolver.resolverForModuleDescriptor(descriptor)
@@ -76,13 +91,19 @@ public class ResolverForProjectImpl<M : ModuleInfo>(
     }
 
     override fun descriptorForModule(moduleInfo: M): ModuleDescriptorImpl {
-        assertCorrectModuleInfo(moduleInfo)
+        if (!isCorrectModuleInfo(moduleInfo)) {
+            throw AssertionError("$name does not know how to resolve $moduleInfo")
+        }
+        return doGetDescriptorForModule(moduleInfo)
+    }
+
+    private fun doGetDescriptorForModule(moduleInfo: M): ModuleDescriptorImpl {
         return descriptorByModule[moduleInfo] ?: return delegateResolver.descriptorForModule(moduleInfo) as ModuleDescriptorImpl
     }
 }
 
 public data class ModuleContent(
-        public val syntheticFiles: Collection<JetFile>,
+        public val syntheticFiles: Collection<KtFile>,
         public val moduleContentScope: GlobalSearchScope
 )
 
@@ -123,6 +144,7 @@ public interface ModuleInfo {
 
 public abstract class AnalyzerFacade<in P : PlatformAnalysisParameters> {
     public fun <M : ModuleInfo> setupResolverForProject(
+            debugName: String,
             projectContext: ProjectContext,
             modules: Collection<M>,
             modulesContent: (M) -> ModuleContent,
@@ -138,7 +160,7 @@ public abstract class AnalyzerFacade<in P : PlatformAnalysisParameters> {
                 module ->
                 descriptorByModule[module] = targetPlatform.createModule(module.name, storageManager)
             }
-            return ResolverForProjectImpl(descriptorByModule, delegateResolver)
+            return ResolverForProjectImpl(debugName, descriptorByModule, delegateResolver)
         }
 
         val resolverForProject = createResolverForProject()

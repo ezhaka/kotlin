@@ -25,13 +25,10 @@ import org.jetbrains.kotlin.descriptors.ClassifierDescriptor;
 import org.jetbrains.kotlin.descriptors.ModuleDescriptor;
 import org.jetbrains.kotlin.descriptors.PackageViewDescriptor;
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation;
-import org.jetbrains.kotlin.name.FqName;
-import org.jetbrains.kotlin.name.Name;
-import org.jetbrains.kotlin.name.NamePackage;
-import org.jetbrains.kotlin.name.SpecialNames;
-import org.jetbrains.kotlin.psi.JetNamedDeclaration;
-import org.jetbrains.kotlin.psi.JetNamedDeclarationUtil;
-import org.jetbrains.kotlin.resolve.scopes.JetScope;
+import org.jetbrains.kotlin.name.*;
+import org.jetbrains.kotlin.psi.KtNamedDeclaration;
+import org.jetbrains.kotlin.psi.KtNamedDeclarationUtil;
+import org.jetbrains.kotlin.resolve.scopes.KtScope;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -61,7 +58,7 @@ public class ResolveSessionUtils {
         while (true) {
             PackageViewDescriptor packageDescriptor = module.getPackage(packageFqName);
             if (!packageDescriptor.isEmpty()) {
-                FqName relativeClassFqName = NamePackage.tail(fqName, packageFqName);
+                FqName relativeClassFqName = FqNamesUtilKt.tail(fqName, packageFqName);
                 ClassDescriptor classDescriptor = findByQualifiedName(packageDescriptor.getMemberScope(), relativeClassFqName);
                 if (classDescriptor != null && filter.apply(classDescriptor)) {
                     result.add(classDescriptor);
@@ -79,10 +76,10 @@ public class ResolveSessionUtils {
     }
 
     @Nullable
-    public static ClassDescriptor findByQualifiedName(@NotNull JetScope outerScope, @NotNull FqName path) {
+    public static ClassDescriptor findByQualifiedName(@NotNull KtScope outerScope, @NotNull FqName path) {
         if (path.isRoot()) return null;
 
-        JetScope scope = outerScope;
+        KtScope scope = outerScope;
         for (Name name : path.pathSegments()) {
             ClassifierDescriptor classifier = scope.getClassifier(name, NoLookupLocation.UNSORTED);
             if (!(classifier instanceof ClassDescriptor)) return null;
@@ -93,7 +90,7 @@ public class ResolveSessionUtils {
     }
 
     @NotNull
-    public static Name safeNameForLazyResolve(@NotNull JetNamedDeclaration declaration) {
+    public static Name safeNameForLazyResolve(@NotNull KtNamedDeclaration declaration) {
         return safeNameForLazyResolve(declaration.getNameAsName());
     }
 
@@ -103,9 +100,9 @@ public class ResolveSessionUtils {
     }
 
     @Nullable
-    public static FqName safeFqNameForLazyResolve(@NotNull JetNamedDeclaration declaration) {
+    public static FqName safeFqNameForLazyResolve(@NotNull KtNamedDeclaration declaration) {
         //NOTE: should only create special names for package level declarations, so we can safely rely on real fq name for parent
-        FqName parentFqName = JetNamedDeclarationUtil.getParentFqName(declaration);
+        FqName parentFqName = KtNamedDeclarationUtil.getParentFqName(declaration);
         return parentFqName != null ? parentFqName.child(safeNameForLazyResolve(declaration)) : null;
     }
 }

@@ -25,51 +25,80 @@ import org.jetbrains.kotlin.descriptors.impl.PropertyGetterDescriptorImpl;
 import org.jetbrains.kotlin.descriptors.impl.PropertySetterDescriptorImpl;
 import org.jetbrains.kotlin.descriptors.impl.TypeParameterDescriptorImpl;
 import org.jetbrains.kotlin.name.Name;
-import org.jetbrains.kotlin.psi.JetSuperExpression;
+import org.jetbrains.kotlin.psi.KtSuperExpression;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 
 import java.util.Collections;
 
 public class AccessorForPropertyDescriptor extends PropertyDescriptorImpl implements AccessorForCallableDescriptor<PropertyDescriptor> {
     private final PropertyDescriptor calleeDescriptor;
-    private final int accessorIndex;
-    private final JetSuperExpression superCallExpression;
+    private final KtSuperExpression superCallExpression;
+    @NotNull private final String nameSuffix;
+    private final boolean withSyntheticGetterAccessor;
+    private final boolean withSyntheticSetterAccessor;
 
     public AccessorForPropertyDescriptor(
             @NotNull PropertyDescriptor property,
             @NotNull DeclarationDescriptor containingDeclaration,
-            int index,
-            @Nullable JetSuperExpression superCallExpression
+            @Nullable KtSuperExpression superCallExpression,
+            @NotNull String nameSuffix,
+            boolean getterAccessorRequired,
+            boolean setterAccessorRequired
     ) {
         this(property, property.getType(), DescriptorUtils.getReceiverParameterType(property.getExtensionReceiverParameter()),
-             property.getDispatchReceiverParameter(), containingDeclaration, index, superCallExpression);
+             property.getDispatchReceiverParameter(), containingDeclaration, superCallExpression, nameSuffix,
+             getterAccessorRequired, setterAccessorRequired);
     }
 
     protected AccessorForPropertyDescriptor(
             @NotNull PropertyDescriptor original,
-            @NotNull JetType propertyType,
-            @Nullable JetType receiverType,
+            @NotNull KotlinType propertyType,
+            @Nullable KotlinType receiverType,
             @Nullable ReceiverParameterDescriptor dispatchReceiverParameter,
             @NotNull DeclarationDescriptor containingDeclaration,
-            int index,
-            @Nullable JetSuperExpression superCallExpression
+            @Nullable KtSuperExpression superCallExpression,
+            @NotNull String nameSuffix
+    ) {
+        this(original, propertyType, receiverType, dispatchReceiverParameter, containingDeclaration, superCallExpression, nameSuffix, true, true);
+    }
+
+    protected AccessorForPropertyDescriptor(
+            @NotNull PropertyDescriptor original,
+            @NotNull KotlinType propertyType,
+            @Nullable KotlinType receiverType,
+            @Nullable ReceiverParameterDescriptor dispatchReceiverParameter,
+            @NotNull DeclarationDescriptor containingDeclaration,
+            @Nullable KtSuperExpression superCallExpression,
+            @NotNull String nameSuffix,
+            boolean getterAccessorRequired,
+            boolean setterAccessorRequired
     ) {
         super(containingDeclaration, null, Annotations.Companion.getEMPTY(), Modality.FINAL, Visibilities.LOCAL,
-              original.isVar(), Name.identifier("access$" + getIndexedAccessorSuffix(original, index)),
+              original.isVar(), Name.identifier("access$" + nameSuffix),
               Kind.DECLARATION, SourceElement.NO_SOURCE, /* lateInit = */ false, /* isConst = */ false);
 
         this.calleeDescriptor = original;
-        this.accessorIndex = index;
         this.superCallExpression = superCallExpression;
+        this.nameSuffix = nameSuffix;
         setType(propertyType, Collections.<TypeParameterDescriptorImpl>emptyList(), dispatchReceiverParameter, receiverType);
-        initialize(new Getter(this), new Setter(this));
+
+        this.withSyntheticGetterAccessor = getterAccessorRequired;
+        this.withSyntheticSetterAccessor = setterAccessorRequired;
+
+        PropertyGetterDescriptorImpl getterDescriptor =
+                getterAccessorRequired ? new Getter(this) : (PropertyGetterDescriptorImpl) original.getGetter();
+        PropertySetterDescriptor setterDescriptor =
+                setterAccessorRequired ? new Setter(this) : original.getSetter();
+        initialize(getterDescriptor, setterDescriptor);
     }
 
     public static class Getter extends PropertyGetterDescriptorImpl implements AccessorForCallableDescriptor<PropertyGetterDescriptor> {
         public Getter(AccessorForPropertyDescriptor property) {
             super(property, Annotations.Companion.getEMPTY(), Modality.FINAL, Visibilities.LOCAL,
-                  false, false, Kind.DECLARATION, null, SourceElement.NO_SOURCE);
+                  false, false,
+                  /* isExternal = */ false,
+                  Kind.DECLARATION, null, SourceElement.NO_SOURCE);
             initialize(property.getType());
         }
 
@@ -82,15 +111,18 @@ public class AccessorForPropertyDescriptor extends PropertyDescriptorImpl implem
 
         @Nullable
         @Override
-        public JetSuperExpression getSuperCallExpression() {
+        public KtSuperExpression getSuperCallExpression() {
             return ((AccessorForPropertyDescriptor) getCorrespondingProperty()).getSuperCallExpression();
         }
+
     }
 
     public static class Setter extends PropertySetterDescriptorImpl implements AccessorForCallableDescriptor<PropertySetterDescriptor>{
         public Setter(AccessorForPropertyDescriptor property) {
             super(property, Annotations.Companion.getEMPTY(), Modality.FINAL, Visibilities.LOCAL,
-                  false, false, Kind.DECLARATION, null, SourceElement.NO_SOURCE);
+                  false, false,
+                  /* isExternal = */ false,
+                  Kind.DECLARATION, null, SourceElement.NO_SOURCE);
             initializeDefault();
         }
 
@@ -103,7 +135,7 @@ public class AccessorForPropertyDescriptor extends PropertyDescriptorImpl implem
 
         @Nullable
         @Override
-        public JetSuperExpression getSuperCallExpression() {
+        public KtSuperExpression getSuperCallExpression() {
             return ((AccessorForPropertyDescriptor) getCorrespondingProperty()).getSuperCallExpression();
         }
     }
@@ -115,17 +147,20 @@ public class AccessorForPropertyDescriptor extends PropertyDescriptorImpl implem
     }
 
     @Override
-    public JetSuperExpression getSuperCallExpression() {
+    public KtSuperExpression getSuperCallExpression() {
         return superCallExpression;
     }
 
     @NotNull
-    public String getIndexedAccessorSuffix() {
-        return getIndexedAccessorSuffix(calleeDescriptor, accessorIndex);
+    public String getAccessorSuffix() {
+        return nameSuffix;
     }
 
-    @NotNull
-    private static String getIndexedAccessorSuffix(@NotNull PropertyDescriptor original, int index) {
-        return original.getName() + "$" + index;
+    public boolean isWithSyntheticGetterAccessor() {
+        return withSyntheticGetterAccessor;
+    }
+
+    public boolean isWithSyntheticSetterAccessor() {
+        return withSyntheticSetterAccessor;
     }
 }

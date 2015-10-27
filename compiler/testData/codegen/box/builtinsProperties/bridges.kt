@@ -5,10 +5,12 @@ interface A0 {
 }
 
 class B0 : Collection<String>, A0 {
-    override val isEmpty: Boolean get() = throw UnsupportedOperationException()
+    override fun isEmpty() = throw UnsupportedOperationException()
     override fun contains(o: String) = throw UnsupportedOperationException()
     override fun iterator() = throw UnsupportedOperationException()
     override fun containsAll(c: Collection<String>) = throw UnsupportedOperationException()
+    override val size: Int
+        get() = super.size
 }
 
 open class A1 {
@@ -16,7 +18,7 @@ open class A1 {
 }
 
 class B1 : Collection<String>, A1() {
-    override val isEmpty: Boolean get() = throw UnsupportedOperationException()
+    override fun isEmpty() = throw UnsupportedOperationException()
     override fun contains(o: String) = throw UnsupportedOperationException()
     override fun iterator() = throw UnsupportedOperationException()
     override fun containsAll(c: Collection<String>) = throw UnsupportedOperationException()
@@ -41,10 +43,12 @@ interface I4<T> {
 }
 
 class B4 : Collection<String>, I4<Int> {
-    override val isEmpty: Boolean get() = throw UnsupportedOperationException()
+    override fun isEmpty() = throw UnsupportedOperationException()
     override fun contains(o: String) = throw UnsupportedOperationException()
     override fun iterator() = throw UnsupportedOperationException()
     override fun containsAll(c: Collection<String>) = throw UnsupportedOperationException()
+    override val size: Int
+        get() = super.size
 }
 
 interface I5 : Collection<String> {
@@ -52,7 +56,7 @@ interface I5 : Collection<String> {
 }
 
 class B5 : I5 {
-    override val isEmpty: Boolean get() = throw UnsupportedOperationException()
+    override fun isEmpty() = throw UnsupportedOperationException()
     override fun contains(o: String) = throw UnsupportedOperationException()
     override fun iterator() = throw UnsupportedOperationException()
     override fun containsAll(c: Collection<String>) = throw UnsupportedOperationException()

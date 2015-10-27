@@ -16,33 +16,32 @@
 
 package org.jetbrains.kotlin.resolve.bindingContextUtil
 
+import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.descriptors.impl.AnonymousFunctionDescriptor
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.getNonStrictParentOfType
+import org.jetbrains.kotlin.psi.psiUtil.parentsWithSelf
 import org.jetbrains.kotlin.resolve.BindingContext
-import org.jetbrains.kotlin.resolve.BindingContext.DECLARATION_TO_DESCRIPTOR
-import org.jetbrains.kotlin.resolve.BindingContext.FUNCTION
-import org.jetbrains.kotlin.resolve.BindingContext.LABEL_TARGET
+import org.jetbrains.kotlin.resolve.BindingContext.*
 import org.jetbrains.kotlin.resolve.BindingTrace
 import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils
 import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.resolve.calls.context.ResolutionContext
 import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowInfo
 import org.jetbrains.kotlin.resolve.scopes.LexicalScope
-import org.jetbrains.kotlin.resolve.scopes.utils.asJetScope
 import org.jetbrains.kotlin.resolve.scopes.utils.takeSnapshot
 import org.jetbrains.kotlin.types.expressions.typeInfoFactory.noTypeInfo
 import org.jetbrains.kotlin.util.slicedMap.ReadOnlySlice
 
 public operator fun <K, V: Any> BindingContext.get(slice: ReadOnlySlice<K, V>, key: K): V? = get(slice, key)
 
-public fun JetReturnExpression.getTargetFunctionDescriptor(context: BindingContext): FunctionDescriptor? {
+public fun KtReturnExpression.getTargetFunctionDescriptor(context: BindingContext): FunctionDescriptor? {
     val targetLabel = getTargetLabel()
     if (targetLabel != null) return context[LABEL_TARGET, targetLabel]?.let { context[FUNCTION, it] }
 
-    val declarationDescriptor = context[DECLARATION_TO_DESCRIPTOR, getNonStrictParentOfType<JetDeclarationWithBody>()]
+    val declarationDescriptor = context[DECLARATION_TO_DESCRIPTOR, getNonStrictParentOfType<KtDeclarationWithBody>()]
     val containingFunctionDescriptor = DescriptorUtils.getParentOfType(declarationDescriptor, javaClass<FunctionDescriptor>(), false)
     if (containingFunctionDescriptor == null) return null
 
@@ -51,15 +50,15 @@ public fun JetReturnExpression.getTargetFunctionDescriptor(context: BindingConte
             .firstOrNull()
 }
 
-public fun JetReturnExpression.getTargetFunction(context: BindingContext): JetCallableDeclaration? {
-    return getTargetFunctionDescriptor(context)?.let { DescriptorToSourceUtils.descriptorToDeclaration(it) as? JetCallableDeclaration }
+public fun KtReturnExpression.getTargetFunction(context: BindingContext): KtCallableDeclaration? {
+    return getTargetFunctionDescriptor(context)?.let { DescriptorToSourceUtils.descriptorToDeclaration(it) as? KtCallableDeclaration }
 }
 
-public fun JetExpression.isUsedAsExpression(context: BindingContext): Boolean = context[BindingContext.USED_AS_EXPRESSION, this]!!
-public fun JetExpression.isUsedAsStatement(context: BindingContext): Boolean = !isUsedAsExpression(context)
+public fun KtExpression.isUsedAsExpression(context: BindingContext): Boolean = context[BindingContext.USED_AS_EXPRESSION, this]!!
+public fun KtExpression.isUsedAsStatement(context: BindingContext): Boolean = !isUsedAsExpression(context)
 
 
-public fun <C : ResolutionContext<C>> ResolutionContext<C>.recordDataFlowInfo(expression: JetExpression?) {
+public fun <C : ResolutionContext<C>> ResolutionContext<C>.recordDataFlowInfo(expression: KtExpression?) {
     if (expression == null) return
 
     val typeInfo = trace.get(BindingContext.EXPRESSION_TYPE_INFO, expression)
@@ -72,24 +71,22 @@ public fun <C : ResolutionContext<C>> ResolutionContext<C>.recordDataFlowInfo(ex
     }
 }
 
-public fun BindingTrace.recordScope(scope: LexicalScope, element: JetElement?) {
-    if (element == null) return
-
-    val scopeToRecord = scope.takeSnapshot()
-    record(BindingContext.LEXICAL_SCOPE, element, scopeToRecord)
-
-    // todo: remove it later
-    if (element is JetExpression) {
-        record(BindingContext.RESOLUTION_SCOPE, element, scopeToRecord.asJetScope())
+public fun BindingTrace.recordScope(scope: LexicalScope, element: KtElement?) {
+    if (element != null) {
+        record(BindingContext.LEXICAL_SCOPE, element, scope.takeSnapshot())
     }
 }
 
-public fun BindingContext.getDataFlowInfo(expression: JetExpression?): DataFlowInfo =
-    expression?.let { this[BindingContext.EXPRESSION_TYPE_INFO, it]?.dataFlowInfo } ?: DataFlowInfo.EMPTY
+public fun BindingContext.getDataFlowInfo(position: PsiElement): DataFlowInfo {
+    for (element in position.parentsWithSelf) {
+        (element as? KtExpression)?.let { this[BindingContext.EXPRESSION_TYPE_INFO, it] }?.let { return it.dataFlowInfo }
+    }
+    return DataFlowInfo.EMPTY
+}
 
-public fun JetExpression.isUnreachableCode(context: BindingContext): Boolean = context[BindingContext.UNREACHABLE_CODE, this]!!
+public fun KtExpression.isUnreachableCode(context: BindingContext): Boolean = context[BindingContext.UNREACHABLE_CODE, this]!!
 
-public fun JetExpression.getReferenceTargets(context: BindingContext): Collection<DeclarationDescriptor> {
-    val targetDescriptor = if (this is JetReferenceExpression) context[BindingContext.REFERENCE_TARGET, this] else null
+public fun KtExpression.getReferenceTargets(context: BindingContext): Collection<DeclarationDescriptor> {
+    val targetDescriptor = if (this is KtReferenceExpression) context[BindingContext.REFERENCE_TARGET, this] else null
     return targetDescriptor?.let { listOf(it) } ?: context[BindingContext.AMBIGUOUS_REFERENCE_TARGET, this].orEmpty()
 }

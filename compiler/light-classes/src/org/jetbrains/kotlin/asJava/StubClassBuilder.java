@@ -27,7 +27,7 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.codegen.AbstractClassBuilder;
 import org.jetbrains.kotlin.load.kotlin.PackageClassUtils;
 import org.jetbrains.kotlin.name.FqName;
-import org.jetbrains.kotlin.psi.JetFile;
+import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOrigin;
 import org.jetbrains.org.objectweb.asm.ClassVisitor;
 import org.jetbrains.org.objectweb.asm.FieldVisitor;
@@ -79,8 +79,8 @@ public class StubClassBuilder extends AbstractClassBuilder {
 
         super.defineClass(origin, version, access, name, signature, superName, interfaces);
 
-        if (origin instanceof JetFile) {
-            FqName packageName = ((JetFile) origin).getPackageFqName();
+        if (origin instanceof KtFile) {
+            FqName packageName = ((KtFile) origin).getPackageFqName();
             String packageClassName = PackageClassUtils.getPackageClassName(packageName);
 
             if (name.equals(packageClassName) || name.endsWith("/" + packageClassName)) {
@@ -151,7 +151,7 @@ public class StubClassBuilder extends AbstractClassBuilder {
     public void done() {
         if (!isPackageClass) {
             StubElement pop = parentStack.pop();
-            assert pop == v.getResult();
+            assert pop == v.getResult() : "parentStack: got " + pop + ", expected " + v.getResult();
         }
         super.done();
     }

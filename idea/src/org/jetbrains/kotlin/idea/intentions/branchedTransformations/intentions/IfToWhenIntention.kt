@@ -21,32 +21,30 @@ import com.intellij.openapi.util.TextRange
 import org.jetbrains.kotlin.idea.intentions.JetSelfTargetingRangeIntention
 import org.jetbrains.kotlin.idea.intentions.branchedTransformations.getSubjectToIntroduce
 import org.jetbrains.kotlin.idea.intentions.branchedTransformations.introduceSubject
-import org.jetbrains.kotlin.lexer.JetTokens
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
-import java.util.ArrayList
+import java.util.*
 
-public class IfToWhenIntention : JetSelfTargetingRangeIntention<JetIfExpression>(javaClass(), "Replace 'if' with 'when'") {
-    override fun applicabilityRange(element: JetIfExpression): TextRange? {
+public class IfToWhenIntention : JetSelfTargetingRangeIntention<KtIfExpression>(javaClass(), "Replace 'if' with 'when'") {
+    override fun applicabilityRange(element: KtIfExpression): TextRange? {
         if (element.getThen() == null) return null
         return element.getIfKeyword().getTextRange()
     }
 
-    override fun applyTo(element: JetIfExpression, editor: Editor) {
-        var whenExpression = JetPsiFactory(element).buildExpression {
+    override fun applyTo(element: KtIfExpression, editor: Editor) {
+        var whenExpression = KtPsiFactory(element).buildExpression {
             appendFixedText("when {\n")
 
             var ifExpression = element
             while (true) {
                 val condition = ifExpression.getCondition()
-                val orBranches = ArrayList<JetExpression>()
+                val orBranches = ArrayList<KtExpression>()
                 if (condition != null) {
                     orBranches.addOrBranches(condition)
                 }
 
-                for ((i, expr) in orBranches.withIndex()) {
-                    if (i > 0) appendFixedText(",")
-                    appendExpression(expr)
-                }
+                appendExpressions(orBranches)
+
                 appendFixedText("->")
 
                 val thenBranch = ifExpression.getThen()
@@ -54,7 +52,7 @@ public class IfToWhenIntention : JetSelfTargetingRangeIntention<JetIfExpression>
                 appendFixedText("\n")
 
                 val elseBranch = ifExpression.getElse() ?: break
-                if (elseBranch is JetIfExpression) {
+                if (elseBranch is KtIfExpression) {
                     ifExpression = elseBranch
                 }
                 else {
@@ -66,7 +64,7 @@ public class IfToWhenIntention : JetSelfTargetingRangeIntention<JetIfExpression>
             }
 
             appendFixedText("}")
-        } as JetWhenExpression
+        } as KtWhenExpression
 
 
         if (whenExpression.getSubjectToIntroduce() != null) {
@@ -76,8 +74,8 @@ public class IfToWhenIntention : JetSelfTargetingRangeIntention<JetIfExpression>
         element.replace(whenExpression)
     }
 
-    private fun MutableList<JetExpression>.addOrBranches(expression: JetExpression): List<JetExpression> {
-        if (expression is JetBinaryExpression && expression.getOperationToken() == JetTokens.OROR) {
+    private fun MutableList<KtExpression>.addOrBranches(expression: KtExpression): List<KtExpression> {
+        if (expression is KtBinaryExpression && expression.getOperationToken() == KtTokens.OROR) {
             val left = expression.getLeft()
             val right = expression.getRight()
             if (left != null && right != null) {
@@ -87,7 +85,7 @@ public class IfToWhenIntention : JetSelfTargetingRangeIntention<JetIfExpression>
             }
         }
 
-        add(JetPsiUtil.safeDeparenthesize(expression))
+        add(KtPsiUtil.safeDeparenthesize(expression))
         return this
     }
 }

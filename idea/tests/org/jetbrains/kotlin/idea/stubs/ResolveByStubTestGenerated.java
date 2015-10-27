@@ -467,6 +467,18 @@ public class ResolveByStubTestGenerated extends AbstractResolveByStubTest {
                 String fileName = JetTestUtils.navigationMetadata("compiler/testData/loadJava/compiledKotlin/annotations/types/TypeAnnotationWithArguments.kt");
                 doTest(fileName);
             }
+
+            @TestMetadata("TypeParameterAnnotation.kt")
+            public void testTypeParameterAnnotation() throws Exception {
+                String fileName = JetTestUtils.navigationMetadata("compiler/testData/loadJava/compiledKotlin/annotations/types/TypeParameterAnnotation.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("TypeParameterAnnotationWithArguments.kt")
+            public void testTypeParameterAnnotationWithArguments() throws Exception {
+                String fileName = JetTestUtils.navigationMetadata("compiler/testData/loadJava/compiledKotlin/annotations/types/TypeParameterAnnotationWithArguments.kt");
+                doTest(fileName);
+            }
         }
 
         @TestMetadata("compiler/testData/loadJava/compiledKotlin/annotations/withUseSiteTarget")
@@ -1021,21 +1033,9 @@ public class ResolveByStubTestGenerated extends AbstractResolveByStubTest {
             doTest(fileName);
         }
 
-        @TestMetadata("NoComponents.kt")
-        public void testNoComponents() throws Exception {
-            String fileName = JetTestUtils.navigationMetadata("compiler/testData/loadJava/compiledKotlin/dataClass/NoComponents.kt");
-            doTest(fileName);
-        }
-
         @TestMetadata("OneVal.kt")
         public void testOneVal() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("compiler/testData/loadJava/compiledKotlin/dataClass/OneVal.kt");
-            doTest(fileName);
-        }
-
-        @TestMetadata("ParamNameSameToField.kt")
-        public void testParamNameSameToField() throws Exception {
-            String fileName = JetTestUtils.navigationMetadata("compiler/testData/loadJava/compiledKotlin/dataClass/ParamNameSameToField.kt");
             doTest(fileName);
         }
 

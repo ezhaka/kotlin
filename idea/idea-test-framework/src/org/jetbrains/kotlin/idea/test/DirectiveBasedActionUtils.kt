@@ -17,15 +17,16 @@
 package org.jetbrains.kotlin.idea.test
 
 import com.intellij.codeInsight.intention.IntentionAction
+import com.intellij.psi.PsiFile
 import com.intellij.testFramework.UsefulTestCase
 import org.jetbrains.kotlin.diagnostics.Severity
 import org.jetbrains.kotlin.idea.caches.resolve.analyzeFully
 import org.jetbrains.kotlin.idea.highlighter.IdeErrorMessages
-import org.jetbrains.kotlin.psi.JetFile
+import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.test.InTextDirectivesUtils
 
 public object DirectiveBasedActionUtils {
-    public fun checkForUnexpectedErrors(file: JetFile) {
+    public fun checkForUnexpectedErrors(file: KtFile) {
         if (InTextDirectivesUtils.findLinesWithPrefixesRemoved(file.getText(), "// DISABLE-ERRORS").isNotEmpty()) {
             return
         }
@@ -42,7 +43,7 @@ public object DirectiveBasedActionUtils {
                                            expectedErrors)
     }
 
-    public fun checkAvailableActionsAreExpected(file: JetFile, availableActions: Collection<IntentionAction>) {
+    public fun checkAvailableActionsAreExpected(file: PsiFile, availableActions: Collection<IntentionAction>) {
         val expectedActions = InTextDirectivesUtils.findLinesWithPrefixesRemoved(file.getText(), "// ACTION:").sorted()
 
         UsefulTestCase.assertEmpty("Irrelevant actions should not be specified in ACTION directive for they are not checked anyway",
@@ -70,6 +71,11 @@ public object DirectiveBasedActionUtils {
             "Inject language or reference",
             "Suppress '",
             "Run inspection on",
-            "Inspection '"
+            "Inspection '",
+            "Suppress for ",
+            "Suppress all ",
+            "Edit cleanup profile settings",
+            "Fix all '",
+            "Cleanup code"
     )
 }

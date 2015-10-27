@@ -23,6 +23,7 @@ import org.jetbrains.kotlin.builtins.KotlinBuiltIns;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.descriptors.annotations.Annotated;
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor;
+import org.jetbrains.kotlin.descriptors.annotations.AnnotationWithTarget;
 import org.jetbrains.kotlin.descriptors.annotations.Annotations;
 import org.jetbrains.kotlin.descriptors.impl.AnonymousFunctionDescriptor;
 import org.jetbrains.kotlin.descriptors.impl.FunctionExpressionDescriptor;
@@ -36,24 +37,26 @@ import org.jetbrains.kotlin.resolve.constants.ConstantValue;
 import org.jetbrains.kotlin.resolve.constants.StringValue;
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter;
 import org.jetbrains.kotlin.resolve.scopes.FilteringScope;
-import org.jetbrains.kotlin.resolve.scopes.JetScope;
+import org.jetbrains.kotlin.resolve.scopes.KtScope;
 import org.jetbrains.kotlin.types.ErrorUtils;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.types.LazyType;
 import org.jetbrains.kotlin.types.TypeConstructor;
-import org.jetbrains.kotlin.types.checker.JetTypeChecker;
+import org.jetbrains.kotlin.types.checker.KotlinTypeChecker;
 
 import java.util.*;
 
 import static org.jetbrains.kotlin.builtins.KotlinBuiltIns.isAny;
 import static org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.*;
-import static org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilPackage.getBuiltIns;
+import static org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt.getBuiltIns;
 
 public class DescriptorUtils {
     public static final Name ENUM_VALUES = Name.identifier("values");
     public static final Name ENUM_VALUE_OF = Name.identifier("valueOf");
     public static final FqName JVM_NAME = new FqName("kotlin.jvm.JvmName");
     public static final FqName PLATFORM_NAME = new FqName("kotlin.platform.platformName");
+    public static final FqName VOLATILE = new FqName("kotlin.jvm.Volatile");
+    public static final FqName SYNCHRONIZED = new FqName("kotlin.jvm.Synchronized");
 
     private DescriptorUtils() {
     }
@@ -242,7 +245,7 @@ public class DescriptorUtils {
     }
 
     public static boolean isDirectSubclass(@NotNull ClassDescriptor subClass, @NotNull ClassDescriptor superClass) {
-        for (JetType superType : subClass.getTypeConstructor().getSupertypes()) {
+        for (KotlinType superType : subClass.getTypeConstructor().getSupertypes()) {
             if (isSameClass(superType, superClass.getOriginal())) {
                 return true;
             }
@@ -254,7 +257,7 @@ public class DescriptorUtils {
         return isSubtypeOfClass(subClass.getDefaultType(), superClass.getOriginal());
     }
 
-    private static boolean isSameClass(@NotNull JetType type, @NotNull DeclarationDescriptor other) {
+    private static boolean isSameClass(@NotNull KotlinType type, @NotNull DeclarationDescriptor other) {
         DeclarationDescriptor descriptor = type.getConstructor().getDeclarationDescriptor();
         if (descriptor != null) {
             DeclarationDescriptor originalDescriptor = descriptor.getOriginal();
@@ -268,9 +271,9 @@ public class DescriptorUtils {
         return false;
     }
 
-    private static boolean isSubtypeOfClass(@NotNull JetType type, @NotNull DeclarationDescriptor superClass) {
+    private static boolean isSubtypeOfClass(@NotNull KotlinType type, @NotNull DeclarationDescriptor superClass) {
         if (isSameClass(type, superClass)) return true;
-        for (JetType superType : type.getConstructor().getSupertypes()) {
+        for (KotlinType superType : type.getConstructor().getSupertypes()) {
             if (isSubtypeOfClass(superType, superClass)) {
                 return true;
             }
@@ -347,9 +350,9 @@ public class DescriptorUtils {
 
     @NotNull
     public static List<ClassDescriptor> getSuperclassDescriptors(@NotNull ClassDescriptor classDescriptor) {
-        Collection<JetType> superclassTypes = classDescriptor.getTypeConstructor().getSupertypes();
+        Collection<KotlinType> superclassTypes = classDescriptor.getTypeConstructor().getSupertypes();
         List<ClassDescriptor> superClassDescriptors = new ArrayList<ClassDescriptor>();
-        for (JetType type : superclassTypes) {
+        for (KotlinType type : superclassTypes) {
             ClassDescriptor result = getClassDescriptorForType(type);
             if (!isAny(result)) {
                 superClassDescriptors.add(result);
@@ -359,9 +362,9 @@ public class DescriptorUtils {
     }
 
     @NotNull
-    public static JetType getSuperClassType(@NotNull ClassDescriptor classDescriptor) {
-        Collection<JetType> superclassTypes = classDescriptor.getTypeConstructor().getSupertypes();
-        for (JetType type : superclassTypes) {
+    public static KotlinType getSuperClassType(@NotNull ClassDescriptor classDescriptor) {
+        Collection<KotlinType> superclassTypes = classDescriptor.getTypeConstructor().getSupertypes();
+        for (KotlinType type : superclassTypes) {
             ClassDescriptor superClassDescriptor = getClassDescriptorForType(type);
             if (superClassDescriptor.getKind() != ClassKind.INTERFACE) {
                 return type;
@@ -372,8 +375,8 @@ public class DescriptorUtils {
 
     @Nullable
     public static ClassDescriptor getSuperClassDescriptor(@NotNull ClassDescriptor classDescriptor) {
-        Collection<JetType> superclassTypes = classDescriptor.getTypeConstructor().getSupertypes();
-        for (JetType type : superclassTypes) {
+        Collection<KotlinType> superclassTypes = classDescriptor.getTypeConstructor().getSupertypes();
+        for (KotlinType type : superclassTypes) {
             ClassDescriptor superClassDescriptor = getClassDescriptorForType(type);
             if (superClassDescriptor.getKind() != ClassKind.INTERFACE) {
                 return superClassDescriptor;
@@ -383,7 +386,7 @@ public class DescriptorUtils {
     }
 
     @NotNull
-    public static ClassDescriptor getClassDescriptorForType(@NotNull JetType type) {
+    public static ClassDescriptor getClassDescriptorForType(@NotNull KotlinType type) {
         return getClassDescriptorForTypeConstructor(type.getConstructor());
     }
 
@@ -420,7 +423,7 @@ public class DescriptorUtils {
     }
 
     @Nullable
-    public static JetType getReceiverParameterType(@Nullable ReceiverParameterDescriptor receiverParameterDescriptor) {
+    public static KotlinType getReceiverParameterType(@Nullable ReceiverParameterDescriptor receiverParameterDescriptor) {
         return receiverParameterDescriptor == null ? null : receiverParameterDescriptor.getType();
     }
 
@@ -435,8 +438,8 @@ public class DescriptorUtils {
     }
 
     @NotNull
-    public static JetScope getStaticNestedClassesScope(@NotNull ClassDescriptor descriptor) {
-        JetScope innerClassesScope = descriptor.getUnsubstitutedInnerClassesScope();
+    public static KtScope getStaticNestedClassesScope(@NotNull ClassDescriptor descriptor) {
+        KtScope innerClassesScope = descriptor.getUnsubstitutedInnerClassesScope();
         return new FilteringScope(innerClassesScope, new Function1<DeclarationDescriptor, Boolean>() {
             @Override
             public Boolean invoke(DeclarationDescriptor descriptor) {
@@ -472,16 +475,16 @@ public class DescriptorUtils {
         return descriptor;
     }
 
-    public static boolean shouldRecordInitializerForProperty(@NotNull VariableDescriptor variable, @NotNull JetType type) {
+    public static boolean shouldRecordInitializerForProperty(@NotNull VariableDescriptor variable, @NotNull KotlinType type) {
         if (variable.isVar() || type.isError()) return false;
 
         if (type instanceof LazyType || type.isMarkedNullable()) return true;
 
         KotlinBuiltIns builtIns = getBuiltIns(variable);
         return KotlinBuiltIns.isPrimitiveType(type) ||
-               JetTypeChecker.DEFAULT.equalTypes(builtIns.getStringType(), type) ||
-               JetTypeChecker.DEFAULT.equalTypes(builtIns.getNumber().getDefaultType(), type) ||
-               JetTypeChecker.DEFAULT.equalTypes(builtIns.getAnyType(), type);
+               KotlinTypeChecker.DEFAULT.equalTypes(builtIns.getStringType(), type) ||
+               KotlinTypeChecker.DEFAULT.equalTypes(builtIns.getNumber().getDefaultType(), type) ||
+               KotlinTypeChecker.DEFAULT.equalTypes(builtIns.getAnyType(), type);
     }
 
     public static boolean classCanHaveAbstractMembers(@NotNull ClassDescriptor classDescriptor) {
@@ -593,16 +596,26 @@ public class DescriptorUtils {
 
     @Nullable
     public static AnnotationDescriptor getJvmNameAnnotation(@NotNull Annotations annotations) {
-        AnnotationDescriptor jvmNameAnnotation = annotations.findAnnotation(JVM_NAME);
-        if (jvmNameAnnotation == null) {
-            jvmNameAnnotation = annotations.findAnnotation(PLATFORM_NAME);
+        AnnotationWithTarget jvmName = Annotations.Companion.findAnyAnnotation(annotations, JVM_NAME);
+        if (jvmName == null) {
+            jvmName = Annotations.Companion.findAnyAnnotation(annotations, PLATFORM_NAME);
         }
-        return jvmNameAnnotation;
+        return jvmName == null ? null : jvmName.getAnnotation();
     }
 
     @Nullable
     public static AnnotationDescriptor getJvmNameAnnotation(@NotNull Annotated annotated) {
         return getJvmNameAnnotation(annotated.getAnnotations());
+    }
+
+    @Nullable
+    public static AnnotationDescriptor getVolatileAnnotation(@NotNull Annotated annotated) {
+        return annotated.getAnnotations().findAnnotation(VOLATILE);
+    }
+
+    @Nullable
+    public static AnnotationDescriptor getSynchronizedAnnotation(@NotNull Annotated annotated) {
+        return annotated.getAnnotations().findAnnotation(SYNCHRONIZED);
     }
 
     @NotNull
@@ -624,7 +637,7 @@ public class DescriptorUtils {
             result.add(fqName);
         }
 
-        for (DeclarationDescriptor descriptor : packageView.getMemberScope().getDescriptors(DescriptorKindFilter.PACKAGES, JetScope.Companion.getALL_NAME_FILTER())) {
+        for (DeclarationDescriptor descriptor : packageView.getMemberScope().getDescriptors(DescriptorKindFilter.PACKAGES, KtScope.Companion.getALL_NAME_FILTER())) {
             if (descriptor instanceof PackageViewDescriptor) {
                 getSubPackagesFqNames((PackageViewDescriptor) descriptor, result);
             }

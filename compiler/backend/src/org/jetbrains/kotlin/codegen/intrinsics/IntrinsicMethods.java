@@ -66,6 +66,7 @@ public class IntrinsicMethods {
         namedMethods.put("kotlin.arrays.array", new JavaClassArray());
         namedMethods.put("kotlin.jvm.internal.unsafe.monitorEnter", MonitorInstruction.MONITOR_ENTER);
         namedMethods.put("kotlin.jvm.internal.unsafe.monitorExit", MonitorInstruction.MONITOR_EXIT);
+        namedMethods.put("kotlin.jvm.isArrayOf", new IsArrayOf());
 
         ImmutableList<Name> primitiveCastMethods = OperatorConventions.NUMBER_CONVERSIONS.asList();
         for (Name method : primitiveCastMethods) {
@@ -79,7 +80,9 @@ public class IntrinsicMethods {
         for (PrimitiveType type : PrimitiveType.NUMBER_TYPES) {
             String typeName = type.getTypeName().asString();
             declareIntrinsicFunction(typeName, "plus", 0, UNARY_PLUS);
+            declareIntrinsicFunction(typeName, "unaryPlus", 0, UNARY_PLUS);
             declareIntrinsicFunction(typeName, "minus", 0, UNARY_MINUS);
+            declareIntrinsicFunction(typeName, "unaryMinus", 0, UNARY_MINUS);
             declareIntrinsicFunction(typeName, "inv", 0, INV);
             declareIntrinsicFunction(typeName, "rangeTo", 1, RANGE_TO);
             declareIntrinsicFunction(typeName, "inc", 0, INC);
@@ -131,7 +134,7 @@ public class IntrinsicMethods {
             declareArrayMethodsForPrimitive(jvmPrimitiveType);
         }
 
-        declareIntrinsicFunction("Array", "size", 0, ARRAY_SIZE);
+        declareIntrinsicFunction("Array", "size", -1, ARRAY_SIZE);
         declareIntrinsicFunction("Array", "set", 2, ARRAY_SET);
         declareIntrinsicFunction("Array", "get", 1, ARRAY_GET);
         declareIntrinsicFunction("Array", "clone", 0, CLONE);
@@ -140,7 +143,7 @@ public class IntrinsicMethods {
 
     private void declareArrayMethodsForPrimitive(@NotNull JvmPrimitiveType jvmPrimitiveType) {
         String arrayTypeName = jvmPrimitiveType.getPrimitiveType().getArrayTypeName().asString();
-        declareIntrinsicFunction(arrayTypeName, "size", 0, ARRAY_SIZE);
+        declareIntrinsicFunction(arrayTypeName, "size", -1, ARRAY_SIZE);
         declareIntrinsicFunction(arrayTypeName, "set", 2, ARRAY_SET);
         declareIntrinsicFunction(arrayTypeName, "get", 1, ARRAY_GET);
         declareIntrinsicFunction(arrayTypeName, "clone", 0, CLONE);

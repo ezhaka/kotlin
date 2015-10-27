@@ -1,5 +1,6 @@
 package kotlin.properties
 
+import kotlin.reflect.KProperty
 
 /**
  * Base interface that can be used for implementing property delegates of read-only properties.
@@ -17,11 +18,7 @@ public interface ReadOnlyProperty<in R, out T> {
      * @param property the metadata for the property.
      * @return the property value.
      */
-    public fun getValue(thisRef: R, property: PropertyMetadata): T = get(thisRef, property)
-
-    //TODO drop after bootstrap
-    @Deprecated("Use getValue() instead.", ReplaceWith("getValue(thisRef, property)"))
-    public fun get(thisRef: R, property: PropertyMetadata): T = getValue(thisRef, property)
+    public operator fun getValue(thisRef: R, property: KProperty<*>): T
 }
 
 /**
@@ -40,11 +37,7 @@ public interface ReadWriteProperty<in R, T> {
      * @param property the metadata for the property.
      * @return the property value.
      */
-    public fun getValue(thisRef: R, property: PropertyMetadata): T = get(thisRef, property)
-
-    //TODO drop after bootstrap
-    @Deprecated("Use getValue() instead.", ReplaceWith("getValue(thisRef, property)"))
-    public fun get(thisRef: R, property: PropertyMetadata): T = getValue(thisRef, property)
+    public operator fun getValue(thisRef: R, property: KProperty<*>): T
 
     /**
      * Sets the value of the property for the given object.
@@ -52,11 +45,5 @@ public interface ReadWriteProperty<in R, T> {
      * @param property the metadata for the property.
      * @param value the value to set.
      */
-    public fun setValue(thisRef: R, property: PropertyMetadata, value: T) {
-        set(thisRef, property, value)
-    }
-
-    //TODO drop after bootstrap
-    @Deprecated("Use setValue() instead.", ReplaceWith("setValue(thisRef, property, value)"))
-    public fun set(thisRef: R, property: PropertyMetadata, value: T) = setValue(thisRef, property, value)
+    public operator fun setValue(thisRef: R, property: KProperty<*>, value: T)
 }

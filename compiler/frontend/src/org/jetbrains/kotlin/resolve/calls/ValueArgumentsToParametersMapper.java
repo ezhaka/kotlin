@@ -27,10 +27,10 @@ import org.jetbrains.kotlin.diagnostics.Diagnostic;
 import org.jetbrains.kotlin.name.Name;
 import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.resolve.OverrideResolver;
-import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilPackage;
+import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilKt;
 import org.jetbrains.kotlin.resolve.calls.model.*;
 import org.jetbrains.kotlin.resolve.calls.tasks.TracingStrategy;
-import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilPackage;
+import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt;
 
 import java.util.List;
 import java.util.Map;
@@ -84,6 +84,7 @@ public class ValueArgumentsToParametersMapper {
         private final MutableResolvedCall<D> candidateCall;
 
         private final Map<Name,ValueParameterDescriptor> parameterByName;
+        private Map<Name,ValueParameterDescriptor> parameterByNameInOverriddenMethods;
 
         private final Set<ValueArgument> unmappedArguments = Sets.newHashSet();
         private final Map<ValueParameterDescriptor, VarargValueArgument> varargs = Maps.newHashMap();
@@ -99,6 +100,20 @@ public class ValueArgumentsToParametersMapper {
             for (ValueParameterDescriptor valueParameter : candidateCall.getCandidateDescriptor().getValueParameters()) {
                 parameterByName.put(valueParameter.getName(), valueParameter);
             }
+        }
+
+        @Nullable
+        private ValueParameterDescriptor getParameterByNameInOverriddenMethods(Name name) {
+            if (parameterByNameInOverriddenMethods == null) {
+                parameterByNameInOverriddenMethods = Maps.newHashMap();
+                for (ValueParameterDescriptor valueParameter : candidateCall.getCandidateDescriptor().getValueParameters()) {
+                    for (ValueParameterDescriptor parameterDescriptor : valueParameter.getOverriddenDescriptors()) {
+                        parameterByNameInOverriddenMethods.put(parameterDescriptor.getName(), valueParameter);
+                    }
+                }
+            }
+
+            return parameterByNameInOverriddenMethods.get(name);
         }
 
         // We saw only positioned arguments so far
@@ -155,7 +170,7 @@ public class ValueArgumentsToParametersMapper {
                 ValueArgumentName argumentName = argument.getArgumentName();
                 assert argumentName != null;
                 ValueParameterDescriptor valueParameterDescriptor = parameterByName.get(argumentName.getAsName());
-                JetReferenceExpression nameReference = argumentName.getReferenceExpression();
+                KtReferenceExpression nameReference = argumentName.getReferenceExpression();
                 if (!candidate.hasStableParameterNames() && nameReference != null) {
                     report(NAMED_ARGUMENTS_NOT_ALLOWED.on(
                             nameReference,
@@ -163,11 +178,17 @@ public class ValueArgumentsToParametersMapper {
                     ));
                 }
 
-                if (candidate.hasStableParameterNames() && nameReference != null && valueParameterDescriptor != null &&
+                if (candidate.hasStableParameterNames() && nameReference != null  &&
                     candidate instanceof CallableMemberDescriptor && ((CallableMemberDescriptor)candidate).getKind() == CallableMemberDescriptor.Kind.FAKE_OVERRIDE) {
-                    for (ValueParameterDescriptor parameterFromSuperclass : valueParameterDescriptor.getOverriddenDescriptors()) {
-                        if (OverrideResolver.shouldReportParameterNameOverrideWarning(valueParameterDescriptor, parameterFromSuperclass)) {
+                    if (valueParameterDescriptor == null) {
+                        valueParameterDescriptor = getParameterByNameInOverriddenMethods(argumentName.getAsName());
+                    }
+
+                    if (valueParameterDescriptor != null) {
+                        for (ValueParameterDescriptor parameterFromSuperclass : valueParameterDescriptor.getOverriddenDescriptors()) {
+                            if (OverrideResolver.shouldReportParameterNameOverrideWarning(valueParameterDescriptor, parameterFromSuperclass)) {
                                 report(NAME_FOR_AMBIGUOUS_PARAMETER.on(nameReference));
+                            }
                         }
                     }
                 }
@@ -212,7 +233,7 @@ public class ValueArgumentsToParametersMapper {
 
         public void process() {
             ProcessorState state = positionedOnly;
-            List<? extends ValueArgument> argumentsInParentheses = CallUtilPackage.getValueArgumentsInParentheses(call);
+            List<? extends ValueArgument> argumentsInParentheses = CallUtilKt.getValueArgumentsInParentheses(call);
             for (int i = 0; i < argumentsInParentheses.size(); i++) {
                 ValueArgument valueArgument = argumentsInParentheses.get(i);
                 if (valueArgument.isNamed()) {
@@ -238,7 +259,7 @@ public class ValueArgumentsToParametersMapper {
             List<? extends FunctionLiteralArgument> functionLiteralArguments = call.getFunctionLiteralArguments();
             if (!functionLiteralArguments.isEmpty()) {
                 FunctionLiteralArgument functionLiteralArgument = functionLiteralArguments.get(0);
-                JetExpression possiblyLabeledFunctionLiteral = functionLiteralArgument.getArgumentExpression();
+                KtExpression possiblyLabeledFunctionLiteral = functionLiteralArgument.getArgumentExpression();
 
                 if (valueParameters.isEmpty()) {
                     report(TOO_MANY_ARGUMENTS.on(possiblyLabeledFunctionLiteral, candidate));
@@ -262,7 +283,7 @@ public class ValueArgumentsToParametersMapper {
                 }
 
                 for (int i = 1; i < functionLiteralArguments.size(); i++) {
-                    JetExpression argument = functionLiteralArguments.get(i).getArgumentExpression();
+                    KtExpression argument = functionLiteralArguments.get(i).getArgumentExpression();
                     report(MANY_FUNCTION_LITERAL_ARGUMENTS.on(argument));
                     setStatus(WEAK_ERROR);
                 }
@@ -273,7 +294,7 @@ public class ValueArgumentsToParametersMapper {
             List<ValueParameterDescriptor> valueParameters = candidateCall.getCandidateDescriptor().getValueParameters();
             for (ValueParameterDescriptor valueParameter : valueParameters) {
                 if (!usedParameters.contains(valueParameter)) {
-                    if (DescriptorUtilPackage.hasDefaultValue(valueParameter)) {
+                    if (DescriptorUtilsKt.hasDefaultValue(valueParameter)) {
                         candidateCall.recordValueArgument(valueParameter, DefaultValueArgument.DEFAULT);
                     }
                     else if (valueParameter.getVarargElementType() != null) {

@@ -1,4 +1,4 @@
-// PSI_ELEMENT: org.jetbrains.kotlin.psi.JetObjectDeclaration
+// PSI_ELEMENT: org.jetbrains.kotlin.psi.KtObjectDeclaration
 // OPTIONS: usages
 
 import kotlin.platform.platformStatic
@@ -8,7 +8,7 @@ class Foo {
         fun f() {
         }
 
-        platformStatic fun s() {
+        @platformStatic fun s() {
         }
 
         val CONST = 42

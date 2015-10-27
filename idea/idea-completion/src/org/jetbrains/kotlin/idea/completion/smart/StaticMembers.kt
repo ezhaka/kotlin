@@ -16,21 +16,24 @@
 
 package org.jetbrains.kotlin.idea.completion.smart
 
+import com.intellij.codeInsight.completion.CompletionInitializationContext
 import com.intellij.codeInsight.completion.InsertionContext
 import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.codeInsight.lookup.LookupElementDecorator
 import com.intellij.codeInsight.lookup.LookupElementPresentation
+import com.intellij.psi.PsiDocumentManager
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.idea.completion.ExpectedInfo
 import org.jetbrains.kotlin.idea.completion.LookupElementFactory
 import org.jetbrains.kotlin.idea.completion.fuzzyType
 import org.jetbrains.kotlin.idea.completion.shortenReferences
+import org.jetbrains.kotlin.idea.util.getResolutionScope
 import org.jetbrains.kotlin.idea.core.isVisible
+import org.jetbrains.kotlin.idea.resolve.ResolutionFacade
 import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers
 import org.jetbrains.kotlin.idea.util.fuzzyReturnType
-import org.jetbrains.kotlin.psi.JetSimpleNameExpression
+import org.jetbrains.kotlin.psi.KtSimpleNameExpression
 import org.jetbrains.kotlin.renderer.DescriptorRenderer
-import org.jetbrains.kotlin.renderer.render
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.resolve.descriptorUtil.isExtension
@@ -39,12 +42,13 @@ import org.jetbrains.kotlin.types.TypeUtils
 
 // adds java static members, enum members and members from companion object
 class StaticMembers(
-        val bindingContext: BindingContext,
-        val lookupElementFactory: LookupElementFactory
+        private val bindingContext: BindingContext,
+        private val lookupElementFactory: LookupElementFactory,
+        private val resolutionFacade: ResolutionFacade
 ) {
     public fun addToCollection(collection: MutableCollection<LookupElement>,
                                expectedInfos: Collection<ExpectedInfo>,
-                               context: JetSimpleNameExpression,
+                               context: KtSimpleNameExpression,
                                enumEntriesToSkip: Set<DeclarationDescriptor>) {
 
         val expectedInfosByClass = expectedInfos.groupBy {
@@ -61,13 +65,13 @@ class StaticMembers(
             collection: MutableCollection<LookupElement>,
             classDescriptor: ClassDescriptor,
             expectedInfos: Collection<ExpectedInfo>,
-            context: JetSimpleNameExpression,
+            context: KtSimpleNameExpression,
             enumEntriesToSkip: Set<DeclarationDescriptor>) {
 
-        val scope = bindingContext[BindingContext.RESOLUTION_SCOPE, context] ?: return
+        val containingDescriptor = context.getResolutionScope(bindingContext, resolutionFacade).ownerDescriptor
 
         fun processMember(descriptor: DeclarationDescriptor) {
-            if (descriptor is DeclarationDescriptorWithVisibility && !descriptor.isVisible(scope.getContainingDeclaration(), bindingContext, context)) return
+            if (descriptor is DeclarationDescriptorWithVisibility && !descriptor.isVisible(containingDescriptor, bindingContext, context)) return
 
             val matcher: (ExpectedInfo) -> ExpectedInfoMatch
             if (descriptor is CallableDescriptor) {
@@ -109,9 +113,7 @@ class StaticMembers(
 
         return lookupElements.map {
             object: LookupElementDecorator<LookupElement>(it) {
-                override fun getAllLookupStrings(): Set<String> {
-                    return setOf(it.lookupString, qualifierPresentation)
-                }
+                override fun getAllLookupStrings() = setOf(delegate.lookupString, qualifierPresentation)
 
                 override fun renderElement(presentation: LookupElementPresentation) {
                     getDelegate().renderElement(presentation)
@@ -132,16 +134,16 @@ class StaticMembers(
                 }
 
                 override fun handleInsert(context: InsertionContext) {
-                    var text = qualifierText + "." + memberDescriptor.getName().render()
+                    val prefix = qualifierText + "."
 
-                    context.getDocument().replaceString(context.getStartOffset(), context.getTailOffset(), text)
-                    context.setTailOffset(context.getStartOffset() + text.length())
+                    val offset = context.startOffset
+                    context.document.insertString(offset, prefix)
+                    context.offsetMap.addOffset(CompletionInitializationContext.START_OFFSET, offset + prefix.length)
 
-                    if (memberDescriptor is FunctionDescriptor) {
-                        getDelegate().handleInsert(context)
-                    }
+                    shortenReferences(context, offset, offset + prefix.length)
+                    PsiDocumentManager.getInstance(context.project).doPostponedOperationsAndUnblockDocument(context.document)
 
-                    shortenReferences(context, context.getStartOffset(), context.getTailOffset())
+                    super.handleInsert(context)
                 }
             }.assignSmartCompletionPriority(SmartCompletionItemPriority.STATIC_MEMBER)
         }

@@ -28,28 +28,27 @@ import com.intellij.refactoring.RefactoringBundle
 import org.jetbrains.kotlin.asJava.namedUnwrappedElement
 import org.jetbrains.kotlin.asJava.toLightMethods
 import org.jetbrains.kotlin.descriptors.*
-import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.DECLARATION
-import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.DELEGATION
-import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.FAKE_OVERRIDE
-import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.SYNTHESIZED
+import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.*
 import org.jetbrains.kotlin.idea.JetBundle
+import org.jetbrains.kotlin.idea.caches.resolve.analyze
+import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
 import org.jetbrains.kotlin.idea.codeInsight.DescriptorToSourceUtilsIde
+import org.jetbrains.kotlin.idea.util.getResolutionScope
 import org.jetbrains.kotlin.idea.core.quickfix.QuickFixUtil
-import org.jetbrains.kotlin.psi.JetBlockExpression
-import org.jetbrains.kotlin.psi.JetDeclarationWithBody
-import org.jetbrains.kotlin.psi.JetExpression
+import org.jetbrains.kotlin.psi.KtBlockExpression
+import org.jetbrains.kotlin.psi.KtDeclarationWithBody
+import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.renderer.DescriptorRenderer
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils
 import org.jetbrains.kotlin.resolve.OverrideResolver
-import org.jetbrains.kotlin.resolve.scopes.JetScope
-import org.jetbrains.kotlin.resolve.scopes.utils.asJetScope
+import org.jetbrains.kotlin.resolve.scopes.LexicalScope
+import org.jetbrains.kotlin.resolve.scopes.utils.memberScopeAsImportingScope
 import java.util.*
 
 public abstract class CallableRefactoring<T: CallableDescriptor>(
         val project: Project,
         val callableDescriptor: T,
-        val bindingContext: BindingContext,
         val commandName: String) {
     private val LOG = Logger.getInstance(javaClass<CallableRefactoring<*>>())
 
@@ -183,23 +182,25 @@ fun getAffectedCallables(project: Project, descriptorsForChange: Collection<Call
     }
 }
 
-fun DeclarationDescriptor.getContainingScope(bindingContext: BindingContext): JetScope? {
+fun DeclarationDescriptor.getContainingScope(): LexicalScope? {
     val declaration = DescriptorToSourceUtils.descriptorToDeclaration(this)
-    val block = declaration?.getParent() as? JetBlockExpression
+    val block = declaration?.getParent() as? KtBlockExpression
     if (block != null) {
-        return bindingContext[BindingContext.RESOLUTION_SCOPE, block.getStatements().last()]
+        val lastStatement = block.statements.last()
+        val bindingContext = lastStatement.analyze()
+        return lastStatement.getResolutionScope(bindingContext, lastStatement.getResolutionFacade())
     }
     else {
         val containingDescriptor = getContainingDeclaration() ?: return null
         return when (containingDescriptor) {
-            is ClassDescriptorWithResolutionScopes -> containingDescriptor.getScopeForInitializerResolution().asJetScope()
-            is PackageFragmentDescriptor -> containingDescriptor.getMemberScope()
+            is ClassDescriptorWithResolutionScopes -> containingDescriptor.getScopeForInitializerResolution()
+            is PackageFragmentDescriptor -> containingDescriptor.getMemberScope().memberScopeAsImportingScope()
             else -> null
         }
     }
 }
 
-fun JetDeclarationWithBody.getBodyScope(bindingContext: BindingContext): JetScope? {
-    val expression = getBodyExpression()?.getChildren()?.firstOrNull { it is JetExpression } as JetExpression?
-    return expression?.let { bindingContext[BindingContext.RESOLUTION_SCOPE, it] }
+fun KtDeclarationWithBody.getBodyScope(bindingContext: BindingContext): LexicalScope? {
+    val expression = getBodyExpression()?.getChildren()?.firstOrNull { it is KtExpression } ?: return null
+    return expression.getResolutionScope(bindingContext, getResolutionFacade())
 }

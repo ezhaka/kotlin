@@ -61,24 +61,21 @@ public val File.parent: File?
 /**
  * Returns the canonical path of this file.
  */
-@HiddenDeclaration
-@Deprecated("Is replaced with automatic synthetic extension", ReplaceWith("canonicalPath"))
+@Deprecated("Is replaced with automatic synthetic extension", ReplaceWith("canonicalPath"), level = DeprecationLevel.HIDDEN)
 public val File.canonicalPath: String
     get() = getCanonicalPath()
 
 /**
  * Returns the file name.
  */
-@HiddenDeclaration
-@Deprecated("Is replaced with automatic synthetic extension", ReplaceWith("name"))
+@Deprecated("Is replaced with automatic synthetic extension", ReplaceWith("name"), level = DeprecationLevel.HIDDEN)
 public val File.name: String
     get() = getName()
 
 /**
  * Returns the file path.
  */
-@HiddenDeclaration
-@Deprecated("Is replaced with automatic synthetic extension", ReplaceWith("path"))
+@Deprecated("Is replaced with automatic synthetic extension", ReplaceWith("path"), level = DeprecationLevel.HIDDEN)
 public val File.path: String
     get() = getPath()
 
@@ -93,6 +90,7 @@ public val File.extension: String
  *
  * @return the pathname with system separators.
  */
+@Deprecated("Use File.separatorsToSystem instead", ReplaceWith("File(this).separatorsToSystem()", "java.io.File"))
 public fun String.separatorsToSystem(): String {
     val otherSep = if (File.separator == "/") "\\" else "/"
     return replace(otherSep, File.separator)
@@ -103,6 +101,7 @@ public fun String.separatorsToSystem(): String {
  *
  * @return the pathname with system separators.
  */
+@Deprecated("This function is deprecated")
 public fun String.pathSeparatorsToSystem(): String {
     val otherSep = if (File.pathSeparator == ":") ";" else ":"
     return replace(otherSep, File.pathSeparator)
@@ -113,6 +112,7 @@ public fun String.pathSeparatorsToSystem(): String {
  *
  * @return the pathname with system separators.
  */
+@Deprecated("This function is deprecated")
 public fun String.allSeparatorsToSystem(): String {
     return separatorsToSystem().pathSeparatorsToSystem()
 }

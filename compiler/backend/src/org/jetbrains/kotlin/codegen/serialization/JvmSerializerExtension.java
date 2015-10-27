@@ -20,7 +20,6 @@ import com.google.protobuf.MessageLite;
 import com.intellij.openapi.util.Pair;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.kotlin.builtins.KotlinBuiltIns;
 import org.jetbrains.kotlin.codegen.state.JetTypeMapper;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor;
@@ -32,7 +31,7 @@ import org.jetbrains.kotlin.serialization.SerializerExtension;
 import org.jetbrains.kotlin.serialization.StringTable;
 import org.jetbrains.kotlin.serialization.jvm.JvmProtoBuf;
 import org.jetbrains.kotlin.serialization.jvm.JvmProtoBufUtil;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.org.objectweb.asm.Type;
 import org.jetbrains.org.objectweb.asm.commons.Method;
 
@@ -42,11 +41,13 @@ public class JvmSerializerExtension extends SerializerExtension {
     private final JvmSerializationBindings bindings;
     private final StringTable stringTable;
     private final AnnotationSerializer annotationSerializer;
+    private final boolean useTypeTable;
 
-    public JvmSerializerExtension(@NotNull JvmSerializationBindings bindings, @NotNull JetTypeMapper typeMapper) {
+    public JvmSerializerExtension(@NotNull JvmSerializationBindings bindings, @NotNull JetTypeMapper typeMapper, boolean useTypeTable) {
         this.bindings = bindings;
         this.stringTable = new JvmStringTable(typeMapper);
         this.annotationSerializer = new AnnotationSerializer(stringTable);
+        this.useTypeTable = useTypeTable;
     }
 
     @NotNull
@@ -56,11 +57,8 @@ public class JvmSerializerExtension extends SerializerExtension {
     }
 
     @Override
-    public void serializeClass(@NotNull ClassDescriptor descriptor, @NotNull ProtoBuf.Class.Builder proto) {
-        AnnotationDescriptor annotation = descriptor.getAnnotations().findAnnotation(KotlinBuiltIns.FQ_NAMES.annotation);
-        if (annotation != null) {
-            proto.addExtension(JvmProtoBuf.classAnnotation, annotationSerializer.serializeAnnotation(annotation));
-        }
+    public boolean shouldUseTypeTable() {
+        return useTypeTable;
     }
 
     @Override
@@ -72,7 +70,7 @@ public class JvmSerializerExtension extends SerializerExtension {
     }
 
     @Override
-    public void serializeType(@NotNull JetType type, @NotNull ProtoBuf.Type.Builder proto) {
+    public void serializeType(@NotNull KotlinType type, @NotNull ProtoBuf.Type.Builder proto) {
         // TODO: don't store type annotations in our binary metadata on Java 8, use *TypeAnnotations attributes instead
         for (AnnotationDescriptor annotation : type.getAnnotations()) {
             proto.addExtension(JvmProtoBuf.typeAnnotation, annotationSerializer.serializeAnnotation(annotation));
@@ -80,6 +78,15 @@ public class JvmSerializerExtension extends SerializerExtension {
 
         if (type.getCapabilities() instanceof RawTypeCapabilities) {
             proto.setExtension(JvmProtoBuf.isRaw, true);
+        }
+    }
+
+    @Override
+    public void serializeTypeParameter(
+            @NotNull TypeParameterDescriptor typeParameter, @NotNull ProtoBuf.TypeParameter.Builder proto
+    ) {
+        for (AnnotationDescriptor annotation : typeParameter.getAnnotations()) {
+            proto.addExtension(JvmProtoBuf.typeParameterAnnotation, annotationSerializer.serializeAnnotation(annotation));
         }
     }
 
@@ -193,7 +200,7 @@ public class JvmSerializerExtension extends SerializerExtension {
 
             sb.append(")");
 
-            JetType returnType = descriptor.getReturnType();
+            KotlinType returnType = descriptor.getReturnType();
             String returnTypeDesc = returnType == null ? "V" : mapTypeDefault(returnType);
             if (returnTypeDesc == null) return true;
             sb.append(returnTypeDesc);
@@ -206,7 +213,7 @@ public class JvmSerializerExtension extends SerializerExtension {
         }
 
         @Nullable
-        private String mapTypeDefault(@NotNull JetType type) {
+        private String mapTypeDefault(@NotNull KotlinType type) {
             ClassifierDescriptor classifier = type.getConstructor().getDeclarationDescriptor();
             if (!(classifier instanceof ClassDescriptor)) return null;
             ClassId classId = classId((ClassDescriptor) classifier);

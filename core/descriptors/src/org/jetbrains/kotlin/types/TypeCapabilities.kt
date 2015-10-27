@@ -28,7 +28,7 @@ public interface TypeCapabilities {
     fun <T : TypeCapability> getCapability(capabilityClass: Class<T>): T?
 }
 
-public inline fun <reified T : TypeCapability> JetType.getCapability(): T? = getCapability(javaClass<T>())
+public inline fun <reified T : TypeCapability> KotlinType.getCapability(): T? = getCapability(javaClass<T>())
 
 public interface Specificity : TypeCapability {
 
@@ -38,16 +38,16 @@ public interface Specificity : TypeCapability {
         DONT_KNOW
     }
 
-    public fun getSpecificityRelationTo(otherType: JetType): Relation
+    public fun getSpecificityRelationTo(otherType: KotlinType): Relation
 }
 
-fun JetType.getSpecificityRelationTo(otherType: JetType) =
+fun KotlinType.getSpecificityRelationTo(otherType: KotlinType) =
         this.getCapability(javaClass<Specificity>())?.getSpecificityRelationTo(otherType) ?: Specificity.Relation.DONT_KNOW
 
-fun oneMoreSpecificThanAnother(a: JetType, b: JetType) =
+fun oneMoreSpecificThanAnother(a: KotlinType, b: KotlinType) =
         a.getSpecificityRelationTo(b) != Specificity.Relation.DONT_KNOW || b.getSpecificityRelationTo(a) != Specificity.Relation.DONT_KNOW
 
-// To facilitate laziness, any JetType implementation may inherit from this trait,
+// To facilitate laziness, any KotlinType implementation may inherit from this trait,
 // even if it turns out that the type an instance represents is not actually a type variable
 // (i.e. it is not derived from a type parameter), see isTypeVariable
 public interface CustomTypeVariable : TypeCapability {
@@ -57,29 +57,29 @@ public interface CustomTypeVariable : TypeCapability {
     public val typeParameterDescriptor: TypeParameterDescriptor?
 
     // Throws an exception when isTypeVariable == false
-    public fun substitutionResult(replacement: JetType): JetType
+    public fun substitutionResult(replacement: KotlinType): KotlinType
 }
 
-public fun JetType.isCustomTypeVariable(): Boolean = this.getCapability(javaClass<CustomTypeVariable>())?.isTypeVariable ?: false
-public fun JetType.getCustomTypeVariable(): CustomTypeVariable? =
+public fun KotlinType.isCustomTypeVariable(): Boolean = this.getCapability(javaClass<CustomTypeVariable>())?.isTypeVariable ?: false
+public fun KotlinType.getCustomTypeVariable(): CustomTypeVariable? =
         this.getCapability(javaClass<CustomTypeVariable>())?.let {
             if (it.isTypeVariable) it else null
         }
 
 public interface SubtypingRepresentatives : TypeCapability {
-    public val subTypeRepresentative: JetType
-    public val superTypeRepresentative: JetType
+    public val subTypeRepresentative: KotlinType
+    public val superTypeRepresentative: KotlinType
 
-    public fun sameTypeConstructor(type: JetType): Boolean
+    public fun sameTypeConstructor(type: KotlinType): Boolean
 }
 
-public fun JetType.getSubtypeRepresentative(): JetType =
+public fun KotlinType.getSubtypeRepresentative(): KotlinType =
         this.getCapability(javaClass<SubtypingRepresentatives>())?.subTypeRepresentative ?: this
 
-public fun JetType.getSupertypeRepresentative(): JetType =
+public fun KotlinType.getSupertypeRepresentative(): KotlinType =
         this.getCapability(javaClass<SubtypingRepresentatives>())?.superTypeRepresentative ?: this
 
-public fun sameTypeConstructors(first: JetType, second: JetType): Boolean {
+public fun sameTypeConstructors(first: KotlinType, second: KotlinType): Boolean {
     val typeRangeCapability = javaClass<SubtypingRepresentatives>()
     return first.getCapability(typeRangeCapability)?.sameTypeConstructor(second) ?: false
            || second.getCapability(typeRangeCapability)?.sameTypeConstructor(first) ?: false

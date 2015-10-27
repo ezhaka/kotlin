@@ -28,8 +28,8 @@ import org.jetbrains.kotlin.load.java.JvmAbi;
 import org.jetbrains.kotlin.load.kotlin.PackagePartClassUtils;
 import org.jetbrains.kotlin.name.FqName;
 import org.jetbrains.kotlin.name.Name;
-import org.jetbrains.kotlin.psi.JetClassOrObject;
-import org.jetbrains.kotlin.psi.JetFile;
+import org.jetbrains.kotlin.psi.KtClassOrObject;
+import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.psi.stubs.*;
 import org.jetbrains.kotlin.psi.stubs.elements.StubIndexService;
 import org.jetbrains.kotlin.util.TypeIndexUtilKt;
@@ -56,14 +56,6 @@ public class IdeStubIndexService extends StubIndexService {
         FqName partFqName = ((KotlinFileStubForIde) stub).getPartFqName();
         if (partFqName != null) {
             sink.occurrence(JetFilePartClassIndex.INSTANCE.getKey(), partFqName.asString());
-        }
-
-        // TODO drop
-        JetFile jetFile = stub.getPsi();
-        if (jetFile != null) {
-            JvmFileClassInfo fileClassInfo = JvmFileClassUtil.getFileClassInfoNoResolve(jetFile);
-            sink.occurrence(JetFileFacadeFqNameIndex.INSTANCE.getKey(), fileClassInfo.getFacadeClassFqName().asString());
-            sink.occurrence(JetFilePartClassIndex.INSTANCE.getKey(), fileClassInfo.getFileClassFqName().asString());
         }
 
         List<StringRef> partNames = ((KotlinFileStubForIde) stub).getFacadePartSimpleNames();
@@ -121,7 +113,7 @@ public class IdeStubIndexService extends StubIndexService {
         indexSuperNames(stub, sink);
     }
 
-    private static void indexSuperNames(KotlinClassOrObjectStub<? extends JetClassOrObject> stub, IndexSink sink) {
+    private static void indexSuperNames(KotlinClassOrObjectStub<? extends KtClassOrObject> stub, IndexSink sink) {
         for (String superName : stub.getSuperNames()) {
             sink.occurrence(JetSuperClassIndex.getInstance().getKey(), superName);
         }
@@ -144,7 +136,7 @@ public class IdeStubIndexService extends StubIndexService {
             if (fqName != null) {
                 sink.occurrence(JetTopLevelFunctionFqnNameIndex.getInstance().getKey(), fqName.asString());
                 sink.occurrence(JetTopLevelFunctionByPackageIndex.getInstance().getKey(), fqName.parent().asString());
-                StubindexPackage.indexTopLevelExtension(stub, sink);
+                IndexUtilsKt.indexTopLevelExtension(stub, sink);
             }
         }
     }
@@ -166,7 +158,7 @@ public class IdeStubIndexService extends StubIndexService {
             if (fqName != null) {
                 sink.occurrence(JetTopLevelPropertyFqnNameIndex.getInstance().getKey(), fqName.asString());
                 sink.occurrence(JetTopLevelPropertyByPackageIndex.getInstance().getKey(), fqName.parent().asString());
-                StubindexPackage.indexTopLevelExtension(stub, sink);
+                IndexUtilsKt.indexTopLevelExtension(stub, sink);
             }
         }
     }
@@ -197,7 +189,7 @@ public class IdeStubIndexService extends StubIndexService {
 
     @NotNull
     @Override
-    public KotlinFileStub createFileStub(@NotNull JetFile file) {
+    public KotlinFileStub createFileStub(@NotNull KtFile file) {
         StringRef packageFqName = StringRef.fromString(file.getPackageFqNameByTree().asString());
         boolean isScript = file.isScriptByTree();
         if (PackagePartClassUtils.fileHasTopLevelCallables(file)) {

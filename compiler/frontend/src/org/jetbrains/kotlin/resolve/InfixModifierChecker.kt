@@ -20,21 +20,21 @@ import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.diagnostics.DiagnosticSink
 import org.jetbrains.kotlin.diagnostics.Errors
-import org.jetbrains.kotlin.lexer.JetTokens
-import org.jetbrains.kotlin.psi.JetDeclaration
+import org.jetbrains.kotlin.lexer.KtTokens
+import org.jetbrains.kotlin.psi.KtDeclaration
 import org.jetbrains.kotlin.resolve.descriptorUtil.hasDefaultValue
 
 public class InfixModifierChecker : DeclarationChecker {
 
     override fun check(
-            declaration: JetDeclaration,
+            declaration: KtDeclaration,
             descriptor: DeclarationDescriptor,
             diagnosticHolder: DiagnosticSink,
             bindingContext: BindingContext
     ) {
         val functionDescriptor = descriptor as? FunctionDescriptor ?: return
         if (!functionDescriptor.isInfix) return
-        val modifier = declaration.modifierList?.getModifier(JetTokens.INFIX_KEYWORD) ?: return
+        val modifier = declaration.modifierList?.getModifier(KtTokens.INFIX_KEYWORD) ?: return
 
         if (!isApplicable(functionDescriptor)) {
             diagnosticHolder.report(Errors.INAPPLICABLE_INFIX_MODIFIER.on(modifier))
@@ -43,20 +43,10 @@ public class InfixModifierChecker : DeclarationChecker {
 
     private fun isApplicable(descriptor: FunctionDescriptor): Boolean {
         if (descriptor.dispatchReceiverParameter == null && descriptor.extensionReceiverParameter == null) return false
-        val paramCount = descriptor.valueParameters.size()
-        return when (paramCount) {
-            0 -> false
-            1 -> true
-            else -> {
-                val params = descriptor.valueParameters
-                for (i in 1..params.lastIndex) {
-                    if (!params[i].hasDefaultValue()) {
-                        return false
-                    }
-                }
-                true
-            }
-        }
+        if (descriptor.valueParameters.size != 1) return false
+
+        val singleParameter = descriptor.valueParameters.first()
+        return !singleParameter.hasDefaultValue() && singleParameter.varargElementType == null
     }
 
 }

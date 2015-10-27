@@ -31,7 +31,6 @@ import com.intellij.ui.table.JBTable;
 import com.intellij.usageView.UsageInfo;
 import com.intellij.usages.UsageViewPresentation;
 import com.intellij.usages.impl.UsagePreviewPanel;
-import jet.runtime.typeinfo.KotlinSignature;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor;
 import org.jetbrains.kotlin.descriptors.ClassDescriptor;
@@ -40,10 +39,10 @@ import org.jetbrains.kotlin.idea.JetBundle;
 import org.jetbrains.kotlin.idea.caches.resolve.ResolutionUtils;
 import org.jetbrains.kotlin.idea.refactoring.JetRefactoringUtil;
 import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers;
-import org.jetbrains.kotlin.psi.JetElement;
-import org.jetbrains.kotlin.psi.JetNamedFunction;
-import org.jetbrains.kotlin.psi.JetProperty;
-import org.jetbrains.kotlin.psi.JetPsiUtil;
+import org.jetbrains.kotlin.psi.KtElement;
+import org.jetbrains.kotlin.psi.KtNamedFunction;
+import org.jetbrains.kotlin.psi.KtProperty;
+import org.jetbrains.kotlin.psi.KtPsiUtil;
 import org.jetbrains.kotlin.renderer.DescriptorRenderer;
 import org.jetbrains.kotlin.resolve.BindingContext;
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode;
@@ -92,9 +91,9 @@ class KotlinOverridingDialog extends DialogWrapper {
     }
 
     private static String formatElement(PsiElement element) {
-        element = JetPsiUtil.ascendIfPropertyAccessor(element);
-        if (element instanceof JetNamedFunction || element instanceof JetProperty) {
-            BindingContext bindingContext = ResolutionUtils.analyze((JetElement) element, BodyResolveMode.FULL);
+        element = KtPsiUtil.ascendIfPropertyAccessor(element);
+        if (element instanceof KtNamedFunction || element instanceof KtProperty) {
+            BindingContext bindingContext = ResolutionUtils.analyze((KtElement) element, BodyResolveMode.FULL);
 
             DeclarationDescriptor declarationDescriptor = bindingContext.get(BindingContext.DECLARATION_TO_DESCRIPTOR, element);
             if (declarationDescriptor instanceof CallableMemberDescriptor) {
@@ -119,9 +118,9 @@ class KotlinOverridingDialog extends DialogWrapper {
         return "#org.jetbrains.kotlin.idea.refactoring.safeDelete.KotlinOverridingDialog";
     }
 
-    @KotlinSignature("fun getSelected(): ArrayList<UsageInfo>")
-    public ArrayList<UsageInfo> getSelected() {
-        ArrayList<UsageInfo> result = new ArrayList<UsageInfo>();
+    @NotNull
+    public List<UsageInfo> getSelected() {
+        List<UsageInfo> result = new ArrayList<UsageInfo>();
         for (int i = 0; i < myChecked.length; i++) {
             if (myChecked[i]) {
                 result.add(myOverridingMethods.get(i));

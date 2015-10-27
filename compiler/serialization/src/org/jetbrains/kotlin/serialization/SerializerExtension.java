@@ -18,13 +18,17 @@ package org.jetbrains.kotlin.serialization;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.descriptors.*;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 
 import java.util.Collection;
 
 public abstract class SerializerExtension {
     @NotNull
     public abstract StringTable getStringTable();
+
+    public boolean shouldUseTypeTable() {
+        return false;
+    }
 
     public void serializeClass(@NotNull ClassDescriptor descriptor, @NotNull ProtoBuf.Class.Builder proto) {
     }
@@ -44,6 +48,9 @@ public abstract class SerializerExtension {
     public void serializeValueParameter(@NotNull ValueParameterDescriptor descriptor, @NotNull ProtoBuf.ValueParameter.Builder proto) {
     }
 
-    public void serializeType(@NotNull JetType type, @NotNull ProtoBuf.Type.Builder proto) {
+    public void serializeType(@NotNull KotlinType type, @NotNull ProtoBuf.Type.Builder proto) {
+    }
+
+    public void serializeTypeParameter(@NotNull TypeParameterDescriptor typeParameter, @NotNull ProtoBuf.TypeParameter.Builder proto) {
     }
 }

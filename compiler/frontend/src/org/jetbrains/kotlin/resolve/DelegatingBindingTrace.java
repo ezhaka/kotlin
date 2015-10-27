@@ -23,12 +23,12 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.TestOnly;
 import org.jetbrains.kotlin.diagnostics.Diagnostic;
-import org.jetbrains.kotlin.psi.JetExpression;
+import org.jetbrains.kotlin.psi.KtExpression;
 import org.jetbrains.kotlin.resolve.diagnostics.Diagnostics;
 import org.jetbrains.kotlin.resolve.diagnostics.MutableDiagnosticsWithSuppression;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.types.expressions.JetTypeInfo;
-import org.jetbrains.kotlin.types.expressions.typeInfoFactory.TypeInfoFactoryPackage;
+import org.jetbrains.kotlin.types.expressions.typeInfoFactory.TypeInfoFactoryKt;
 import org.jetbrains.kotlin.util.slicedMap.*;
 
 import java.util.Collection;
@@ -58,7 +58,7 @@ public class DelegatingBindingTrace implements BindingTrace {
 
         @Nullable
         @Override
-        public JetType getType(@NotNull JetExpression expression) {
+        public KotlinType getType(@NotNull KtExpression expression) {
             return DelegatingBindingTrace.this.getType(expression);
         }
 
@@ -139,16 +139,16 @@ public class DelegatingBindingTrace implements BindingTrace {
 
     @Nullable
     @Override
-    public JetType getType(@NotNull JetExpression expression) {
+    public KotlinType getType(@NotNull KtExpression expression) {
         JetTypeInfo typeInfo = get(BindingContext.EXPRESSION_TYPE_INFO, expression);
         return typeInfo != null ? typeInfo.getType() : null;
     }
 
     @Override
-    public void recordType(@NotNull JetExpression expression, @Nullable JetType type) {
+    public void recordType(@NotNull KtExpression expression, @Nullable KotlinType type) {
         JetTypeInfo typeInfo = get(BindingContext.EXPRESSION_TYPE_INFO, expression);
         if (typeInfo == null) {
-            typeInfo = TypeInfoFactoryPackage.createTypeInfo(type);
+            typeInfo = TypeInfoFactoryKt.createTypeInfo(type);
         }
         else {
             typeInfo = typeInfo.replaceType(type);

@@ -22,27 +22,27 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor;
 import org.jetbrains.kotlin.js.translate.context.TranslationContext;
 import org.jetbrains.kotlin.js.translate.general.AbstractTranslator;
-import org.jetbrains.kotlin.psi.JetCallExpression;
-import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilPackage;
+import org.jetbrains.kotlin.psi.KtCallExpression;
+import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilKt;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
 
 public abstract class AbstractCallExpressionTranslator extends AbstractTranslator {
 
     @NotNull
-    protected final JetCallExpression expression;
+    protected final KtCallExpression expression;
     @NotNull
     protected final ResolvedCall<? extends FunctionDescriptor> resolvedCall;
     @Nullable
     protected final JsExpression receiver;
 
     protected AbstractCallExpressionTranslator(
-            @NotNull JetCallExpression expression,
+            @NotNull KtCallExpression expression,
             @Nullable JsExpression receiver,
             @NotNull TranslationContext context
     ) {
         super(context);
         this.expression = expression;
-        this.resolvedCall = CallUtilPackage.getFunctionResolvedCallWithAssert(expression, bindingContext());
+        this.resolvedCall = CallUtilKt.getFunctionResolvedCallWithAssert(expression, bindingContext());
         this.receiver = receiver;
     }
 

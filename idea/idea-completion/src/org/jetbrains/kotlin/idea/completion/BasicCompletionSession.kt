@@ -21,28 +21,30 @@ import com.intellij.codeInsight.completion.CompletionResultSet
 import com.intellij.codeInsight.completion.CompletionSorter
 import com.intellij.codeInsight.completion.CompletionType
 import com.intellij.codeInsight.lookup.LookupElement
+import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.codeInsight.template.TemplateManager
 import com.intellij.patterns.PatternCondition
 import com.intellij.patterns.StandardPatterns
 import com.intellij.psi.JavaPsiFacade
+import com.intellij.psi.codeStyle.CodeStyleManager
 import com.intellij.psi.search.GlobalSearchScope
-import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.util.ProcessingContext
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.ClassKind
-import org.jetbrains.kotlin.descriptors.ClassifierDescriptor
-import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.idea.completion.smart.ExpectedInfoMatch
 import org.jetbrains.kotlin.idea.completion.smart.SMART_COMPLETION_ITEM_PRIORITY_KEY
 import org.jetbrains.kotlin.idea.completion.smart.SmartCompletion
 import org.jetbrains.kotlin.idea.completion.smart.SmartCompletionItemPriority
 import org.jetbrains.kotlin.idea.project.ProjectStructureUtil
+import org.jetbrains.kotlin.idea.quickfix.moveCaret
 import org.jetbrains.kotlin.idea.stubindex.PackageIndexUtil
 import org.jetbrains.kotlin.idea.util.CallTypeAndReceiver
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.*
+import org.jetbrains.kotlin.renderer.render
 import org.jetbrains.kotlin.resolve.descriptorUtil.builtIns
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindExclude
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
@@ -54,40 +56,21 @@ class BasicCompletionSession(configuration: CompletionSessionConfiguration,
                              resultSet: CompletionResultSet)
 : CompletionSession(configuration, parameters, resultSet) {
 
-    private enum class CompletionKind(
-            val descriptorKindFilter: DescriptorKindFilter?,
-            val classKindFilter: ((ClassKind) -> Boolean)?
-    ) {
-        ALL(
-                descriptorKindFilter = DescriptorKindFilter(DescriptorKindFilter.ALL_KINDS_MASK),
-                classKindFilter = { it != ClassKind.ENUM_ENTRY }
-        ),
+    private enum class CompletionKind(val descriptorKindFilter: DescriptorKindFilter?) {
+        ALL(descriptorKindFilter = DescriptorKindFilter.ALL),
 
-        TYPES(
-                descriptorKindFilter = DescriptorKindFilter(DescriptorKindFilter.CLASSIFIERS_MASK or DescriptorKindFilter.PACKAGES_MASK) exclude DescriptorKindExclude.EnumEntry,
-                classKindFilter = { it != ClassKind.ENUM_ENTRY }
-        ),
+        KEYWORDS_ONLY(descriptorKindFilter = null),
 
-        ANNOTATION_TYPES(
-                descriptorKindFilter = ANNOTATION_TYPES_FILTER,
-                classKindFilter = { it == ClassKind.ANNOTATION_CLASS }
-        ),
+        NAMED_ARGUMENTS_ONLY(descriptorKindFilter = null),
 
-        ANNOTATION_TYPES_OR_PARAMETER_NAME(
-                descriptorKindFilter = ANNOTATION_TYPES_FILTER,
-                classKindFilter = { it == ClassKind.ANNOTATION_CLASS }
-        ),
+        PARAMETER_NAME(descriptorKindFilter = null),
 
-        KEYWORDS_ONLY(descriptorKindFilter = null, classKindFilter = null),
+        TOP_LEVEL_CLASS_NAME(descriptorKindFilter = null),
 
-        NAMED_ARGUMENTS_ONLY(descriptorKindFilter = null, classKindFilter = null),
-
-        PARAMETER_NAME(descriptorKindFilter = null, classKindFilter = null),
-
-        SUPER_QUALIFIER(descriptorKindFilter = DescriptorKindFilter.NON_SINGLETON_CLASSIFIERS, classKindFilter = null)
+        SUPER_QUALIFIER(descriptorKindFilter = DescriptorKindFilter.NON_SINGLETON_CLASSIFIERS)
     }
 
-    private val completionKind = calcCompletionKind()
+    private val completionKind = detectCompletionKind()
 
     override val descriptorKindFilter = if (isNoQualifierContext()) {
         // it's an optimization because obtaining top-level packages from scope is very slow, we obtains them in other way
@@ -113,64 +96,47 @@ class BasicCompletionSession(configuration: CompletionSessionConfiguration,
     override val expectedInfos: Collection<ExpectedInfo>
         get() = smartCompletion?.expectedInfos ?: emptyList()
 
-    private fun calcCompletionKind(): CompletionKind {
-        if (nameExpression != null && NamedArgumentCompletion.isOnlyNamedArgumentExpected(nameExpression)) {
+    private fun detectCompletionKind(): CompletionKind {
+        if (nameExpression == null) {
+            return when  {
+                (position.parent as? KtParameter)?.nameIdentifier == position ->
+                    CompletionKind.PARAMETER_NAME
+
+                (position.parent as? KtClassOrObject)?.nameIdentifier == position && position.parent.parent is KtFile ->
+                    CompletionKind.TOP_LEVEL_CLASS_NAME
+
+                else ->
+                    CompletionKind.KEYWORDS_ONLY
+            }
+        }
+
+        if (NamedArgumentCompletion.isOnlyNamedArgumentExpected(nameExpression)) {
             return CompletionKind.NAMED_ARGUMENTS_ONLY
         }
 
-        if (nameExpression == null) {
-            val parameter = position.getParent() as? JetParameter
-            return if (parameter != null && position == parameter.getNameIdentifier())
-                CompletionKind.PARAMETER_NAME
-            else
-                CompletionKind.KEYWORDS_ONLY
-        }
-
-        val annotationEntry = position.getStrictParentOfType<JetAnnotationEntry>()
-        if (annotationEntry != null) {
-            val valueArgList = position.getStrictParentOfType<JetValueArgumentList>()
-            if (valueArgList == null || !annotationEntry.isAncestor(valueArgList)) {
-                val parent = annotationEntry.getParent()
-                if (parent is JetDeclarationModifierList && parent.getParent() is JetParameter) {
-                    return CompletionKind.ANNOTATION_TYPES_OR_PARAMETER_NAME
-                }
-                return CompletionKind.ANNOTATION_TYPES
-            }
-        }
-
-        // Check that completion in the type annotation context and if there's a qualified
-        // expression we are at first of it
-        val typeReference = position.getStrictParentOfType<JetTypeReference>()
-        if (typeReference != null) {
-            if (typeReference.parent is JetSuperExpression) {
-                return CompletionKind.SUPER_QUALIFIER
-            }
-
-            val firstPartReference = PsiTreeUtil.findChildOfType(typeReference, javaClass<JetSimpleNameExpression>())
-            if (firstPartReference == nameExpression) {
-                return CompletionKind.TYPES
-            }
+        if (nameExpression.getStrictParentOfType<KtSuperExpression>() != null) {
+            return CompletionKind.SUPER_QUALIFIER
         }
 
         return CompletionKind.ALL
     }
 
     private fun shouldCompleteParameterNameAndType(): Boolean {
-        if (completionKind != CompletionKind.PARAMETER_NAME && completionKind != CompletionKind.ANNOTATION_TYPES_OR_PARAMETER_NAME) return false
+        if (completionKind != CompletionKind.PARAMETER_NAME) return false
 
-        val parameter = position.getNonStrictParentOfType<JetParameter>()!!
-        val list = parameter.parent as? JetParameterList ?: return false
+        val parameter = position.getNonStrictParentOfType<KtParameter>()!!
+        val list = parameter.parent as? KtParameterList ?: return false
         val owner = list.parent
         return when (owner) {
-            is JetCatchClause, is JetPropertyAccessor, is JetFunctionLiteral -> false
-            is JetNamedFunction -> owner.nameIdentifier != null
-            is JetPrimaryConstructor -> !owner.getContainingClassOrObject().isAnnotation()
+            is KtCatchClause, is KtPropertyAccessor, is KtFunctionLiteral -> false
+            is KtNamedFunction -> owner.nameIdentifier != null
+            is KtPrimaryConstructor -> !owner.getContainingClassOrObject().isAnnotation()
             else -> true
         }
     }
 
     public fun shouldDisableAutoPopup(): Boolean {
-        if (completionKind == CompletionKind.PARAMETER_NAME || completionKind == CompletionKind.ANNOTATION_TYPES_OR_PARAMETER_NAME) {
+        if (completionKind == CompletionKind.PARAMETER_NAME) {
             if (!shouldCompleteParameterNameAndType() || TemplateManager.getInstance(project).getActiveTemplate(parameters.editor) != null) {
                 return true
             }
@@ -195,6 +161,11 @@ class BasicCompletionSession(configuration: CompletionSessionConfiguration,
 
         if (completionKind == CompletionKind.SUPER_QUALIFIER) {
             completeSuperQualifier()
+            return
+        }
+
+        if (completionKind == CompletionKind.TOP_LEVEL_CLASS_NAME) {
+            completeTopLevelClassName()
             return
         }
 
@@ -242,7 +213,7 @@ class BasicCompletionSession(configuration: CompletionSessionConfiguration,
                 val packageNames = PackageIndexUtil.getSubPackageFqNames(FqName.ROOT, originalSearchScope, project, prefixMatcher.asNameFilter())
                         .toMutableSet()
 
-                if (!ProjectStructureUtil.isJsKotlinModule(parameters.getOriginalFile() as JetFile)) {
+                if (!ProjectStructureUtil.isJsKotlinModule(parameters.getOriginalFile() as KtFile)) {
                     JavaPsiFacade.getInstance(project).findPackage("")?.getSubPackages(originalSearchScope)?.forEach { psiPackage ->
                         val name = psiPackage.getName()
                         if (Name.isValidIdentifier(name!!)) {
@@ -263,7 +234,7 @@ class BasicCompletionSession(configuration: CompletionSessionConfiguration,
 
                 completeNonImported()
 
-                if (position.getContainingFile() is JetCodeFragment) {
+                if (position.getContainingFile() is KtCodeFragment) {
                     flushToResultSet()
                     collector.addDescriptorElements(getRuntimeReceiverTypeReferenceVariants(), withReceiverCast = true)
                 }
@@ -295,7 +266,8 @@ class BasicCompletionSession(configuration: CompletionSessionConfiguration,
         KeywordValues.process(keywordValueConsumer, callTypeAndReceiver, bindingContext, resolutionFacade, moduleDescriptor, isJvmModule)
 
         val keywordsPrefix = prefix.substringBefore('@') // if there is '@' in the prefix - use shorter prefix to not loose 'this' etc
-        KeywordCompletion.complete(expression ?: parameters.getPosition(), keywordsPrefix) { lookupElement ->
+        val isUseSiteAnnotationTarget = position.prevLeaf()?.node?.elementType == KtTokens.AT
+        KeywordCompletion.complete(expression ?: parameters.getPosition(), keywordsPrefix, isJvmModule) { lookupElement ->
             val keyword = lookupElement.lookupString
             if (keyword in keywordsToSkip) return@complete
 
@@ -336,9 +308,62 @@ class BasicCompletionSession(configuration: CompletionSessionConfiguration,
                     }
                 }
 
+                "get" -> {
+                    collector.addElement(lookupElement)
+
+                    if (!isUseSiteAnnotationTarget) {
+                        collector.addElement(createKeywordConstructLookupElement(keyword, "val v:Int get()=caret", "caret"))
+                        collector.addElement(createKeywordConstructLookupElement(keyword, "val v:Int get(){caret}", "caret", trimSpacesAroundCaret = true))
+                    }
+                }
+
+                "set" -> {
+                    collector.addElement(lookupElement)
+
+                    if (!isUseSiteAnnotationTarget) {
+                        collector.addElement(createKeywordConstructLookupElement(keyword, "var v:Int set(value)=caret", "caret"))
+                        collector.addElement(createKeywordConstructLookupElement(keyword, "var v:Int set(value){caret}", "caret", trimSpacesAroundCaret = true))
+                    }
+                }
+
                 else -> collector.addElement(lookupElement)
             }
         }
+    }
+
+    private fun createKeywordConstructLookupElement(
+            keyword: String,
+            fileTextToReformat: String,
+            caretPlaceHolder: String,
+            trimSpacesAroundCaret: Boolean = false
+    ): LookupElement {
+        val file = KtPsiFactory(project).createFile(fileTextToReformat)
+        CodeStyleManager.getInstance(project).reformat(file)
+        val newFileText = file.text
+
+        val keywordOffset = newFileText.indexOf(keyword)
+        assert(keywordOffset >= 0)
+        val keywordEndOffset = keywordOffset + keyword.length
+
+        val caretOffset = newFileText.indexOf(caretPlaceHolder)
+        assert(caretOffset >= 0)
+        assert(caretOffset >= keywordEndOffset)
+
+        var tailBeforeCaret = newFileText.substring(keywordEndOffset, caretOffset)
+        var tailAfterCaret = newFileText.substring(caretOffset + caretPlaceHolder.length)
+
+        if (trimSpacesAroundCaret) {
+            tailBeforeCaret = tailBeforeCaret.trimEnd()
+            tailAfterCaret = tailAfterCaret.trimStart()
+        }
+
+        return LookupElementBuilder.create(KeywordLookupObject(), keyword + tailBeforeCaret + tailAfterCaret)
+                .withPresentableText(keyword)
+                .bold()
+                .withTailText(tailBeforeCaret + tailAfterCaret)
+                .withInsertHandler { insertionContext, lookupElement ->
+                    insertionContext.editor.moveCaret(insertionContext.editor.caretModel.offset - tailAfterCaret.length)
+                }
     }
 
     private fun completeNonImported() {
@@ -349,9 +374,15 @@ class BasicCompletionSession(configuration: CompletionSessionConfiguration,
         flushToResultSet()
 
         if (shouldRunTopLevelCompletion()) {
-            completionKind.classKindFilter?.let { addAllClasses(it) }
-
             if (completionKind == CompletionKind.ALL) {
+                val classKindFilter: ((ClassKind) -> Boolean)?
+                when (callTypeAndReceiver) {
+                    is CallTypeAndReceiver.ANNOTATION -> classKindFilter = { it == ClassKind.ANNOTATION_CLASS }
+                    is CallTypeAndReceiver.DEFAULT, is CallTypeAndReceiver.TYPE -> classKindFilter = { it != ClassKind.ENUM_ENTRY }
+                    else -> classKindFilter = null
+                }
+                classKindFilter?.let { addAllClasses(it) }
+
                 collector.addDescriptorElements(getTopLevelCallables(), notImported = true)
             }
         }
@@ -360,7 +391,7 @@ class BasicCompletionSession(configuration: CompletionSessionConfiguration,
     }
 
     private fun completeSuperQualifier() {
-        val classOrObject = position.parents.firstIsInstanceOrNull<JetClassOrObject>() ?: return
+        val classOrObject = position.parents.firstIsInstanceOrNull<KtClassOrObject>() ?: return
         val classDescriptor = resolutionFacade.resolveToDescriptor(classOrObject) as ClassDescriptor
         var superClasses = classDescriptor.defaultType.constructor.supertypes
                 .map { it.constructor.declarationDescriptor as? ClassDescriptor }
@@ -381,6 +412,16 @@ class BasicCompletionSession(configuration: CompletionSessionConfiguration,
                 .forEach { collector.addElement(it) }
     }
 
+    private fun completeTopLevelClassName() {
+        val name = parameters.originalFile.virtualFile.nameWithoutExtension
+        if (!(Name.isValidIdentifier(name) && Name.identifier(name).render() == name && name[0].isUpperCase())) return
+        if ((parameters.originalFile as KtFile).declarations.any { it is KtClassOrObject && it.name == name }) return
+
+        val lookupElement = LookupElementBuilder.create(name)
+        lookupElement.putUserData(KotlinCompletionCharFilter.SUPPRESS_ITEM_SELECTION_BY_CHARS_ON_TYPING, Unit)
+        collector.addElement(lookupElement)
+    }
+
     override fun createSorter(): CompletionSorter {
         var sorter = super.createSorter()
 
@@ -394,18 +435,5 @@ class BasicCompletionSession(configuration: CompletionSessionConfiguration,
         }
 
         return sorter
-    }
-
-    private companion object {
-        object NonAnnotationClassifierExclude : DescriptorKindExclude {
-            override fun excludes(descriptor: DeclarationDescriptor): Boolean {
-                if (descriptor !is ClassifierDescriptor) return false
-                return descriptor !is ClassDescriptor || descriptor.getKind() != ClassKind.ANNOTATION_CLASS
-            }
-
-            override val fullyExcludedDescriptorKinds: Int get() = 0
-        }
-
-        val ANNOTATION_TYPES_FILTER = DescriptorKindFilter(DescriptorKindFilter.NON_SINGLETON_CLASSIFIERS_MASK or DescriptorKindFilter.PACKAGES_MASK) exclude NonAnnotationClassifierExclude
     }
 }

@@ -16,32 +16,31 @@
 
 package org.jetbrains.kotlin.cfg
 
-import org.jetbrains.kotlin.psi.JetElement
 import com.intellij.openapi.util.TextRange
-import java.util.HashSet
-import org.jetbrains.kotlin.psi.JetPsiUtil
+import com.intellij.psi.PsiComment
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiElementVisitor
 import com.intellij.psi.PsiWhiteSpace
-import java.util.ArrayList
-import org.jetbrains.kotlin.lexer.JetTokens
 import com.intellij.psi.util.PsiTreeUtil
-import com.intellij.psi.PsiComment
+import org.jetbrains.kotlin.lexer.KtTokens
+import org.jetbrains.kotlin.psi.KtElement
+import org.jetbrains.kotlin.psi.KtPsiUtil
+import java.util.*
 
 interface UnreachableCode {
-    val elements: Set<JetElement>
-    fun getUnreachableTextRanges(element: JetElement): List<TextRange>
+    val elements: Set<KtElement>
+    fun getUnreachableTextRanges(element: KtElement): List<TextRange>
 }
 
 class UnreachableCodeImpl(
-        private val reachableElements: Set<JetElement>,
-        private val unreachableElements: Set<JetElement>
+        private val reachableElements: Set<KtElement>,
+        private val unreachableElements: Set<KtElement>
 ) : UnreachableCode {
 
     // This is needed in order to highlight only '1 < 2' and not '1', '<' and '2' as well
-    override val elements = JetPsiUtil.findRootExpressions(unreachableElements)
+    override val elements = KtPsiUtil.findRootExpressions(unreachableElements)
 
-    override fun getUnreachableTextRanges(element: JetElement): List<TextRange> {
+    override fun getUnreachableTextRanges(element: KtElement): List<TextRange> {
         return if (element.hasChildrenInSet(reachableElements)) {
             element.getLeavesOrReachableChildren().removeReachableElementsWithMeaninglessSiblings().mergeAdjacentTextRanges()
         }
@@ -50,15 +49,15 @@ class UnreachableCodeImpl(
         }
     }
 
-    private fun JetElement.hasChildrenInSet(set: Set<JetElement>): Boolean {
+    private fun KtElement.hasChildrenInSet(set: Set<KtElement>): Boolean {
         return PsiTreeUtil.collectElements(this) { it != this }.any { it in set }
     }
 
-    private fun JetElement.getLeavesOrReachableChildren(): List<PsiElement> {
+    private fun KtElement.getLeavesOrReachableChildren(): List<PsiElement> {
         val children = ArrayList<PsiElement>()
         acceptChildren(object : PsiElementVisitor() {
             override fun visitElement(element: PsiElement) {
-                val isReachable = element is JetElement && reachableElements.contains(element) && !element.hasChildrenInSet(unreachableElements)
+                val isReachable = element is KtElement && reachableElements.contains(element) && !element.hasChildrenInSet(unreachableElements)
                 if (isReachable || element.getChildren().size() == 0) {
                     children.add(element)
                 }
@@ -72,7 +71,7 @@ class UnreachableCodeImpl(
 
     fun List<PsiElement>.removeReachableElementsWithMeaninglessSiblings(): List<PsiElement> {
         fun PsiElement.isMeaningless() = this is PsiWhiteSpace
-                || this.getNode()?.getElementType() == JetTokens.COMMA
+                || this.getNode()?.getElementType() == KtTokens.COMMA
                 || this is PsiComment
 
         val childrenToRemove = HashSet<PsiElement>()
@@ -99,7 +98,7 @@ class UnreachableCodeImpl(
 
     private fun List<PsiElement>.mergeAdjacentTextRanges(): List<TextRange> {
         val result = ArrayList<TextRange>()
-        val lastRange = fold(null: TextRange?) {
+        val lastRange = fold(null as TextRange?) {
             currentTextRange, element ->
 
             val elementRange = element.getTextRange()!!

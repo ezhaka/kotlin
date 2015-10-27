@@ -22,14 +22,15 @@ import com.intellij.psi.PsiClass
 import com.intellij.psi.PsiDocumentManager
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.ClassifierDescriptor
-import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
+import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.completion.isAfterDot
 import org.jetbrains.kotlin.idea.core.completion.DeclarationLookupObject
+import org.jetbrains.kotlin.idea.util.CallTypeAndReceiver
 import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers
 import org.jetbrains.kotlin.idea.util.ShortenReferences
 import org.jetbrains.kotlin.name.FqNameUnsafe
-import org.jetbrains.kotlin.psi.JetFile
-import org.jetbrains.kotlin.psi.JetNameReferenceExpression
+import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.kotlin.renderer.render
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
@@ -39,7 +40,7 @@ object KotlinClassifierInsertHandler : BaseDeclarationInsertHandler() {
         super.handleInsert(context, item)
 
         val file = context.getFile()
-        if (file is JetFile) {
+        if (file is KtFile) {
             if (!context.isAfterDot()) {
                 val psiDocumentManager = PsiDocumentManager.getInstance(context.getProject())
                 psiDocumentManager.commitAllDocuments()
@@ -51,19 +52,24 @@ object KotlinClassifierInsertHandler : BaseDeclarationInsertHandler() {
 
                 // first try to resolve short name for faster handling
                 val token = file.findElementAt(startOffset)
-                val nameRef = token!!.getParent() as? JetNameReferenceExpression
+                val nameRef = token!!.getParent() as? KtNameReferenceExpression
                 if (nameRef != null) {
-                    val bindingContext = nameRef.getResolutionFacade().analyze(nameRef, BodyResolveMode.PARTIAL)
+                    val bindingContext = nameRef.analyze(BodyResolveMode.PARTIAL)
                     val target = bindingContext[BindingContext.SHORT_REFERENCE_TO_COMPANION_OBJECT, nameRef]
                                  ?: bindingContext[BindingContext.REFERENCE_TARGET, nameRef] as? ClassDescriptor
                     if (target != null && IdeDescriptorRenderers.SOURCE_CODE.renderClassifierName(target) == qualifiedName) return
                 }
 
-                val tempPrefix = if (nameRef != null)
-                    " " // insert space so that any preceding spaces inserted by formatter on reference shortening are deleted
-                else
-                    "$;val v:" // if we have no reference in the current context we have a more complicated prefix to get one
-                val tempSuffix = ".xxx" // we add "xxx" after dot because of some bugs in resolve (see KT-5145)
+                val tempPrefix = if (nameRef != null) {
+                    val isAnnotation = CallTypeAndReceiver.detect(nameRef) is CallTypeAndReceiver.ANNOTATION
+                    // we insert space so that any preceding spaces inserted by formatter on reference shortening are deleted
+                    // (but not for annotations where spaces are not allowed after @)
+                    if (isAnnotation) "" else " "
+                }
+                else {
+                    "$;val v:"  // if we have no reference in the current context we have a more complicated prefix to get one
+                }
+                val tempSuffix = ".xxx" // we add "xxx" after dot because of KT-9606
                 document.replaceString(startOffset, context.getTailOffset(), tempPrefix + qualifiedName + tempSuffix)
 
                 psiDocumentManager.commitAllDocuments()

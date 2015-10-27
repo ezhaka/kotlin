@@ -21,13 +21,13 @@ import com.intellij.openapi.util.text.StringUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.backend.common.output.OutputFile;
 import org.jetbrains.kotlin.backend.common.output.OutputFileCollection;
-import org.jetbrains.kotlin.cli.common.output.outputUtils.OutputUtilsPackage;
+import org.jetbrains.kotlin.cli.common.output.outputUtils.OutputUtilsKt;
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles;
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment;
 import org.jetbrains.kotlin.cli.jvm.config.JVMConfigurationKeys;
 import org.jetbrains.kotlin.config.CompilerConfiguration;
-import org.jetbrains.kotlin.load.kotlin.PackageClassUtils;
-import org.jetbrains.kotlin.name.FqName;
+import org.jetbrains.kotlin.fileClasses.JvmFileClassUtil;
+import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.test.ConfigurationKind;
 import org.jetbrains.kotlin.test.JetTestUtils;
 import org.jetbrains.kotlin.test.TestJdkKind;
@@ -79,7 +79,7 @@ public class GenerateNotNullAssertionsTest extends CodegenTestCase {
 
         loadFiles("notNullAssertions/noAssertionsForKotlin.kt", "notNullAssertions/noAssertionsForKotlinMain.kt");
 
-        assertNoIntrinsicsMethodIsCalled(PackageClassUtils.getPackageClassName(FqName.ROOT));
+        assertNoIntrinsicsMethodIsCalledInMyClasses(true);
     }
 
     public void testNoAssertionsForKotlinFromBinary() throws Exception {
@@ -87,12 +87,12 @@ public class GenerateNotNullAssertionsTest extends CodegenTestCase {
         loadFile("notNullAssertions/noAssertionsForKotlin.kt");
         OutputFileCollection outputFiles = generateClassesInFile();
         File compiledDirectory = new File(FileUtil.getTempDirectory(), "kotlin-classes");
-        OutputUtilsPackage.writeAllTo(outputFiles, compiledDirectory);
+        OutputUtilsKt.writeAllTo(outputFiles, compiledDirectory);
 
         setUpEnvironment(false, true, compiledDirectory);
         loadFile("notNullAssertions/noAssertionsForKotlinMain.kt");
 
-        assertNoIntrinsicsMethodIsCalled(PackageClassUtils.getPackageClassName(FqName.ROOT));
+        assertNoIntrinsicsMethodIsCalledInMyClasses(false);
     }
 
     public void testGenerateParamAssertions() throws Exception {
@@ -109,7 +109,7 @@ public class GenerateNotNullAssertionsTest extends CodegenTestCase {
 
         loadFile("notNullAssertions/doNotGenerateParamAssertions.kt");
 
-        assertNoIntrinsicsMethodIsCalled("A");
+        assertNoIntrinsicsMethodIsCalled("A", true);
     }
 
     public void testNoParamAssertionForPrivateMethod() throws Exception {
@@ -117,7 +117,7 @@ public class GenerateNotNullAssertionsTest extends CodegenTestCase {
 
         loadFile("notNullAssertions/noAssertionForPrivateMethod.kt");
 
-        assertNoIntrinsicsMethodIsCalled("A");
+        assertNoIntrinsicsMethodIsCalled("A", true);
     }
 
     public void testArrayListGet() {
@@ -154,7 +154,7 @@ public class GenerateNotNullAssertionsTest extends CodegenTestCase {
 
         loadFile("notNullAssertions/noAssertionForNullableGenericMethod.kt");
 
-        assertNoIntrinsicsMethodIsCalled(PackageClassUtils.getPackageClassName(FqName.ROOT));
+        assertNoIntrinsicsMethodIsCalledInMyClasses(true);
     }
 
     public void testNoAssertionForNullableGenericMethodCall() {
@@ -162,7 +162,7 @@ public class GenerateNotNullAssertionsTest extends CodegenTestCase {
 
         loadFile("notNullAssertions/noAssertionForNullableGenericMethodCall.kt");
 
-        assertNoIntrinsicsMethodIsCalled("A");
+        assertNoIntrinsicsMethodIsCalled("A", true);
     }
 
     public void testParamAssertionMessage() throws Exception {
@@ -184,10 +184,22 @@ public class GenerateNotNullAssertionsTest extends CodegenTestCase {
         fail("Assertion should have been fired");
     }
 
-    private void assertNoIntrinsicsMethodIsCalled(String className) {
+    private void assertNoIntrinsicsMethodIsCalledInMyClasses(boolean noClassFileIsAnError) {
+        for (KtFile jetFile : myFiles.getPsiFiles()) {
+            String fileClassName = JvmFileClassUtil.getFileClassInfoNoResolve(jetFile).getFileClassFqName().asString();
+            assertNoIntrinsicsMethodIsCalled(fileClassName, noClassFileIsAnError);
+        }
+    }
+
+    private void assertNoIntrinsicsMethodIsCalled(String className, boolean noClassFileIsAnError) {
         OutputFileCollection classes = generateClassesInFile();
         OutputFile file = classes.get(className + ".class");
-        assertNotNull(file);
+        if (noClassFileIsAnError) {
+            assertNotNull("File for " + className + " is absent", file);
+        }
+        else if (file == null) {
+            return;
+        }
         ClassReader reader = new ClassReader(file.asByteArray());
 
         reader.accept(new ClassVisitor(Opcodes.ASM5) {

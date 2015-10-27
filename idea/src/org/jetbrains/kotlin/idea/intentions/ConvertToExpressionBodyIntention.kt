@@ -17,107 +17,89 @@
 package org.jetbrains.kotlin.idea.intentions
 
 import com.intellij.openapi.editor.Editor
-import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
-import org.jetbrains.kotlin.descriptors.CallableDescriptor
-import org.jetbrains.kotlin.idea.analysis.computeTypeInContext
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
-import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptor
-import org.jetbrains.kotlin.idea.core.CommentSaver
-import org.jetbrains.kotlin.lexer.JetTokens
+import org.jetbrains.kotlin.idea.util.CommentSaver
+import org.jetbrains.kotlin.idea.core.canOmitDeclaredType
+import org.jetbrains.kotlin.idea.core.replaced
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.anyDescendantOfType
 import org.jetbrains.kotlin.psi.psiUtil.endOffset
 import org.jetbrains.kotlin.psi.psiUtil.startOffset
-import org.jetbrains.kotlin.resolve.BindingContext
-import org.jetbrains.kotlin.types.typeUtil.isSubtypeOf
+import org.jetbrains.kotlin.utils.addToStdlib.check
 
-public class ConvertToExpressionBodyIntention : JetSelfTargetingOffsetIndependentIntention<JetDeclarationWithBody>(
+public class ConvertToExpressionBodyIntention : JetSelfTargetingOffsetIndependentIntention<KtDeclarationWithBody>(
         javaClass(), "Convert to expression body"
 ) {
-    override fun isApplicableTo(element: JetDeclarationWithBody): Boolean {
+    override fun isApplicableTo(element: KtDeclarationWithBody): Boolean {
         val value = calcValue(element) ?: return false
-        return !value.anyDescendantOfType<JetReturnExpression>(
-                canGoInside = { it !is JetFunctionLiteral && it !is JetNamedFunction && it !is JetPropertyAccessor }
+        return !value.anyDescendantOfType<KtReturnExpression>(
+                canGoInside = { it !is KtFunctionLiteral && it !is KtNamedFunction && it !is KtPropertyAccessor }
         )
     }
 
-    override fun allowCaretInsideElement(element: PsiElement) = element !is JetDeclaration
+    override fun allowCaretInsideElement(element: PsiElement) = element !is KtDeclaration
 
-    override fun applyTo(element: JetDeclarationWithBody, editor: Editor) {
-        applyToInternal(element) {
-            val typeRef = it.getTypeReference()!!
-            val colon = it.getColon()!!
-            val range = TextRange(colon.startOffset, typeRef.endOffset)
-            editor.getSelectionModel().setSelection(range.getStartOffset(), range.getEndOffset())
-            editor.getCaretModel().moveToOffset(range.getEndOffset())
+    override fun applyTo(element: KtDeclarationWithBody, editor: Editor) {
+        applyTo(element) {
+            val typeRef = it.typeReference!!
+            val colon = it.colon!!
+            editor.selectionModel.setSelection(colon.startOffset, typeRef.endOffset)
+            editor.caretModel.moveToOffset(typeRef.endOffset)
         }
     }
 
-    public fun applyTo(declaration: JetDeclarationWithBody, canDeleteTypeRef: Boolean) {
-        applyToInternal(declaration) {
-            if (canDeleteTypeRef) {
-                it.deleteChildRange(it.getColon()!!, it.getTypeReference()!!)
-            }
+    public fun applyTo(declaration: KtDeclarationWithBody, canDeleteTypeRef: Boolean) {
+        val deleteTypeHandler: (KtCallableDeclaration) -> Unit = {
+            it.deleteChildRange(it.getColon()!!, it.getTypeReference()!!)
         }
+        applyTo(declaration, deleteTypeHandler.check { canDeleteTypeRef })
     }
 
-    private fun applyToInternal(declaration: JetDeclarationWithBody, onFinish: (JetCallableDeclaration) -> Unit) {
+    private fun applyTo(declaration: KtDeclarationWithBody, deleteTypeHandler: ((KtCallableDeclaration) -> Unit)?) {
         val value = calcValue(declaration)!!
 
-        if (!declaration.hasDeclaredReturnType() && declaration is JetNamedFunction) {
+        if (!declaration.hasDeclaredReturnType() && declaration is KtNamedFunction) {
             val valueType = value.analyze().getType(value)
             if (valueType == null || !KotlinBuiltIns.isUnit(valueType)) {
                 declaration.setType(KotlinBuiltIns.FQ_NAMES.unit.asString(), shortenReferences = true)
             }
         }
 
-        val omitType = declaration.hasDeclaredReturnType() && declaration is JetCallableDeclaration && canOmitType(declaration, value)
-
         val body = declaration.getBodyExpression()!!
 
         val commentSaver = CommentSaver(body)
 
-        declaration.addBefore(JetPsiFactory(declaration).createEQ(), body)
-        val newBody = body.replace(value)
+        declaration.addBefore(KtPsiFactory(declaration).createEQ(), body)
+        val newBody = body.replaced(value)
 
         commentSaver.restore(newBody)
 
-        if (omitType) {
-            onFinish(declaration as JetCallableDeclaration)
+        if (deleteTypeHandler != null && declaration is KtCallableDeclaration) {
+            if (declaration.hasDeclaredReturnType() && declaration.canOmitDeclaredType(newBody, canChangeTypeToSubtype = true)) {
+                deleteTypeHandler(declaration)
+            }
         }
     }
 
-    private fun canOmitType(declaration: JetCallableDeclaration, expression: JetExpression): Boolean {
-        // Workaround for anonymous objects and similar expressions without resolution scope
-        // TODO: This should probably be fixed in front-end so that resolution scope is recorded for anonymous objects as well
-        val scopeExpression = ((declaration as? JetDeclarationWithBody)?.getBodyExpression() as? JetBlockExpression)
-                                 ?.getStatements()?.singleOrNull()
-                         ?: return false
-
-        val declaredType = (declaration.resolveToDescriptor() as? CallableDescriptor)?.getReturnType() ?: return false
-        val scope = scopeExpression.analyze()[BindingContext.RESOLUTION_SCOPE, scopeExpression] ?: return false
-        val expressionType = expression.computeTypeInContext(scope)
-        return expressionType?.isSubtypeOf(declaredType) ?: false
-    }
-
-    private fun calcValue(declaration: JetDeclarationWithBody): JetExpression? {
-        if (declaration is JetFunctionLiteral) return null
+    private fun calcValue(declaration: KtDeclarationWithBody): KtExpression? {
+        if (declaration is KtFunctionLiteral) return null
         val body = declaration.getBodyExpression()
-        if (!declaration.hasBlockBody() || body !is JetBlockExpression) return null
+        if (!declaration.hasBlockBody() || body !is KtBlockExpression) return null
 
         val statement = body.getStatements().singleOrNull() ?: return null
         when(statement) {
-            is JetReturnExpression -> {
+            is KtReturnExpression -> {
                 return statement.getReturnedExpression()
             }
 
             //TODO: IMO this is not good code, there should be a way to detect that JetExpression does not have value
-            is JetDeclaration, is JetLoopExpression -> return null // is JetExpression but does not have value
+            is KtDeclaration, is KtLoopExpression -> return null // is JetExpression but does not have value
 
             else  -> {
-                if (statement is JetBinaryExpression && statement.operationToken in JetTokens.ALL_ASSIGNMENTS) return null // assignment does not have value
+                if (statement is KtBinaryExpression && statement.operationToken in KtTokens.ALL_ASSIGNMENTS) return null // assignment does not have value
                 val expressionType = statement.analyze().getType(statement) ?: return null
                 if (!KotlinBuiltIns.isUnit(expressionType) && !KotlinBuiltIns.isNothing(expressionType)) return null
                 return statement

@@ -37,12 +37,6 @@ public class KotlincExecutableTestGenerated extends AbstractKotlincExecutableTes
             JetTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/cli/jvm"), Pattern.compile("^(.+)\\.args$"), false);
         }
 
-        @TestMetadata("classAndFacadeClash.args")
-        public void testClassAndFacadeClash() throws Exception {
-            String fileName = JetTestUtils.navigationMetadata("compiler/testData/cli/jvm/classAndFacadeClash.args");
-            doJvmTest(fileName);
-        }
-
         @TestMetadata("classAndFileClassClash.args")
         public void testClassAndFileClassClash() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("compiler/testData/cli/jvm/classAndFileClassClash.args");
@@ -106,12 +100,6 @@ public class KotlincExecutableTestGenerated extends AbstractKotlincExecutableTes
         @TestMetadata("extraHelp.args")
         public void testExtraHelp() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("compiler/testData/cli/jvm/extraHelp.args");
-            doJvmTest(fileName);
-        }
-
-        @TestMetadata("fileClassAndFacadeClash.args")
-        public void testFileClassAndFacadeClash() throws Exception {
-            String fileName = JetTestUtils.navigationMetadata("compiler/testData/cli/jvm/fileClassAndFacadeClash.args");
             doJvmTest(fileName);
         }
 
@@ -214,6 +202,18 @@ public class KotlincExecutableTestGenerated extends AbstractKotlincExecutableTes
         @TestMetadata("suppressAllWarningsJvm.args")
         public void testSuppressAllWarningsJvm() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("compiler/testData/cli/jvm/suppressAllWarningsJvm.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("syntheticAccessorForPropertiesSignatureClash.args")
+        public void testSyntheticAccessorForPropertiesSignatureClash() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("compiler/testData/cli/jvm/syntheticAccessorForPropertiesSignatureClash.args");
+            doJvmTest(fileName);
+        }
+
+        @TestMetadata("syntheticAccessorPropertyAndFunSignatureClash.args")
+        public void testSyntheticAccessorPropertyAndFunSignatureClash() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("compiler/testData/cli/jvm/syntheticAccessorPropertyAndFunSignatureClash.args");
             doJvmTest(fileName);
         }
 

@@ -9,8 +9,9 @@ fun test() {
 }
 
 // 1 ISTORE
-// 3 ILOAD
+// 2 ILOAD
 // 2 ASTORE
-// 7 ALOAD
-// 3 MAXLOCALS = 3
+// 5 ALOAD
+// 1 MAXLOCALS = 3
+// 1 MAXLOCALS = 4
 // 0 InlineMarker

@@ -18,18 +18,22 @@ package org.jetbrains.kotlin.idea.references
 
 import com.intellij.psi.*
 import org.jetbrains.kotlin.asJava.unwrapped
+import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
+import org.jetbrains.kotlin.idea.imports.canBeReferencedViaImport
 import org.jetbrains.kotlin.idea.intentions.OperatorToFunctionIntention
 import org.jetbrains.kotlin.idea.kdoc.KDocReference
+import org.jetbrains.kotlin.idea.util.CallTypeAndReceiver
 import org.jetbrains.kotlin.idea.util.ProjectRootsUtil
 import org.jetbrains.kotlin.kdoc.psi.impl.KDocName
-import org.jetbrains.kotlin.lexer.JetTokens
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.getAssignmentByLHS
 import org.jetbrains.kotlin.psi.psiUtil.getNonStrictParentOfType
 import org.jetbrains.kotlin.psi.psiUtil.getQualifiedExpressionForSelectorOrThis
 import org.jetbrains.kotlin.resolve.calls.callUtil.getResolvedCall
 import org.jetbrains.kotlin.resolve.calls.model.isReallySuccess
+import org.jetbrains.kotlin.resolve.descriptorUtil.isExtension
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 import org.jetbrains.kotlin.types.expressions.OperatorConventions
 import org.jetbrains.kotlin.utils.addToStdlib.constant
@@ -45,7 +49,7 @@ public val PsiReference.unwrappedTargets: Set<PsiElement>
         fun PsiElement.adjust(): PsiElement? {
             val target = unwrapped?.getOriginalElement()
             return when {
-                target is JetPropertyAccessor -> target.getNonStrictParentOfType<JetProperty>()
+                target is KtPropertyAccessor -> target.getNonStrictParentOfType<KtProperty>()
                 else -> target
             }
         }
@@ -70,11 +74,11 @@ public fun PsiReference.matchesTarget(candidateTarget: PsiElement): Boolean {
 
     // Optimizations
     when (this) {
-        is JetInvokeFunctionReference -> {
-            if (candidateTarget !is JetNamedFunction) return false
+        is KtInvokeFunctionReference -> {
+            if (candidateTarget !is KtNamedFunction) return false
         }
-        is JetMultiDeclarationReference -> {
-            if (candidateTarget !is JetNamedFunction && candidateTarget !is JetParameter) return false
+        is KtMultiDeclarationReference -> {
+            if (candidateTarget !is KtNamedFunction && candidateTarget !is KtParameter) return false
         }
     }
 
@@ -83,27 +87,27 @@ public fun PsiReference.matchesTarget(candidateTarget: PsiElement): Boolean {
     // TODO: Investigate why PsiCompiledElement identity changes
     if (unwrappedCandidate is PsiCompiledElement && targets.any { it.isEquivalentTo(unwrappedCandidate) }) return true
 
-    if (this is JetReference) {
+    if (this is KtReference) {
         return targets.any {
             it.isConstructorOf(unwrappedCandidate)
-            || it is JetObjectDeclaration && it.isCompanion() && it.getNonStrictParentOfType<JetClass>() == unwrappedCandidate
+            || it is KtObjectDeclaration && it.isCompanion() && it.getNonStrictParentOfType<KtClass>() == unwrappedCandidate
         }
     }
     // TODO: Workaround for Kotlin constructor search in Java code. To be removed after refactoring of the search API
-    else if (this is PsiJavaCodeReferenceElement && unwrappedCandidate is JetConstructor<*>) {
+    else if (this is PsiJavaCodeReferenceElement && unwrappedCandidate is KtConstructor<*>) {
         var parent = getElement().getParent()
         if (parent is PsiAnonymousClass) {
             parent = parent.getParent()
         }
         if ((parent as? PsiNewExpression)?.resolveConstructor()?.unwrapped == unwrappedCandidate) return true
     }
-    if (this is PsiJavaCodeReferenceElement && candidateTarget is JetObjectDeclaration && unwrappedTargets.size() == 1) {
+    if (this is PsiJavaCodeReferenceElement && candidateTarget is KtObjectDeclaration && unwrappedTargets.size() == 1) {
         val referredClass = unwrappedTargets.first()
-        if (referredClass is JetClass && candidateTarget in referredClass.getCompanionObjects()) {
+        if (referredClass is KtClass && candidateTarget in referredClass.getCompanionObjects()) {
             if (getParent() is PsiImportStaticStatement) return true
 
             return getParent().getReference()?.unwrappedTargets?.any {
-                (it is JetProperty || it is JetNamedFunction) && it.getParent()?.getParent() == candidateTarget
+                (it is KtProperty || it is KtNamedFunction) && it.getParent()?.getParent() == candidateTarget
             } ?: false
         }
     }
@@ -114,9 +118,9 @@ private fun PsiElement.isConstructorOf(unwrappedCandidate: PsiElement) =
     // call to Java constructor
     (this is PsiMethod && isConstructor() && getContainingClass() == unwrappedCandidate) ||
     // call to Kotlin constructor
-    (this is JetConstructor<*> && getContainingClassOrObject() == unwrappedCandidate)
+    (this is KtConstructor<*> && getContainingClassOrObject() == unwrappedCandidate)
 
-fun AbstractJetReference<out JetExpression>.renameImplicitConventionalCall(newName: String?): JetExpression {
+fun AbstractJetReference<out KtExpression>.renameImplicitConventionalCall(newName: String?): KtExpression {
     if (newName == null) return expression
 
     val (newExpression, newNameElement) = OperatorToFunctionIntention.convert(expression)
@@ -124,36 +128,36 @@ fun AbstractJetReference<out JetExpression>.renameImplicitConventionalCall(newNa
     return newExpression
 }
 
-val JetSimpleNameExpression.mainReference: JetSimpleNameReference
+val KtSimpleNameExpression.mainReference: KtSimpleNameReference
     get() = getReferences().firstIsInstance()
 
-val JetReferenceExpression.mainReference: JetReference
-    get() = if (this is JetSimpleNameExpression) mainReference else getReferences().firstIsInstance<JetReference>()
+val KtReferenceExpression.mainReference: KtReference
+    get() = if (this is KtSimpleNameExpression) mainReference else getReferences().firstIsInstance<KtReference>()
 
 val KDocName.mainReference: KDocReference
     get() = getReferences().firstIsInstance()
 
-val JetElement.mainReference: JetReference?
+val KtElement.mainReference: KtReference?
     get() {
         return when {
-            this is JetReferenceExpression -> mainReference
+            this is KtReferenceExpression -> mainReference
             this is KDocName -> mainReference
-            else -> getReferences().firstIsInstanceOrNull<JetReference>()
+            else -> getReferences().firstIsInstanceOrNull<KtReference>()
         }
     }
 
 // ----------- Read/write access -----------------------------------------------------------------------------------------------------------------------
 
-public enum class ReferenceAccess {
-    READ, WRITE, READ_WRITE
+public enum class ReferenceAccess(val isRead: Boolean, val isWrite: Boolean) {
+    READ(true, false), WRITE(false, true), READ_WRITE(true, true)
 }
 
-public fun JetExpression.readWriteAccess(useResolveForReadWrite: Boolean): ReferenceAccess {
+public fun KtExpression.readWriteAccess(useResolveForReadWrite: Boolean): ReferenceAccess {
     var expression = getQualifiedExpressionForSelectorOrThis()
     loop@ while (true) {
         val parent = expression.parent
         when (parent) {
-            is JetParenthesizedExpression, is JetAnnotatedExpression, is JetLabeledExpression -> expression = parent as JetExpression
+            is KtParenthesizedExpression, is KtAnnotatedExpression, is KtLabeledExpression -> expression = parent as KtExpression
             else -> break@loop
         }
     }
@@ -161,7 +165,7 @@ public fun JetExpression.readWriteAccess(useResolveForReadWrite: Boolean): Refer
     val assignment = expression.getAssignmentByLHS()
     if (assignment != null) {
         when (assignment.operationToken) {
-            JetTokens.EQ -> return ReferenceAccess.WRITE
+            KtTokens.EQ -> return ReferenceAccess.WRITE
 
             else -> {
                 if (!useResolveForReadWrite) return ReferenceAccess.READ_WRITE
@@ -177,8 +181,17 @@ public fun JetExpression.readWriteAccess(useResolveForReadWrite: Boolean): Refer
         }
     }
 
-    return if ((expression.parent as? JetUnaryExpression)?.operationToken in constant { setOf(JetTokens.PLUSPLUS, JetTokens.MINUSMINUS) })
+    return if ((expression.parent as? KtUnaryExpression)?.operationToken in constant { setOf(KtTokens.PLUSPLUS, KtTokens.MINUSMINUS) })
         ReferenceAccess.READ_WRITE
     else
         ReferenceAccess.READ
+}
+
+public fun KtReference.canBeResolvedViaImport(target: DeclarationDescriptor): Boolean {
+    if (!target.canBeReferencedViaImport()) return false
+    if (target.isExtension) return true // assume that any type of reference can use imports when resolved to extension
+    val referenceExpression = this.element as? KtNameReferenceExpression ?: return false
+    if (CallTypeAndReceiver.detect(referenceExpression).receiver != null) return false
+    if (element.parent is KtThisExpression || element.parent is KtSuperExpression) return false // TODO: it's a bad design of PSI tree, we should change it
+    return true
 }

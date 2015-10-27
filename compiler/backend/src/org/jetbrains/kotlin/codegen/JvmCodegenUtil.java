@@ -17,6 +17,7 @@
 package org.jetbrains.kotlin.codegen;
 
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiFile;
 import kotlin.CollectionsKt;
 import kotlin.StringsKt;
 import kotlin.jvm.functions.Function1;
@@ -24,8 +25,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.codegen.binding.CalculatedClosure;
 import org.jetbrains.kotlin.codegen.context.CodegenContext;
+import org.jetbrains.kotlin.codegen.context.FacadePartWithSourceFile;
 import org.jetbrains.kotlin.codegen.context.MethodContext;
-import org.jetbrains.kotlin.codegen.context.PackageContext;
 import org.jetbrains.kotlin.codegen.context.RootContext;
 import org.jetbrains.kotlin.codegen.state.GenerationState;
 import org.jetbrains.kotlin.codegen.state.JetTypeMapper;
@@ -34,17 +35,15 @@ import org.jetbrains.kotlin.load.java.JvmAbi;
 import org.jetbrains.kotlin.load.java.JvmAnnotationNames;
 import org.jetbrains.kotlin.load.kotlin.ModuleMapping;
 import org.jetbrains.kotlin.load.kotlin.ModuleVisibilityUtilsKt;
-import org.jetbrains.kotlin.load.kotlin.PackagePartClassUtils;
-import org.jetbrains.kotlin.load.kotlin.incremental.IncrementalPackageFragmentProvider;
-import org.jetbrains.kotlin.psi.JetFile;
-import org.jetbrains.kotlin.psi.JetFunction;
-import org.jetbrains.kotlin.psi.codeFragmentUtil.CodeFragmentUtilPackage;
+import org.jetbrains.kotlin.psi.KtFile;
+import org.jetbrains.kotlin.psi.KtFunction;
+import org.jetbrains.kotlin.psi.codeFragmentUtil.CodeFragmentUtilKt;
 import org.jetbrains.kotlin.resolve.BindingContext;
 import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
 import org.jetbrains.kotlin.resolve.inline.InlineUtil;
 import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedCallableMemberDescriptor;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.org.objectweb.asm.AnnotationVisitor;
 
 import java.io.File;
@@ -65,7 +64,7 @@ public class JvmCodegenUtil {
         return false;
     }
 
-    public static boolean isJvmInterface(JetType type) {
+    public static boolean isJvmInterface(KotlinType type) {
         return isJvmInterface(type.getConstructor().getDeclarationDescriptor());
     }
 
@@ -81,25 +80,21 @@ public class JvmCodegenUtil {
 
         return !isFakeOverride && !isDelegate &&
                (((context.hasThisDescriptor() && containingDeclaration == context.getThisDescriptor()) ||
-                 (context.getParentContext() instanceof PackageContext
-                  && isSamePackageInSameModule(context.getParentContext().getContextDescriptor(), containingDeclaration)))
+                 ((context.getParentContext() instanceof FacadePartWithSourceFile)
+                  && isWithinSameFile(((FacadePartWithSourceFile) context.getParentContext()).getSourceFile(), descriptor)))
                 && context.getContextKind() != OwnerKind.DEFAULT_IMPLS);
     }
 
-    private static boolean isSamePackageInSameModule(
-            @NotNull DeclarationDescriptor callerOwner,
-            @NotNull DeclarationDescriptor calleeOwner
+    private static boolean isWithinSameFile(
+            @Nullable KtFile callerFile,
+            @NotNull CallableMemberDescriptor descriptor
     ) {
-        if (callerOwner instanceof PackageFragmentDescriptor && calleeOwner instanceof PackageFragmentDescriptor) {
-            PackageFragmentDescriptor callerFragment = (PackageFragmentDescriptor) callerOwner;
-            PackageFragmentDescriptor calleeFragment = (PackageFragmentDescriptor) calleeOwner;
+        DeclarationDescriptor containingDeclaration = descriptor.getContainingDeclaration().getOriginal();
+        if (containingDeclaration instanceof PackageFragmentDescriptor) {
+            PsiElement calleeElement = DescriptorToSourceUtils.descriptorToDeclaration(descriptor);
+            PsiFile calleeFile = calleeElement != null ? calleeElement.getContainingFile() : null;
+            return callerFile != null && callerFile != SourceFile.NO_SOURCE_FILE && calleeFile == callerFile;
 
-            // backing field should be used directly within same module of same package
-            if (callerFragment == calleeFragment) {
-                return true;
-            }
-            return callerFragment.getFqName().equals(calleeFragment.getFqName())
-                   && calleeFragment instanceof IncrementalPackageFragmentProvider.IncrementalPackageFragment;
         }
         return false;
     }
@@ -144,8 +139,7 @@ public class JvmCodegenUtil {
         if (JetTypeMapper.isAccessor(property)) return false;
 
         // Inline functions can't use direct access because a field may not be visible at the call site
-        if (context.isInlineFunction() &&
-            (!Visibilities.isPrivate(property.getVisibility()) || DescriptorUtils.isTopLevelDeclaration(property))) {
+        if (context.isInlineFunction() && !Visibilities.isPrivate(property.getVisibility())) {
             return false;
         }
 
@@ -171,8 +165,8 @@ public class JvmCodegenUtil {
     }
 
     private static boolean isDebuggerContext(@NotNull MethodContext context) {
-        JetFile file = DescriptorToSourceUtils.getContainingFile(context.getContextDescriptor());
-        return file != null && CodeFragmentUtilPackage.getSuppressDiagnosticsInDebugMode(file);
+        KtFile file = DescriptorToSourceUtils.getContainingFile(context.getContextDescriptor());
+        return file != null && CodeFragmentUtilKt.getSuppressDiagnosticsInDebugMode(file);
     }
 
     @Nullable
@@ -209,7 +203,7 @@ public class JvmCodegenUtil {
     public static boolean isArgumentWhichWillBeInlined(@NotNull BindingContext bindingContext, @NotNull DeclarationDescriptor descriptor) {
         PsiElement declaration = DescriptorToSourceUtils.descriptorToDeclaration(descriptor);
         return InlineUtil.canBeInlineArgument(declaration) &&
-               InlineUtil.isInlinedArgument((JetFunction) declaration, bindingContext, false);
+               InlineUtil.isInlinedArgument((KtFunction) declaration, bindingContext, false);
     }
 
     @NotNull
@@ -226,7 +220,7 @@ public class JvmCodegenUtil {
         av.visit(JvmAnnotationNames.VERSION_FIELD_NAME, JvmAbi.VERSION.toArray());
 
         // TODO: drop after some time
-        av.visit(JvmAnnotationNames.OLD_ABI_VERSION_FIELD_NAME, JvmAbi.VERSION.getMinor());
+        av.visit(JvmAnnotationNames.OLD_ABI_VERSION_FIELD_NAME, 32);
     }
 
     public static void writeModuleName(@NotNull AnnotationVisitor av, @NotNull GenerationState state) {
@@ -234,10 +228,5 @@ public class JvmCodegenUtil {
         if (!name.equals(JvmAbi.DEFAULT_MODULE_NAME)) {
             av.visit(JvmAnnotationNames.MODULE_NAME_FIELD_NAME, name);
         }
-    }
-
-    @NotNull
-    public static String sanitizeAsJavaIdentifier(@NotNull String str) {
-        return PackagePartClassUtils.sanitizeAsJavaIdentifier(str);
     }
 }

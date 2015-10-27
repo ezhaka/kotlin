@@ -19,14 +19,14 @@ package org.jetbrains.kotlin.idea.quickfix.quickfixUtil
 import com.intellij.codeInsight.intention.IntentionAction
 import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.diagnostics.Diagnostic
-import org.jetbrains.kotlin.idea.quickfix.JetIntentionAction
+import org.jetbrains.kotlin.idea.quickfix.KotlinQuickFixAction
 import org.jetbrains.kotlin.idea.quickfix.JetSingleIntentionActionFactory
-import org.jetbrains.kotlin.psi.JetPrimaryConstructor
-import org.jetbrains.kotlin.psi.JetPsiFactory
+import org.jetbrains.kotlin.psi.KtPrimaryConstructor
+import org.jetbrains.kotlin.psi.KtPsiFactory
 import org.jetbrains.kotlin.psi.psiUtil.getNonStrictParentOfType
 
 inline fun <reified T : PsiElement> Diagnostic.createIntentionForFirstParentOfType(
-    factory: (T) -> JetIntentionAction<T>?
+    factory: (T) -> KotlinQuickFixAction<T>?
 ) = getPsiElement().getNonStrictParentOfType<T>()?.let(factory)
 
 
@@ -36,7 +36,7 @@ fun createIntentionFactory(
     override fun createAction(diagnostic: Diagnostic) = factory(diagnostic)
 }
 
-public fun JetPrimaryConstructor.addConstructorKeyword(): PsiElement? {
-    val keyword = JetPsiFactory(this).createConstructorKeyword()
+public fun KtPrimaryConstructor.addConstructorKeyword(): PsiElement? {
+    val keyword = KtPsiFactory(this).createConstructorKeyword()
     return addAfter(keyword, getModifierList() ?: return null)
 }

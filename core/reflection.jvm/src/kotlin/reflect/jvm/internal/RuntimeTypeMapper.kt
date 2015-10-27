@@ -18,14 +18,18 @@ package kotlin.reflect.jvm.internal
 
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.builtins.PrimitiveType
+import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.descriptors.PropertyDescriptor
+import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.load.java.JvmAbi
 import org.jetbrains.kotlin.load.java.descriptors.JavaConstructorDescriptor
 import org.jetbrains.kotlin.load.java.descriptors.JavaMethodDescriptor
 import org.jetbrains.kotlin.load.java.descriptors.JavaPropertyDescriptor
 import org.jetbrains.kotlin.load.java.sources.JavaSourceElement
 import org.jetbrains.kotlin.load.java.structure.reflect.*
+import org.jetbrains.kotlin.load.kotlin.KotlinJvmBinarySourceElement
+import org.jetbrains.kotlin.load.kotlin.reflect.ReflectKotlinClass
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.platform.JavaToKotlinClassMap
 import org.jetbrains.kotlin.resolve.DescriptorUtils
@@ -33,6 +37,7 @@ import org.jetbrains.kotlin.resolve.descriptorUtil.classId
 import org.jetbrains.kotlin.resolve.jvm.JvmPrimitiveType
 import org.jetbrains.kotlin.serialization.ProtoBuf
 import org.jetbrains.kotlin.serialization.deserialization.NameResolver
+import org.jetbrains.kotlin.serialization.deserialization.TypeTable
 import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedCallableMemberDescriptor
 import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedPropertyDescriptor
 import org.jetbrains.kotlin.serialization.jvm.JvmProtoBuf
@@ -41,6 +46,7 @@ import java.lang.reflect.Constructor
 import java.lang.reflect.Field
 import java.lang.reflect.Member
 import java.lang.reflect.Method
+import kotlin.jvm.internal.KotlinClass
 import kotlin.reflect.KotlinReflectionInternalError
 
 internal sealed class JvmFunctionSignature {
@@ -95,7 +101,8 @@ internal sealed class JvmPropertySignature {
             val descriptor: PropertyDescriptor,
             val proto: ProtoBuf.Property,
             val signature: JvmProtoBuf.JvmPropertySignature,
-            val nameResolver: NameResolver
+            val nameResolver: NameResolver,
+            val typeTable: TypeTable
     ) : JvmPropertySignature() {
         private val string: String
 
@@ -105,9 +112,22 @@ internal sealed class JvmPropertySignature {
             }
             else {
                 val (name, desc) =
-                        JvmProtoBufUtil.getJvmFieldSignature(proto, nameResolver) ?:
+                        JvmProtoBufUtil.getJvmFieldSignature(proto, nameResolver, typeTable) ?:
                                 throw KotlinReflectionInternalError("No field signature for property: $descriptor")
-                string = JvmAbi.getterName(name) + "()" + desc
+
+                val moduleSuffix =
+                        if (descriptor.visibility == Visibilities.INTERNAL &&
+                            descriptor.containingDeclaration is ClassDescriptor) {
+                            val containingDeclaration = descriptor.containingDeclaration as ClassDescriptor
+                            val sourceElement = containingDeclaration.source as KotlinJvmBinarySourceElement
+                            val klass = (sourceElement.binaryClass as ReflectKotlinClass).klass
+                            val moduleName = klass.getAnnotation(KotlinClass::class.java).moduleName
+                            "$" + JvmAbi.sanitizeAsJavaIdentifier(moduleName)
+                        }
+                        else {
+                            ""
+                        }
+                string = JvmAbi.getterName(name) + moduleSuffix + "()" + desc
             }
         }
 
@@ -136,12 +156,12 @@ internal object RuntimeTypeMapper {
 
                 val proto = function.proto
                 if (proto is ProtoBuf.Function) {
-                    JvmProtoBufUtil.getJvmMethodSignature(proto, function.nameResolver)?.let { signature ->
+                    JvmProtoBufUtil.getJvmMethodSignature(proto, function.nameResolver, function.typeTable)?.let { signature ->
                         return JvmFunctionSignature.KotlinFunction(signature)
                     }
                 }
                 if (proto is ProtoBuf.Constructor) {
-                    JvmProtoBufUtil.getJvmConstructorSignature(proto, function.nameResolver)?.let { signature ->
+                    JvmProtoBufUtil.getJvmConstructorSignature(proto, function.nameResolver, function.typeTable)?.let { signature ->
                         return JvmFunctionSignature.KotlinConstructor(signature)
                     }
                 }
@@ -173,7 +193,7 @@ internal object RuntimeTypeMapper {
                 throw KotlinReflectionInternalError("No metadata found for $property")
             }
             return JvmPropertySignature.KotlinProperty(
-                    property, proto, proto.getExtension(JvmProtoBuf.propertySignature), property.nameResolver
+                    property, proto, proto.getExtension(JvmProtoBuf.propertySignature), property.nameResolver, property.typeTable
             )
         }
         else if (property is JavaPropertyDescriptor) {

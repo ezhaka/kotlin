@@ -21,34 +21,35 @@ import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.incremental.KotlinLookupLocation
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.progress.ProgressIndicatorAndCompilationCanceledStatus
-import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.psi.Call
+import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.doNotAnalyze
 import org.jetbrains.kotlin.resolve.DescriptorUtils
+import org.jetbrains.kotlin.resolve.calls.callResolverUtil.getUnaryPlusOrMinusOperatorFunctionName
 import org.jetbrains.kotlin.resolve.calls.callResolverUtil.isConventionCall
 import org.jetbrains.kotlin.resolve.calls.callResolverUtil.isOrOverridesSynthesized
-import org.jetbrains.kotlin.resolve.calls.callResolverUtil.getUnaryPlusOrMinusOperatorFunctionName
 import org.jetbrains.kotlin.resolve.calls.context.BasicCallResolutionContext
 import org.jetbrains.kotlin.resolve.calls.context.ResolutionContext
 import org.jetbrains.kotlin.resolve.calls.smartcasts.SmartCastManager
-import org.jetbrains.kotlin.resolve.calls.tasks.ExplicitReceiverKind.BOTH_RECEIVERS
-import org.jetbrains.kotlin.resolve.calls.tasks.ExplicitReceiverKind.DISPATCH_RECEIVER
-import org.jetbrains.kotlin.resolve.calls.tasks.ExplicitReceiverKind.EXTENSION_RECEIVER
-import org.jetbrains.kotlin.resolve.calls.tasks.ExplicitReceiverKind.NO_EXPLICIT_RECEIVER
+import org.jetbrains.kotlin.resolve.calls.tasks.ExplicitReceiverKind.*
 import org.jetbrains.kotlin.resolve.calls.tasks.collectors.CallableDescriptorCollector
 import org.jetbrains.kotlin.resolve.calls.tasks.collectors.CallableDescriptorCollectors
 import org.jetbrains.kotlin.resolve.calls.tasks.collectors.filtered
 import org.jetbrains.kotlin.resolve.calls.util.FakeCallableDescriptorForObject
+import org.jetbrains.kotlin.resolve.descriptorUtil.hasLowPriorityInOverloadResolution
+import org.jetbrains.kotlin.resolve.scopes.ImportingScope
 import org.jetbrains.kotlin.resolve.scopes.LexicalScope
 import org.jetbrains.kotlin.resolve.scopes.receivers.QualifierReceiver
 import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue
 import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue.NO_RECEIVER
-import org.jetbrains.kotlin.resolve.scopes.utils.asJetScope
+import org.jetbrains.kotlin.resolve.scopes.utils.asKtScope
 import org.jetbrains.kotlin.resolve.scopes.utils.getImplicitReceiversHierarchy
-import org.jetbrains.kotlin.resolve.scopes.utils.memberScopeAsFileScope
+import org.jetbrains.kotlin.resolve.scopes.utils.memberScopeAsImportingScope
 import org.jetbrains.kotlin.resolve.validation.InfixValidator
 import org.jetbrains.kotlin.storage.StorageManager
 import org.jetbrains.kotlin.types.ErrorUtils
-import org.jetbrains.kotlin.types.JetType
-import org.jetbrains.kotlin.types.checker.JetTypeChecker
+import org.jetbrains.kotlin.types.KotlinType
+import org.jetbrains.kotlin.types.checker.KotlinTypeChecker
 import org.jetbrains.kotlin.types.expressions.ExpressionTypingUtils
 import org.jetbrains.kotlin.types.isDynamic
 import org.jetbrains.kotlin.util.OperatorNameConventions
@@ -71,7 +72,7 @@ public class TaskPrioritizer(
 
         if (explicitReceiver is QualifierReceiver) {
             val qualifierReceiver: QualifierReceiver = explicitReceiver
-            val receiverScope = qualifierReceiver.getNestedClassesAndPackageMembersScope().memberScopeAsFileScope()
+            val receiverScope = qualifierReceiver.getNestedClassesAndPackageMembersScope().memberScopeAsImportingScope()
             doComputeTasks(NO_RECEIVER, taskPrioritizerContext.replaceScope(receiverScope))
             computeTasksForClassObjectReceiver(qualifierReceiver, taskPrioritizerContext)
         }
@@ -141,7 +142,7 @@ public class TaskPrioritizer(
             val value: ReceiverValue,
             private val context: ResolutionContext<*>
     ) {
-        val types: Collection<JetType> by lazy { smartCastManager.getSmartCastVariants(value, context) }
+        val types: Collection<KotlinType> by lazy { smartCastManager.getSmartCastVariants(value, context) }
     }
 
     private fun <D : CallableDescriptor, F : D> addCandidatesForExplicitReceiver(
@@ -202,7 +203,7 @@ public class TaskPrioritizer(
             //extensions
             c.result.addCandidates {
                 val extensions = callableDescriptorCollector.getExtensionsByName(
-                        c.scope.asJetScope(), c.name, explicitReceiver.types, createLookupLocation(c))
+                        c.scope.asKtScope(), c.name, explicitReceiver.types, createLookupLocation(c))
                 val filteredExtensions = if (filter == null) extensions else extensions.filter(filter)
 
                 convertWithImpliedThis(
@@ -312,11 +313,19 @@ public class TaskPrioritizer(
             addCandidatesForExplicitReceiver(implicitReceiver, implicitReceivers, c, isExplicit = false)
         }
 
+        // static members hack
+        c.callableDescriptorCollectors.forEach {
+            c.result.addCandidates {
+                val descriptors = it.getStaticInheritanceByName(c.scope, c.name, lookupLocation)
+                convertWithImpliedThisAndNoReceiver(c.scope, descriptors, c.context.call)
+            }
+        }
+
         //nonlocals
         c.callableDescriptorCollectors.forEach {
             c.result.addCandidates {
-                val descriptors = it.getNonExtensionsByName(c.scope.asJetScope(), c.name, lookupLocation)
-                        .filter { !ExpressionTypingUtils.isLocal(c.scope.ownerDescriptor, it) }
+                val descriptors = it.getNonExtensionsByName(c.scope.asKtScope(), c.name, lookupLocation)
+                        .filter { c.scope is ImportingScope || !ExpressionTypingUtils.isLocal(c.scope.ownerDescriptor, it) }
                 convertWithImpliedThisAndNoReceiver(c.scope, descriptors, c.context.call)
             }
         }
@@ -330,7 +339,7 @@ public class TaskPrioritizer(
     private fun createLookupLocation(c: TaskPrioritizerContext<*, *>) = KotlinLookupLocation(c.context.call.run {
         calleeExpression?.let {
             // Can't use getContainingJetFile() because we can get from IDE an element with JavaDummyHolder as containing file
-            if ((it.containingFile as? JetFile)?.doNotAnalyze == null) it else null
+            if ((it.containingFile as? KtFile)?.doNotAnalyze == null) it else null
         }
         ?: callElement
     })
@@ -444,7 +453,7 @@ public class TaskPrioritizer(
         if (dispatchReceiver == null) return true
         val receivers = scope.getImplicitReceiversHierarchy()
         for (receiver in receivers) {
-            if (JetTypeChecker.DEFAULT.isSubtypeOf(receiver.getType(), dispatchReceiver.getType())) {
+            if (KotlinTypeChecker.DEFAULT.isSubtypeOf(receiver.getType(), dispatchReceiver.getType())) {
                 // TODO : Smartcasts & nullability
                 candidate.setDispatchReceiver(dispatchReceiver.getValue())
                 return true
@@ -470,7 +479,7 @@ public class TaskPrioritizer(
 
         override fun getPriority(candidate: ResolutionCandidate<D>)
                 = if (hasImplicitDynamicReceiver(candidate)) 0
-                  else (if (isVisible(candidate)) 2 else 0) + (if (isSynthesized(candidate)) 0 else 1)
+                  else (if (!isVisible(candidate) || hasLowPriority(candidate)) 0 else 2) + (if (isSynthesized(candidate)) 0 else 1)
 
         override fun getMaxPriority() = 3
 
@@ -482,9 +491,14 @@ public class TaskPrioritizer(
             return Visibilities.isVisible(receiverValue, candidateDescriptor, context.scope.ownerDescriptor)
         }
 
+        private fun hasLowPriority(candidate: ResolutionCandidate<D>?): Boolean {
+            if (candidate == null) return false
+            return candidate.descriptor.hasLowPriorityInOverloadResolution()
+        }
+
         private fun isSynthesized(candidate: ResolutionCandidate<D>): Boolean {
             val descriptor = candidate.getDescriptor()
-            return descriptor is CallableMemberDescriptor && isOrOverridesSynthesized(descriptor : CallableMemberDescriptor)
+            return descriptor is CallableMemberDescriptor && isOrOverridesSynthesized(descriptor)
         }
 
         fun hasImplicitDynamicReceiver(candidate: ResolutionCandidate<D>): Boolean {

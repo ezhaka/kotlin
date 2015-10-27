@@ -12,42 +12,30 @@ var a : Int
 // EXIST:  abstract
 // EXIST: by
 // EXIST:  class
-// EXIST:  enum
+// EXIST:  enum class
 // EXIST:  final
 // EXIST:  fun
 // EXIST: get
-// EXIST:  in
-/*why?*/
-// EXIST:  inner
+// EXIST: "get() = "
+// EXIST: "get() {}"
 // EXIST:  internal
 // EXIST:  object
 // EXIST:  open
-// EXIST:  out
-/*why?*/
-// EXIST:  reified
-/*why?*/
-// EXIST:  override
 // EXIST:  private
-// EXIST:  protected
 // EXIST:  public
 // EXIST: set
+// EXIST: "set(value) = "
+// EXIST: "set(value) {}"
 // EXIST:  interface
 // EXIST:  val
 // EXIST:  var
-// EXIST:  vararg
-/*why?*/
-// EXIST:  companion object
 // EXIST:  operator
 // EXIST:  infix
 // EXIST:  sealed
-// EXIST:  lateinit
 // EXIST:  data
 // EXIST:  inline
-// EXIST:  noinline
 // EXIST:  tailrec
 // EXIST:  external
-// EXIST:  annotation
-// EXIST:  crossinline
+// EXIST:  annotation class
 // EXIST:  const
-/*TODO*/
 // NOTHING_ELSE

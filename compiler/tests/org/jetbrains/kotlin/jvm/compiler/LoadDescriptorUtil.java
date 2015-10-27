@@ -23,9 +23,10 @@ import com.intellij.util.Function;
 import com.intellij.util.containers.ContainerUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.analyzer.AnalysisResult;
-import org.jetbrains.kotlin.cli.common.output.outputUtils.OutputUtilsPackage;
+import org.jetbrains.kotlin.cli.common.output.outputUtils.OutputUtilsKt;
 import org.jetbrains.kotlin.cli.jvm.compiler.CliLightClassGenerationSupport;
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles;
+import org.jetbrains.kotlin.cli.jvm.compiler.JvmPackagePartProvider;
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment;
 import org.jetbrains.kotlin.codegen.GenerationUtils;
 import org.jetbrains.kotlin.codegen.forTestCompile.ForTestCompileRuntime;
@@ -35,10 +36,9 @@ import org.jetbrains.kotlin.descriptors.ModuleDescriptor;
 import org.jetbrains.kotlin.descriptors.PackageViewDescriptor;
 import org.jetbrains.kotlin.name.FqName;
 import org.jetbrains.kotlin.name.Name;
-import org.jetbrains.kotlin.psi.JetFile;
+import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.resolve.BindingContext;
 import org.jetbrains.kotlin.resolve.BindingTrace;
-import org.jetbrains.kotlin.cli.jvm.compiler.JvmPackagePartProvider;
 import org.jetbrains.kotlin.resolve.lazy.JvmResolveUtil;
 import org.jetbrains.kotlin.resolve.lazy.LazyResolveTestUtil;
 import org.jetbrains.kotlin.test.ConfigurationKind;
@@ -64,13 +64,16 @@ public final class LoadDescriptorUtil {
             @NotNull List<File> kotlinFiles,
             @NotNull File outDir,
             @NotNull Disposable disposable,
-            @NotNull ConfigurationKind configurationKind
+            @NotNull ConfigurationKind configurationKind,
+            boolean useTypeTableInSerializer
     ) {
         JetFilesAndAnalysisResult filesAndResult = JetFilesAndAnalysisResult.createJetFilesAndAnalyze(kotlinFiles, disposable, configurationKind);
         AnalysisResult result = filesAndResult.getAnalysisResult();
-        List<JetFile> files = filesAndResult.getJetFiles();
-        GenerationState state = GenerationUtils.compileFilesGetGenerationState(files.get(0).getProject(), result, files);
-        OutputUtilsPackage.writeAllTo(state.getFactory(), outDir);
+        List<KtFile> files = filesAndResult.getJetFiles();
+        GenerationState state = GenerationUtils.compileFilesGetGenerationState(
+                files.get(0).getProject(), result, files, useTypeTableInSerializer
+        );
+        OutputUtilsKt.writeAllTo(state.getFactory(), outDir);
         return result;
     }
 
@@ -104,7 +107,7 @@ public final class LoadDescriptorUtil {
 
         BindingTrace trace = new CliLightClassGenerationSupport.NoScopeRecordCliBindingTrace();
         ModuleDescriptor module = LazyResolveTestUtil
-                .resolve(environment.getProject(), trace, Collections.<JetFile>emptyList(), environment);
+                .resolve(environment.getProject(), trace, Collections.<KtFile>emptyList(), environment);
 
         PackageViewDescriptor packageView = module.getPackage(TEST_PACKAGE_FQNAME);
         return Pair.create(packageView, trace.getBindingContext());
@@ -128,9 +131,9 @@ public final class LoadDescriptorUtil {
                 @NotNull ConfigurationKind configurationKind
         ) {
             final KotlinCoreEnvironment jetCoreEnvironment = createEnvironmentWithMockJdkAndIdeaAnnotations(disposable, configurationKind);
-            List<JetFile> jetFiles = ContainerUtil.map(kotlinFiles, new Function<File, JetFile>() {
+            List<KtFile> jetFiles = ContainerUtil.map(kotlinFiles, new Function<File, KtFile>() {
                 @Override
-                public JetFile fun(File kotlinFile) {
+                public KtFile fun(File kotlinFile) {
                     try {
                         return JetTestUtils.createFile(
                                 kotlinFile.getName(), FileUtil.loadFile(kotlinFile, true), jetCoreEnvironment.getProject());
@@ -145,16 +148,16 @@ public final class LoadDescriptorUtil {
             return new JetFilesAndAnalysisResult(jetFiles, result);
         }
 
-        private final List<JetFile> jetFiles;
+        private final List<KtFile> jetFiles;
         private final AnalysisResult result;
 
-        private JetFilesAndAnalysisResult(@NotNull List<JetFile> jetFiles, @NotNull AnalysisResult result) {
+        private JetFilesAndAnalysisResult(@NotNull List<KtFile> jetFiles, @NotNull AnalysisResult result) {
             this.jetFiles = jetFiles;
             this.result = result;
         }
 
         @NotNull
-        public List<JetFile> getJetFiles() {
+        public List<KtFile> getJetFiles() {
             return jetFiles;
         }
 

@@ -24,30 +24,27 @@ import kotlin.Pair;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.backend.common.output.OutputFile;
 import org.jetbrains.kotlin.backend.common.output.OutputFileCollection;
-import org.jetbrains.kotlin.cli.common.output.outputUtils.OutputUtilsPackage;
+import org.jetbrains.kotlin.cli.common.output.outputUtils.OutputUtilsKt;
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles;
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment;
 import org.jetbrains.kotlin.codegen.state.GenerationState;
-import org.jetbrains.kotlin.load.kotlin.PackageClassUtils;
-import org.jetbrains.kotlin.name.FqName;
-import org.jetbrains.kotlin.psi.JetFile;
+import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.test.ConfigurationKind;
 import org.jetbrains.kotlin.test.JetTestUtils;
 import org.jetbrains.kotlin.test.TestCaseWithTmpdir;
 import org.jetbrains.kotlin.test.TestJdkKind;
-import org.jetbrains.kotlin.utils.UtilsPackage;
+import org.jetbrains.kotlin.utils.ExceptionUtilsKt;
 import org.jetbrains.org.objectweb.asm.*;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class AbstractLineNumberTest extends TestCaseWithTmpdir {
+public abstract class AbstractLineNumberTest extends TestCaseWithTmpdir {
 
     private static final String LINE_NUMBER_FUN = "lineNumber";
     private static final Pattern TEST_LINE_NUMBER_PATTERN = Pattern.compile("^.*test." + LINE_NUMBER_FUN + "\\(\\).*$");
@@ -71,17 +68,17 @@ public class AbstractLineNumberTest extends TestCaseWithTmpdir {
         super.setUp();
 
         KotlinCoreEnvironment environment = createEnvironment();
-        JetFile psiFile = JetTestUtils.createFile(LINE_NUMBER_FUN + ".kt",
+        KtFile psiFile = JetTestUtils.createFile(LINE_NUMBER_FUN + ".kt",
                                                "package test;\n\npublic fun " + LINE_NUMBER_FUN + "(): Int = 0\n",
-                                               environment.getProject());
+                                                 environment.getProject());
 
         OutputFileCollection outputFiles =
                 GenerationUtils.compileFileGetClassFileFactoryForTest(psiFile, environment);
-        OutputUtilsPackage.writeAllTo(outputFiles, tmpdir);
+        OutputUtilsKt.writeAllTo(outputFiles, tmpdir);
     }
 
     @NotNull
-    private Pair<JetFile, KotlinCoreEnvironment> createPsiFile(@NotNull String filename) {
+    private Pair<KtFile, KotlinCoreEnvironment> createPsiFile(@NotNull String filename) {
         File file = new File(filename);
         KotlinCoreEnvironment environment = createEnvironment();
 
@@ -90,15 +87,15 @@ public class AbstractLineNumberTest extends TestCaseWithTmpdir {
             text = FileUtil.loadFile(file, true);
         }
         catch (IOException e) {
-            throw UtilsPackage.rethrow(e);
+            throw ExceptionUtilsKt.rethrow(e);
         }
 
         return new Pair(JetTestUtils.createFile(file.getName(), text, environment.getProject()), environment);
     }
 
     private void doTest(@NotNull String filename, boolean custom) {
-        Pair<JetFile, KotlinCoreEnvironment> fileAndEnv = createPsiFile(filename);
-        JetFile psiFile = fileAndEnv.getFirst();
+        Pair<KtFile, KotlinCoreEnvironment> fileAndEnv = createPsiFile(filename);
+        KtFile psiFile = fileAndEnv.getFirst();
         KotlinCoreEnvironment environment = fileAndEnv.getSecond();
 
         GenerationState state = GenerationUtils.compileFileGetGenerationStateForTest(psiFile, environment);
@@ -122,11 +119,7 @@ public class AbstractLineNumberTest extends TestCaseWithTmpdir {
     private static List<Integer> extractActualLineNumbersFromBytecode(@NotNull GenerationState state, boolean testFunInvoke) {
         ClassFileFactory factory = state.getFactory();
         List<Integer> actualLineNumbers = Lists.newArrayList();
-        for (OutputFile outputFile : CodegenPackage.getClassFiles(factory)) {
-            if (PackageClassUtils.isPackageClassFqName(new FqName(FileUtil.getNameWithoutExtension(outputFile.getRelativePath())))) {
-                // Don't test line numbers in *Package facade classes
-                continue;
-            }
+        for (OutputFile outputFile : ClassFileUtilsKt.getClassFiles(factory)) {
             ClassReader cr = new ClassReader(outputFile.asByteArray());
             try {
                 List<Integer> lineNumbers = testFunInvoke ? readTestFunLineNumbers(cr) : readAllLineNumbers(cr);
@@ -134,7 +127,7 @@ public class AbstractLineNumberTest extends TestCaseWithTmpdir {
             }
             catch (Throwable e) {
                 System.out.println(factory.createText());
-                throw UtilsPackage.rethrow(e);
+                throw ExceptionUtilsKt.rethrow(e);
             }
         }
 
@@ -150,7 +143,7 @@ public class AbstractLineNumberTest extends TestCaseWithTmpdir {
     }
 
     @NotNull
-    private static List<Integer> extractCustomLineNumbersFromSource(@NotNull JetFile file) {
+    private static List<Integer> extractCustomLineNumbersFromSource(@NotNull KtFile file) {
         String fileContent = file.getText();
         List<Integer> lineNumbers = Lists.newArrayList();
         String[] lines = StringUtil.convertLineSeparators(fileContent).split("\n");
@@ -168,7 +161,7 @@ public class AbstractLineNumberTest extends TestCaseWithTmpdir {
     }
 
     @NotNull
-    private static List<Integer> extractSelectedLineNumbersFromSource(@NotNull JetFile file) {
+    private static List<Integer> extractSelectedLineNumbersFromSource(@NotNull KtFile file) {
         String fileContent = file.getText();
         List<Integer> lineNumbers = Lists.newArrayList();
         String[] lines = StringUtil.convertLineSeparators(fileContent).split("\n");
@@ -243,21 +236,5 @@ public class AbstractLineNumberTest extends TestCaseWithTmpdir {
             }
         }, ClassReader.SKIP_FRAMES);
         return result;
-    }
-
-    public void testStaticDelegate() {
-        JetFile foo = createPsiFile(getTestDataPath() + "/staticDelegate/foo.kt").getFirst();
-        JetFile bar = createPsiFile(getTestDataPath() + "/staticDelegate/bar.kt").getFirst();
-        GenerationState state = GenerationUtils.compileManyFilesGetGenerationStateForTest(foo.getProject(), Arrays.asList(foo, bar));
-        OutputFile file = state.getFactory().get(PackageClassUtils.getPackageClassName(FqName.ROOT) + ".class");
-        assertNotNull(file);
-        ClassReader reader = new ClassReader(file.asByteArray());
-
-        // There must be exactly one line number attribute for each static delegate in package facade class, and it should point to the first
-        // line. There are two static delegates in this test, hence the [1, 1]
-        List<Integer> expectedLineNumbers = Arrays.asList(1, 1);
-        List<Integer> actualLineNumbers = readAllLineNumbers(reader);
-
-        assertSameElements(actualLineNumbers, expectedLineNumbers);
     }
 }

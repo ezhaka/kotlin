@@ -16,25 +16,50 @@
 
 package org.jetbrains.kotlin.types.expressions
 
-import org.jetbrains.kotlin.lexer.JetTokens
+import com.google.common.collect.LinkedHashMultimap
+import com.google.common.collect.SetMultimap
+import org.jetbrains.kotlin.descriptors.VariableDescriptor
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.psi.JetBinaryExpression
-import org.jetbrains.kotlin.psi.JetNameReferenceExpression
-import org.jetbrains.kotlin.psi.JetPsiUtil
-import org.jetbrains.kotlin.psi.JetTreeVisitorVoid
-import java.util.*
+import org.jetbrains.kotlin.psi.*
 
-abstract class AssignedVariablesSearcher: JetTreeVisitorVoid() {
+abstract class AssignedVariablesSearcher: KtTreeVisitorVoid() {
 
-    protected val assignedNames: MutableSet<Name> = LinkedHashSet()
+    private val assignedNames: SetMultimap<Name, KtDeclaration?> = LinkedHashMultimap.create()
 
-    override fun visitBinaryExpression(binaryExpression: JetBinaryExpression) {
-        if (binaryExpression.operationToken === JetTokens.EQ) {
-            val left = JetPsiUtil.deparenthesize(binaryExpression.left)
-            if (left is JetNameReferenceExpression) {
-                assignedNames += left.getReferencedNameAsName()
-            }
+    public open fun writers(variableDescriptor: VariableDescriptor) = assignedNames[variableDescriptor.name]
+
+    public fun hasWriters(variableDescriptor: VariableDescriptor) = writers(variableDescriptor).isNotEmpty()
+
+    private var currentDeclaration: KtDeclaration? = null
+
+    override fun visitDeclaration(declaration: KtDeclaration) {
+        val previous = currentDeclaration
+        if (declaration is KtDeclarationWithBody || declaration is KtClassOrObject) {
+            currentDeclaration = declaration
         }
+        else if (declaration is KtClassInitializer) {
+            // Go to class declaration: init -> body -> class
+            currentDeclaration = declaration.parent.parent as KtDeclaration
+        }
+        super.visitDeclaration(declaration)
+        currentDeclaration = previous
     }
 
+    override fun visitFunctionLiteralExpression(functionLiteralExpression: KtFunctionLiteralExpression) {
+        val previous = currentDeclaration
+        currentDeclaration = functionLiteralExpression.functionLiteral
+        super.visitFunctionLiteralExpression(functionLiteralExpression)
+        currentDeclaration = previous
+    }
+
+    override fun visitBinaryExpression(binaryExpression: KtBinaryExpression) {
+        if (binaryExpression.operationToken === KtTokens.EQ) {
+            val left = KtPsiUtil.deparenthesize(binaryExpression.left)
+            if (left is KtNameReferenceExpression) {
+                assignedNames.put(left.getReferencedNameAsName(), currentDeclaration)
+            }
+        }
+        super.visitBinaryExpression(binaryExpression)
+    }
 }

@@ -27,7 +27,6 @@ import com.intellij.psi.PsiFileFactory;
 import com.intellij.psi.impl.PsiFileFactoryImpl;
 import com.intellij.psi.search.ProjectScope;
 import com.intellij.testFramework.LightVirtualFile;
-import com.intellij.util.SmartList;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.backend.common.output.OutputFile;
@@ -38,8 +37,11 @@ import org.jetbrains.kotlin.cli.jvm.compiler.CliLightClassGenerationSupport;
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles;
 import org.jetbrains.kotlin.cli.jvm.compiler.JvmPackagePartProvider;
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment;
+import org.jetbrains.kotlin.cli.jvm.config.JvmContentRootsKt;
+import org.jetbrains.kotlin.cli.jvm.config.ModuleNameKt;
 import org.jetbrains.kotlin.cli.jvm.repl.di.ContainerForReplWithJava;
-import org.jetbrains.kotlin.cli.jvm.repl.di.DiPackage;
+import org.jetbrains.kotlin.cli.jvm.repl.di.InjectionKt;
+import org.jetbrains.kotlin.cli.jvm.repl.di.ReplLastLineScopeProvider;
 import org.jetbrains.kotlin.cli.jvm.repl.messages.DiagnosticMessageHolder;
 import org.jetbrains.kotlin.cli.jvm.repl.messages.ReplIdeDiagnosticMessageHolder;
 import org.jetbrains.kotlin.cli.jvm.repl.messages.ReplSystemInWrapper;
@@ -56,19 +58,18 @@ import org.jetbrains.kotlin.descriptors.impl.ModuleDescriptorImpl;
 import org.jetbrains.kotlin.idea.KotlinLanguage;
 import org.jetbrains.kotlin.name.FqName;
 import org.jetbrains.kotlin.parsing.JetParserDefinition;
-import org.jetbrains.kotlin.psi.JetFile;
-import org.jetbrains.kotlin.psi.JetScript;
+import org.jetbrains.kotlin.psi.KtFile;
+import org.jetbrains.kotlin.psi.KtScript;
 import org.jetbrains.kotlin.resolve.*;
 import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowInfo;
 import org.jetbrains.kotlin.resolve.jvm.JvmClassName;
 import org.jetbrains.kotlin.resolve.jvm.TopDownAnalyzerFacadeForJVM;
-import org.jetbrains.kotlin.resolve.lazy.FileScopeProvider;
 import org.jetbrains.kotlin.resolve.lazy.ResolveSession;
 import org.jetbrains.kotlin.resolve.lazy.data.JetClassLikeInfo;
 import org.jetbrains.kotlin.resolve.lazy.declarations.*;
-import org.jetbrains.kotlin.resolve.scopes.JetScope;
-import org.jetbrains.kotlin.types.JetType;
-import org.jetbrains.kotlin.utils.UtilsPackage;
+import org.jetbrains.kotlin.resolve.scopes.LexicalScope;
+import org.jetbrains.kotlin.types.KotlinType;
+import org.jetbrains.kotlin.utils.ExceptionUtilsKt;
 import org.jetbrains.org.objectweb.asm.Type;
 
 import java.io.File;
@@ -83,8 +84,6 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-import static org.jetbrains.kotlin.cli.jvm.config.ConfigPackage.getJvmClasspathRoots;
-import static org.jetbrains.kotlin.cli.jvm.config.ConfigPackage.getModuleName;
 import static org.jetbrains.kotlin.codegen.AsmUtil.asmTypeByFqNameWithoutInnerClasses;
 import static org.jetbrains.kotlin.codegen.binding.CodegenBinding.registerClassNameForScript;
 import static org.jetbrains.kotlin.resolve.DescriptorToSourceUtils.descriptorToDeclaration;
@@ -93,7 +92,7 @@ public class ReplInterpreter {
     private int lineNumber = 0;
 
     @Nullable
-    private JetScope lastLineScope;
+    private LexicalScope lastLineScope;
     private final List<EarlierLine> earlierLines = Lists.newArrayList();
     private final List<String> previousIncompleteLines = Lists.newArrayList();
     private final ReplClassLoader classLoader;
@@ -121,25 +120,24 @@ public class ReplInterpreter {
         Project project = environment.getProject();
         this.psiFileFactory = (PsiFileFactoryImpl) PsiFileFactory.getInstance(project);
         this.trace = new CliLightClassGenerationSupport.NoScopeRecordCliBindingTrace();
-        MutableModuleContext moduleContext = TopDownAnalyzerFacadeForJVM.createContextWithSealedModule(project, getModuleName(environment));
+        MutableModuleContext moduleContext = TopDownAnalyzerFacadeForJVM.createContextWithSealedModule(project, ModuleNameKt
+                .getModuleName(environment));
         this.module = moduleContext.getModule();
 
         scriptDeclarationFactory = new ScriptMutableDeclarationProviderFactory();
 
-        FileScopeProvider.AdditionalScopes scopeProvider = new FileScopeProvider.AdditionalScopes() {
-            @NotNull
-            @Override
-            public List<JetScope> getScopes() {
-                return lastLineScope != null ? new SmartList<JetScope>(lastLineScope) : Collections.<JetScope>emptyList();
-            }
-        };
-
-        ContainerForReplWithJava container = DiPackage.createContainerForReplWithJava(
+        ContainerForReplWithJava container = InjectionKt.createContainerForReplWithJava(
                 moduleContext,
                 trace,
                 scriptDeclarationFactory,
                 ProjectScope.getAllScope(project),
-                scopeProvider,
+                new ReplLastLineScopeProvider() {
+                    @Nullable
+                    @Override
+                    public LexicalScope getLastLineScope() {
+                        return lastLineScope;
+                    }
+                },
                 new JvmPackagePartProvider(environment)
         );
 
@@ -156,12 +154,12 @@ public class ReplInterpreter {
         ));
 
         List<URL> classpath = Lists.newArrayList();
-        for (File file : getJvmClasspathRoots(configuration)) {
+        for (File file : JvmContentRootsKt.getJvmClasspathRoots(configuration)) {
             try {
                 classpath.add(file.toURI().toURL());
             }
             catch (MalformedURLException e) {
-                throw UtilsPackage.rethrow(e);
+                throw ExceptionUtilsKt.rethrow(e);
             }
         }
 
@@ -274,7 +272,7 @@ public class ReplInterpreter {
 
         LightVirtualFile virtualFile = new LightVirtualFile("line" + lineNumber + JetParserDefinition.STD_SCRIPT_EXT, KotlinLanguage.INSTANCE, fullText.toString());
         virtualFile.setCharset(CharsetToolkit.UTF8_CHARSET);
-        JetFile psiFile = (JetFile) psiFileFactory.trySetupPsiForFile(virtualFile, KotlinLanguage.INSTANCE, true, false);
+        KtFile psiFile = (KtFile) psiFileFactory.trySetupPsiForFile(virtualFile, KotlinLanguage.INSTANCE, true, false);
         assert psiFile != null : "Script file not analyzed at line " + lineNumber + ": " + fullText;
 
         DiagnosticMessageHolder errorHolder = createDiagnosticHolder();
@@ -355,7 +353,7 @@ public class ReplInterpreter {
 
             earlierLines.add(new EarlierLine(line, scriptDescriptor, scriptClass, scriptInstance, scriptClassType));
 
-            JetType returnType = scriptDescriptor.getScriptCodeDescriptor().getReturnType();
+            KotlinType returnType = scriptDescriptor.getScriptCodeDescriptor().getReturnType();
             return LineResult.successful(rv, returnType != null && KotlinBuiltIns.isUnit(returnType));
         }
         catch (Throwable e) {
@@ -363,7 +361,7 @@ public class ReplInterpreter {
             PrintWriter writer = new PrintWriter(System.err);
             classLoader.dumpClasses(writer);
             writer.flush();
-            throw UtilsPackage.rethrow(e);
+            throw ExceptionUtilsKt.rethrow(e);
         }
     }
 
@@ -399,7 +397,7 @@ public class ReplInterpreter {
     }
 
     @Nullable
-    private ScriptDescriptor doAnalyze(@NotNull JetFile psiFile, @NotNull DiagnosticMessageReporter errorReporter) {
+    private ScriptDescriptor doAnalyze(@NotNull KtFile psiFile, @NotNull DiagnosticMessageReporter errorReporter) {
         scriptDeclarationFactory.setDelegateFactory(
                 new FileBasedDeclarationProviderFactory(resolveSession.getStorageManager(), Collections.singletonList(psiFile)));
 
@@ -441,7 +439,7 @@ public class ReplInterpreter {
 
             PsiElement jetScript = descriptorToDeclaration(earlierDescriptor);
             if (jetScript != null) {
-                registerClassNameForScript(state.getBindingTrace(), (JetScript) jetScript, earlierClassType, state.getFileClassesProvider());
+                registerClassNameForScript(state.getBindingTrace(), (KtScript) jetScript, earlierClassType, state.getFileClassesProvider());
                 earlierScriptDescriptors.add(earlierDescriptor);
             }
         }
@@ -449,7 +447,7 @@ public class ReplInterpreter {
     }
 
     public static void compileScript(
-            @NotNull JetScript script,
+            @NotNull KtScript script,
             @NotNull Type classType,
             @NotNull List<Pair<ScriptDescriptor, Type>> earlierScripts,
             @NotNull GenerationState state,

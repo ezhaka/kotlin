@@ -325,6 +325,12 @@ public class JetPsiCheckerTestGenerated extends AbstractJetPsiCheckerTest {
             doTest(fileName);
         }
 
+        @TestMetadata("TypeParameterBounds.kt")
+        public void testTypeParameterBounds() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("idea/testData/checker/TypeParameterBounds.kt");
+            doTest(fileName);
+        }
+
         @TestMetadata("UnreachableCode.kt")
         public void testUnreachableCode() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("idea/testData/checker/UnreachableCode.kt");
@@ -433,12 +439,6 @@ public class JetPsiCheckerTestGenerated extends AbstractJetPsiCheckerTest {
         @TestMetadata("Jet169.kt")
         public void testJet169() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("idea/testData/checker/regression/Jet169.kt");
-            doTest(fileName);
-        }
-
-        @TestMetadata("Jet17.kt")
-        public void testJet17() throws Exception {
-            String fileName = JetTestUtils.navigationMetadata("idea/testData/checker/regression/Jet17.kt");
             doTest(fileName);
         }
 
@@ -627,6 +627,12 @@ public class JetPsiCheckerTestGenerated extends AbstractJetPsiCheckerTest {
             @TestMetadata("topLevel.kt")
             public void testTopLevel() throws Exception {
                 String fileName = JetTestUtils.navigationMetadata("idea/testData/checker/duplicateJvmSignature/functionAndProperty/topLevel.kt");
+                doTest(fileName);
+            }
+
+            @TestMetadata("topLevelMultifileRuntime.kt")
+            public void testTopLevelMultifileRuntime() throws Exception {
+                String fileName = JetTestUtils.navigationMetadata("idea/testData/checker/duplicateJvmSignature/functionAndProperty/topLevelMultifileRuntime.kt");
                 doTest(fileName);
             }
 

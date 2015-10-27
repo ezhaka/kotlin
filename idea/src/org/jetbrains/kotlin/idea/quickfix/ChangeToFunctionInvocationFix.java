@@ -22,14 +22,13 @@ import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.diagnostics.Diagnostic;
 import org.jetbrains.kotlin.idea.JetBundle;
-import org.jetbrains.kotlin.psi.JetExpression;
-import org.jetbrains.kotlin.psi.JetFile;
+import org.jetbrains.kotlin.psi.KtExpression;
+import org.jetbrains.kotlin.psi.KtFile;
+import org.jetbrains.kotlin.psi.KtPsiFactoryKt;
 
-import static org.jetbrains.kotlin.psi.PsiPackage.JetPsiFactory;
+public class ChangeToFunctionInvocationFix extends KotlinQuickFixAction<KtExpression> {
 
-public class ChangeToFunctionInvocationFix extends JetIntentionAction<JetExpression> {
-
-    public ChangeToFunctionInvocationFix(@NotNull JetExpression element) {
+    public ChangeToFunctionInvocationFix(@NotNull KtExpression element) {
         super(element);
     }
 
@@ -46,17 +45,17 @@ public class ChangeToFunctionInvocationFix extends JetIntentionAction<JetExpress
     }
 
     @Override
-    public void invoke(@NotNull Project project, Editor editor, JetFile file) throws IncorrectOperationException {
-        JetExpression reference = (JetExpression) element.copy();
-        element.replace(JetPsiFactory(file).createExpression(reference.getText() + "()"));
+    public void invoke(@NotNull Project project, Editor editor, KtFile file) throws IncorrectOperationException {
+        KtExpression reference = (KtExpression) getElement().copy();
+        getElement().replace(KtPsiFactoryKt.KtPsiFactory(file).createExpression(reference.getText() + "()"));
     }
 
     public static JetSingleIntentionActionFactory createFactory() {
         return new JetSingleIntentionActionFactory() {
             @Override
-            public JetIntentionAction<JetExpression> createAction(Diagnostic diagnostic) {
-                if (diagnostic.getPsiElement() instanceof JetExpression) {
-                    return new ChangeToFunctionInvocationFix((JetExpression) diagnostic.getPsiElement());
+            public KotlinQuickFixAction<KtExpression> createAction(Diagnostic diagnostic) {
+                if (diagnostic.getPsiElement() instanceof KtExpression) {
+                    return new ChangeToFunctionInvocationFix((KtExpression) diagnostic.getPsiElement());
                 }
                 return null;
             }

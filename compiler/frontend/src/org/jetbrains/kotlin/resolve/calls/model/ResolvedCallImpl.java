@@ -27,15 +27,15 @@ import org.jetbrains.kotlin.descriptors.ValueParameterDescriptor;
 import org.jetbrains.kotlin.psi.Call;
 import org.jetbrains.kotlin.psi.ValueArgument;
 import org.jetbrains.kotlin.resolve.DelegatingBindingTrace;
-import org.jetbrains.kotlin.resolve.calls.callResolverUtil.CallResolverUtilPackage;
-import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilPackage;
+import org.jetbrains.kotlin.resolve.calls.callResolverUtil.CallResolverUtilKt;
+import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilKt;
 import org.jetbrains.kotlin.resolve.calls.inference.ConstraintSystem;
 import org.jetbrains.kotlin.resolve.calls.results.ResolutionStatus;
 import org.jetbrains.kotlin.resolve.calls.tasks.ExplicitReceiverKind;
 import org.jetbrains.kotlin.resolve.calls.tasks.ResolutionCandidate;
 import org.jetbrains.kotlin.resolve.calls.tasks.TracingStrategy;
 import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.types.TypeProjection;
 import org.jetbrains.kotlin.types.TypeSubstitutor;
 
@@ -81,7 +81,7 @@ public class ResolvedCallImpl<D extends CallableDescriptor> implements MutableRe
     private final ExplicitReceiverKind explicitReceiverKind;
     private final TypeSubstitutor knownTypeParametersSubstitutor;
 
-    private final Map<TypeParameterDescriptor, JetType> typeArguments = Maps.newLinkedHashMap();
+    private final Map<TypeParameterDescriptor, KotlinType> typeArguments = Maps.newLinkedHashMap();
     private final Map<ValueParameterDescriptor, ResolvedValueArgument> valueArguments = Maps.newLinkedHashMap();
     private final MutableDataFlowInfoForArguments dataFlowInfoForArguments;
     private final Map<ValueArgument, ArgumentMatchImpl> argumentToParameterMap = Maps.newHashMap();
@@ -287,13 +287,13 @@ public class ResolvedCallImpl<D extends CallableDescriptor> implements MutableRe
 
     @NotNull
     @Override
-    public Map<TypeParameterDescriptor, JetType> getTypeArguments() {
+    public Map<TypeParameterDescriptor, KotlinType> getTypeArguments() {
         return typeArguments;
     }
 
     @Override
     public boolean isSafeCall() {
-        return CallUtilPackage.isSafeCall(call);
+        return CallUtilKt.isSafeCall(call);
     }
 
     @NotNull
@@ -306,7 +306,7 @@ public class ResolvedCallImpl<D extends CallableDescriptor> implements MutableRe
     public boolean hasInferredReturnType() {
         if (!completed) {
             hasInferredReturnType = constraintSystem == null ||
-                                    CallResolverUtilPackage.hasInferredReturnType(candidateDescriptor, constraintSystem);
+                                    CallResolverUtilKt.hasInferredReturnType(candidateDescriptor, constraintSystem);
         }
         assert hasInferredReturnType != null : "The property 'hasInferredReturnType' was not set when the call was completed.";
         return hasInferredReturnType;

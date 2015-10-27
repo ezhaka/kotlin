@@ -18,49 +18,62 @@ package org.jetbrains.kotlin.idea.quickfix.createFromUsage.createCallable
 
 import com.intellij.psi.SmartPsiElementPointer
 import org.jetbrains.kotlin.diagnostics.Diagnostic
+import org.jetbrains.kotlin.idea.quickfix.KotlinIntentionActionFactoryWithDelegate
 import org.jetbrains.kotlin.idea.quickfix.LowPriorityQuickFixWithDelegateFactory
-import org.jetbrains.kotlin.idea.quickfix.NullQuickFix
 import org.jetbrains.kotlin.idea.quickfix.QuickFixWithDelegateFactory
-import org.jetbrains.kotlin.idea.quickfix.createFromUsage.CreateFromUsageFactory
+import org.jetbrains.kotlin.idea.quickfix.createFromUsage.CreateFromUsageFixBase
 import org.jetbrains.kotlin.idea.quickfix.createFromUsage.callableBuilder.CallableInfo
-import org.jetbrains.kotlin.psi.JetElement
+import org.jetbrains.kotlin.idea.quickfix.createFromUsage.callableBuilder.PropertyInfo
+import org.jetbrains.kotlin.idea.quickfix.createFromUsage.createVariable.CreateParameterFromUsageFix
+import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.utils.addToStdlib.singletonOrEmptyList
+import java.util.*
 
-public abstract class CreateCallableMemberFromUsageFactory<E : JetElement>(
+public abstract class CreateCallableMemberFromUsageFactory<E : KtElement>(
         val extensionsSupported: Boolean = true
-) : CreateFromUsageFactory<E, List<CallableInfo>>() {
+) : KotlinIntentionActionFactoryWithDelegate<E, List<CallableInfo>>() {
     private fun newCallableQuickFix(
             originalElementPointer: SmartPsiElementPointer<E>,
             lowPriority: Boolean,
-            quickFixDataFactory: (SmartPsiElementPointer<E>) -> List<CallableInfo>?,
-            quickFixFactory: (E, List<CallableInfo>) -> CreateCallableFromUsageFixBase<E>
+            quickFixDataFactory: () -> List<CallableInfo>?,
+            quickFixFactory: (E, List<CallableInfo>) -> CreateFromUsageFixBase<E>?
     ): QuickFixWithDelegateFactory {
         val delegateFactory = {
-            val data = quickFixDataFactory(originalElementPointer).orEmpty()
+            val data = quickFixDataFactory().orEmpty()
             val originalElement = originalElementPointer.element
-            if (data.isNotEmpty() && originalElement != null) quickFixFactory(originalElement, data) else NullQuickFix
+            if (data.isNotEmpty() && originalElement != null) quickFixFactory(originalElement, data) else null
         }
         return if (lowPriority) LowPriorityQuickFixWithDelegateFactory(delegateFactory) else QuickFixWithDelegateFactory(delegateFactory)
     }
 
     protected open fun createCallableInfo(element: E, diagnostic: Diagnostic): CallableInfo? = null
 
-    override fun createQuickFixData(element: E, diagnostic: Diagnostic): List<CallableInfo>
+    override fun extractFixData(element: E, diagnostic: Diagnostic): List<CallableInfo>
             = createCallableInfo(element, diagnostic).singletonOrEmptyList()
 
-    override fun createQuickFixes(
+    override fun createFixes(
             originalElementPointer: SmartPsiElementPointer<E>,
             diagnostic: Diagnostic,
-            quickFixDataFactory: (SmartPsiElementPointer<E>) -> List<CallableInfo>?
+            quickFixDataFactory: () -> List<CallableInfo>?
     ): List<QuickFixWithDelegateFactory> {
-        val memberFix = newCallableQuickFix(originalElementPointer, false, quickFixDataFactory) { element, data ->
-            CreateCallableFromUsageFix(element, data)
-        }
-        if (!extensionsSupported) return listOf(memberFix)
+        val fixes = ArrayList<QuickFixWithDelegateFactory>(3)
 
-        val extensionFix = newCallableQuickFix(originalElementPointer, true, quickFixDataFactory) { element, data ->
-            CreateExtensionCallableFromUsageFix(element, data)
+        newCallableQuickFix(originalElementPointer, false, quickFixDataFactory) { element, data ->
+            CreateCallableFromUsageFix(element, data)
+        }.let { fixes.add(it) }
+
+        newCallableQuickFix(originalElementPointer, false, quickFixDataFactory) f@ { element, data ->
+            (data.singleOrNull() as? PropertyInfo)?.let {
+                CreateParameterFromUsageFix.createFixForPrimaryConstructorPropertyParameter(element, it)
+            }
+        }.let { fixes.add(it) }
+
+        if (extensionsSupported) {
+            newCallableQuickFix(originalElementPointer, true, quickFixDataFactory) { element, data ->
+                CreateExtensionCallableFromUsageFix(element, data)
+            }.let { fixes.add(it) }
         }
-        return listOf(memberFix, extensionFix)
+
+        return fixes
     }
 }

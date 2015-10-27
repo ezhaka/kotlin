@@ -16,22 +16,31 @@
 
 package org.jetbrains.kotlin.load.java.descriptors
 
+import com.google.protobuf.MessageLite
 import org.jetbrains.kotlin.descriptors.CallableDescriptor
+import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.ValueParameterDescriptor
 import org.jetbrains.kotlin.descriptors.impl.ValueParameterDescriptorImpl
+import org.jetbrains.kotlin.load.java.lazy.descriptors.LazyJavaStaticClassScope
+import org.jetbrains.kotlin.name.Name
+import org.jetbrains.kotlin.resolve.descriptorUtil.getSuperClassNotAny
 import org.jetbrains.kotlin.resolve.descriptorUtil.module
-import org.jetbrains.kotlin.types.JetType
+import org.jetbrains.kotlin.serialization.ProtoBuf
+import org.jetbrains.kotlin.serialization.deserialization.NameResolver
+import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedCallableMemberDescriptor
+import org.jetbrains.kotlin.serialization.jvm.JvmProtoBuf
+import org.jetbrains.kotlin.types.KotlinType
 
-fun createEnhancedValueParameters(
-        enhancedTypes: Collection<JetType>,
+fun copyValueParameters(
+        newValueParametersTypes: Collection<KotlinType>,
         oldValueParameters: Collection<ValueParameterDescriptor>,
         newOwner: CallableDescriptor
 ): List<ValueParameterDescriptor> {
-    assert(enhancedTypes.size() == oldValueParameters.size()) {
-        "Different value parameters sizes: Enhanced = ${enhancedTypes.size()}, Old = ${oldValueParameters.size()}"
+    assert(newValueParametersTypes.size() == oldValueParameters.size()) {
+        "Different value parameters sizes: Enhanced = ${newValueParametersTypes.size}, Old = ${oldValueParameters.size}"
     }
 
-    return enhancedTypes.zip(oldValueParameters).map {
+    return newValueParametersTypes.zip(oldValueParameters).map {
         pair ->
         val (newType, oldParameter) = pair
         ValueParameterDescriptorImpl(
@@ -42,8 +51,39 @@ fun createEnhancedValueParameters(
                 oldParameter.getName(),
                 newType,
                 oldParameter.declaresDefaultValue(),
+                oldParameter.isCrossinline,
+                oldParameter.isNoinline,
                 if (oldParameter.getVarargElementType() != null) newOwner.module.builtIns.getArrayElementType(newType) else null,
                 oldParameter.getSource()
         )
     }
 }
+
+fun ClassDescriptor.getParentJavaStaticClassScope(): LazyJavaStaticClassScope? {
+    val superClassDescriptor = getSuperClassNotAny() ?: return null
+
+    val staticScope = superClassDescriptor.staticScope
+
+    if (staticScope !is LazyJavaStaticClassScope) return superClassDescriptor.getParentJavaStaticClassScope()
+
+    return staticScope
+}
+
+fun DeserializedCallableMemberDescriptor.getImplClassNameForDeserialized(): Name? =
+        getImplClassNameForProto(this.proto, this.nameResolver)
+
+fun getImplClassNameForProto(proto: MessageLite, nameResolver: NameResolver): Name? =
+        when (proto) {
+            is ProtoBuf.Constructor ->
+                null
+            is ProtoBuf.Function ->
+                if (proto.hasExtension(JvmProtoBuf.methodImplClassName))
+                    proto.getExtension(JvmProtoBuf.methodImplClassName)
+                else null
+            is ProtoBuf.Property ->
+                if (proto.hasExtension(JvmProtoBuf.propertyImplClassName))
+                    proto.getExtension(JvmProtoBuf.propertyImplClassName)
+                else null
+            else ->
+                error("Unknown message: $proto")
+        }?.let { nameResolver.getName(it) }

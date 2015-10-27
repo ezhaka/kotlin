@@ -20,7 +20,7 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.stubs.StubElement
 import org.jetbrains.kotlin.idea.decompiler.stubBuilder.FlagsToModifiers.*
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.psi.stubs.elements.JetStubElementTypes
+import org.jetbrains.kotlin.psi.stubs.elements.KtStubElementTypes
 import org.jetbrains.kotlin.psi.stubs.impl.KotlinFunctionStubImpl
 import org.jetbrains.kotlin.psi.stubs.impl.KotlinPlaceHolderStubImpl
 import org.jetbrains.kotlin.psi.stubs.impl.KotlinPropertyStubImpl
@@ -31,6 +31,8 @@ import org.jetbrains.kotlin.serialization.ProtoBuf.MemberKind
 import org.jetbrains.kotlin.serialization.ProtoBuf.Modality
 import org.jetbrains.kotlin.serialization.deserialization.AnnotatedCallableKind
 import org.jetbrains.kotlin.serialization.deserialization.ProtoContainer
+import org.jetbrains.kotlin.serialization.deserialization.receiverType
+import org.jetbrains.kotlin.serialization.deserialization.returnType
 
 fun createCallableStubs(
         parentStub: StubElement<out PsiElement>,
@@ -118,10 +120,10 @@ private class FunctionClsStubBuilder(
         private val functionProto: ProtoBuf.Function
 ) : CallableClsStubBuilder(parent, outerContext, protoContainer, functionProto.typeParameterList) {
     override val receiverType: ProtoBuf.Type?
-        get() = if (functionProto.hasReceiverType()) functionProto.receiverType else null
+        get() = functionProto.receiverType(c.typeTable)
 
     override val returnType: ProtoBuf.Type?
-        get() = if (functionProto.hasReturnType()) functionProto.returnType else null
+        get() = functionProto.returnType(c.typeTable)
 
     override fun createValueParameterList() {
         typeStubBuilder.createValueParameterListStub(callableStub, functionProto, functionProto.valueParameterList, protoContainer)
@@ -131,7 +133,7 @@ private class FunctionClsStubBuilder(
         val modalityModifier = if (isTopLevel) listOf() else listOf(MODALITY)
         val modifierListStubImpl = createModifierListStubForDeclaration(
                 callableStub, functionProto.flags,
-                listOf(VISIBILITY, OPERATOR, INFIX) + modalityModifier
+                listOf(VISIBILITY, OPERATOR, INFIX, EXTERNAL_FUN, INLINE, TAILREC) + modalityModifier
         )
 
         val annotationIds = c.components.annotationLoader.loadCallableAnnotations(
@@ -165,10 +167,10 @@ private class PropertyClsStubBuilder(
     private val isVar = Flags.IS_VAR.get(propertyProto.flags)
 
     override val receiverType: ProtoBuf.Type?
-        get() = if (propertyProto.hasReceiverType()) propertyProto.receiverType else null
+        get() = propertyProto.receiverType(c.typeTable)
 
     override val returnType: ProtoBuf.Type?
-        get() = if (propertyProto.hasReturnType()) propertyProto.returnType else null
+        get() = propertyProto.returnType(c.typeTable)
 
     override fun createValueParameterList() {
     }
@@ -233,8 +235,8 @@ private class ConstructorClsStubBuilder(
 
     override fun doCreateCallableStub(parent: StubElement<out PsiElement>): StubElement<out PsiElement> {
         return if (Flags.IS_SECONDARY.get(constructorProto.flags))
-            KotlinPlaceHolderStubImpl(parent, JetStubElementTypes.SECONDARY_CONSTRUCTOR)
+            KotlinPlaceHolderStubImpl(parent, KtStubElementTypes.SECONDARY_CONSTRUCTOR)
         else
-            KotlinPlaceHolderStubImpl(parent, JetStubElementTypes.PRIMARY_CONSTRUCTOR)
+            KotlinPlaceHolderStubImpl(parent, KtStubElementTypes.PRIMARY_CONSTRUCTOR)
     }
 }

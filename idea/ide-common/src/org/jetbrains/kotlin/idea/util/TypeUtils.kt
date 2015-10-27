@@ -30,11 +30,11 @@ import org.jetbrains.kotlin.platform.JavaToKotlinClassMap
 import org.jetbrains.kotlin.resolve.DescriptorUtils
 import org.jetbrains.kotlin.resolve.descriptorUtil.builtIns
 import org.jetbrains.kotlin.resolve.scopes.LexicalScope
-import org.jetbrains.kotlin.resolve.scopes.utils.getClassifier
+import org.jetbrains.kotlin.resolve.scopes.utils.findClassifier
 import org.jetbrains.kotlin.types.*
 import org.jetbrains.kotlin.types.typeUtil.*
 
-public fun approximateFlexibleTypes(jetType: JetType, outermost: Boolean = true): JetType {
+public fun approximateFlexibleTypes(jetType: KotlinType, outermost: Boolean = true): KotlinType {
     if (jetType.isDynamic()) return jetType
     if (jetType.isFlexible()) {
         val flexible = jetType.flexibility()
@@ -60,7 +60,7 @@ public fun approximateFlexibleTypes(jetType: JetType, outermost: Boolean = true)
 
         return approximation
     }
-    return JetTypeImpl.create(
+    return KotlinTypeImpl.create(
             jetType.getAnnotations(),
             jetType.getConstructor(),
             jetType.isMarkedNullable(),
@@ -69,31 +69,31 @@ public fun approximateFlexibleTypes(jetType: JetType, outermost: Boolean = true)
     )
 }
 
-public fun JetType.isAnnotatedReadOnly(): Boolean = hasAnnotationMaybeExternal(JETBRAINS_READONLY_ANNOTATION)
-public fun JetType.isAnnotatedNotNull(): Boolean = hasAnnotationMaybeExternal(JETBRAINS_NOT_NULL_ANNOTATION)
-public fun JetType.isAnnotatedNullable(): Boolean = hasAnnotationMaybeExternal(JETBRAINS_NULLABLE_ANNOTATION)
+public fun KotlinType.isAnnotatedReadOnly(): Boolean = hasAnnotationMaybeExternal(JETBRAINS_READONLY_ANNOTATION)
+public fun KotlinType.isAnnotatedNotNull(): Boolean = hasAnnotationMaybeExternal(JETBRAINS_NOT_NULL_ANNOTATION)
+public fun KotlinType.isAnnotatedNullable(): Boolean = hasAnnotationMaybeExternal(JETBRAINS_NULLABLE_ANNOTATION)
 
-private fun JetType.hasAnnotationMaybeExternal(fqName: FqName) = with (getAnnotations()) {
+private fun KotlinType.hasAnnotationMaybeExternal(fqName: FqName) = with (getAnnotations()) {
     findAnnotation(fqName) ?: findExternalAnnotation(fqName)
 } != null
 
-fun JetType.isResolvableInScope(scope: LexicalScope?, checkTypeParameters: Boolean): Boolean {
+fun KotlinType.isResolvableInScope(scope: LexicalScope?, checkTypeParameters: Boolean): Boolean {
     if (canBeReferencedViaImport()) return true
 
     val descriptor = getConstructor().getDeclarationDescriptor()
     if (descriptor == null || descriptor.getName().isSpecial()) return false
     if (!checkTypeParameters && descriptor is TypeParameterDescriptor) return true
 
-    return scope != null && scope.getClassifier(descriptor.name, NoLookupLocation.FROM_IDE) == descriptor
+    return scope != null && scope.findClassifier(descriptor.name, NoLookupLocation.FROM_IDE) == descriptor
 }
 
-public fun JetType.approximateWithResolvableType(scope: LexicalScope?, checkTypeParameters: Boolean): JetType {
+public fun KotlinType.approximateWithResolvableType(scope: LexicalScope?, checkTypeParameters: Boolean): KotlinType {
     if (isError() || isResolvableInScope(scope, checkTypeParameters)) return this
     return supertypes().firstOrNull { it.isResolvableInScope(scope, checkTypeParameters) }
            ?: builtIns.anyType
 }
 
-public fun JetType.anonymousObjectSuperTypeOrNull(): JetType? {
+public fun KotlinType.anonymousObjectSuperTypeOrNull(): KotlinType? {
     val classDescriptor = constructor.declarationDescriptor
     if (classDescriptor != null && DescriptorUtils.isAnonymousObject(classDescriptor)) {
         return immediateSupertypes().firstOrNull() ?: classDescriptor.builtIns.anyType

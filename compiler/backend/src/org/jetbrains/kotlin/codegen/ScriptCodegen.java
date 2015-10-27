@@ -29,6 +29,7 @@ import org.jetbrains.kotlin.descriptors.ScriptDescriptor;
 import org.jetbrains.kotlin.descriptors.ValueParameterDescriptor;
 import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.resolve.BindingContext;
+import org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOriginKt;
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodSignature;
 import org.jetbrains.org.objectweb.asm.MethodVisitor;
 import org.jetbrains.org.objectweb.asm.Type;
@@ -40,15 +41,14 @@ import java.util.List;
 import static org.jetbrains.kotlin.codegen.binding.CodegenBinding.CLASS_FOR_SCRIPT;
 import static org.jetbrains.kotlin.codegen.binding.CodegenBinding.asmTypeForScriptDescriptor;
 import static org.jetbrains.kotlin.resolve.jvm.AsmTypes.OBJECT_TYPE;
-import static org.jetbrains.kotlin.resolve.jvm.diagnostics.DiagnosticsPackage.OtherOrigin;
 import static org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOrigin.NO_ORIGIN;
 import static org.jetbrains.org.objectweb.asm.Opcodes.*;
 
 // SCRIPT: script code generator
-public class ScriptCodegen extends MemberCodegen<JetScript> {
+public class ScriptCodegen extends MemberCodegen<KtScript> {
 
     public static ScriptCodegen createScriptCodegen(
-            @NotNull JetScript declaration,
+            @NotNull KtScript declaration,
             @NotNull GenerationState state,
             @NotNull CodegenContext parentContext
     ) {
@@ -61,7 +61,7 @@ public class ScriptCodegen extends MemberCodegen<JetScript> {
 
         Type classType = asmTypeForScriptDescriptor(bindingContext, scriptDescriptor);
 
-        ClassBuilder builder = state.getFactory().newVisitor(OtherOrigin(declaration, classDescriptorForScript),
+        ClassBuilder builder = state.getFactory().newVisitor(JvmDeclarationOriginKt.OtherOrigin(declaration, classDescriptorForScript),
                                                              classType, declaration.getContainingFile());
         List<ScriptDescriptor> earlierScripts = state.getEarlierScriptsForReplInterpreter();
         ScriptContext scriptContext = parentContext.intoScript(
@@ -72,12 +72,12 @@ public class ScriptCodegen extends MemberCodegen<JetScript> {
         return new ScriptCodegen(declaration, state, scriptContext, builder);
     }
 
-    private final JetScript scriptDeclaration;
+    private final KtScript scriptDeclaration;
     private final ScriptContext context;
     private final ScriptDescriptor scriptDescriptor;
 
     private ScriptCodegen(
-            @NotNull JetScript scriptDeclaration,
+            @NotNull KtScript scriptDeclaration,
             @NotNull GenerationState state,
             @NotNull ScriptContext context,
             @NotNull ClassBuilder builder
@@ -124,14 +124,14 @@ public class ScriptCodegen extends MemberCodegen<JetScript> {
         Type blockType = typeMapper.mapType(scriptDescriptor.getScriptCodeDescriptor().getReturnType());
 
         PropertyDescriptor scriptResultProperty = scriptDescriptor.getScriptResultProperty();
-        classBuilder.newField(OtherOrigin(scriptResultProperty),
+        classBuilder.newField(JvmDeclarationOriginKt.OtherOrigin(scriptResultProperty),
                               ACC_PUBLIC | ACC_FINAL, scriptResultProperty.getName().asString(),
                               blockType.getDescriptor(), null, null);
 
         JvmMethodSignature jvmSignature = typeMapper.mapScriptSignature(scriptDescriptor, context.getEarlierScripts());
 
         MethodVisitor mv = classBuilder.newMethod(
-                OtherOrigin(scriptDeclaration, scriptDescriptor.getClassDescriptor().getUnsubstitutedPrimaryConstructor()),
+                JvmDeclarationOriginKt.OtherOrigin(scriptDeclaration, scriptDescriptor.getClassDescriptor().getUnsubstitutedPrimaryConstructor()),
                 ACC_PUBLIC, jvmSignature.getAsmMethod().getName(), jvmSignature.getAsmMethod().getDescriptor(),
                 null, null);
 
@@ -216,17 +216,17 @@ public class ScriptCodegen extends MemberCodegen<JetScript> {
         for (ValueParameterDescriptor parameter : script.getScriptCodeDescriptor().getValueParameters()) {
             Type parameterType = typeMapper.mapType(parameter);
             int access = ACC_PUBLIC | ACC_FINAL;
-            classBuilder.newField(OtherOrigin(parameter), access, parameter.getName().getIdentifier(), parameterType.getDescriptor(), null, null);
+            classBuilder.newField(JvmDeclarationOriginKt.OtherOrigin(parameter), access, parameter.getName().getIdentifier(), parameterType.getDescriptor(), null, null);
         }
     }
 
     private void genMembers() {
-        for (JetDeclaration declaration : scriptDeclaration.getDeclarations()) {
-            if (declaration instanceof JetProperty || declaration instanceof JetNamedFunction) {
+        for (KtDeclaration declaration : scriptDeclaration.getDeclarations()) {
+            if (declaration instanceof KtProperty || declaration instanceof KtNamedFunction) {
                 genFunctionOrProperty(declaration);
             }
-            else if (declaration instanceof JetClassOrObject) {
-                genClassOrObject((JetClassOrObject) declaration);
+            else if (declaration instanceof KtClassOrObject) {
+                genClassOrObject((KtClassOrObject) declaration);
             }
         }
     }

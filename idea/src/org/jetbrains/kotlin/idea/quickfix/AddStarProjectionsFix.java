@@ -32,13 +32,11 @@ import org.jetbrains.kotlin.idea.core.quickfix.QuickFixUtil;
 import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.types.expressions.TypeReconstructionUtil;
 
-import static org.jetbrains.kotlin.psi.PsiPackage.JetPsiFactory;
-
-public abstract class AddStarProjectionsFix extends JetIntentionAction<JetUserType> {
+public abstract class AddStarProjectionsFix extends KotlinQuickFixAction<KtUserType> {
 
     private final int argumentCount;
 
-    private AddStarProjectionsFix(@NotNull JetUserType element, int count) {
+    private AddStarProjectionsFix(@NotNull KtUserType element, int count) {
         super(element);
         argumentCount = count;
     }
@@ -56,14 +54,14 @@ public abstract class AddStarProjectionsFix extends JetIntentionAction<JetUserTy
     }
 
     @Override
-    public void invoke(@NotNull Project project, Editor editor, JetFile file) throws IncorrectOperationException {
-        assert element.getTypeArguments().isEmpty();
+    public void invoke(@NotNull Project project, Editor editor, KtFile file) throws IncorrectOperationException {
+        assert getElement().getTypeArguments().isEmpty();
 
-        String typeString = TypeReconstructionUtil.getTypeNameAndStarProjectionsString(element.getText(), argumentCount);
-        JetTypeElement replacement = JetPsiFactory(file).createType(typeString).getTypeElement();
+        String typeString = TypeReconstructionUtil.getTypeNameAndStarProjectionsString(getElement().getText(), argumentCount);
+        KtTypeElement replacement = KtPsiFactoryKt.KtPsiFactory(file).createType(typeString).getTypeElement();
         assert replacement != null : "No type element after parsing " + typeString;
 
-        element.replace(replacement);
+        getElement().replace(replacement);
     }
 
     @Override
@@ -75,15 +73,15 @@ public abstract class AddStarProjectionsFix extends JetIntentionAction<JetUserTy
         return new JetSingleIntentionActionFactory() {
             @Override
             public IntentionAction createAction(Diagnostic diagnostic) {
-                DiagnosticWithParameters2<JetTypeReference, Integer, String> diagnosticWithParameters =
+                DiagnosticWithParameters2<KtTypeReference, Integer, String> diagnosticWithParameters =
                         Errors.NO_TYPE_ARGUMENTS_ON_RHS.cast(diagnostic);
-                JetTypeElement typeElement = diagnosticWithParameters.getPsiElement().getTypeElement();
-                while (typeElement instanceof JetNullableType) {
-                    typeElement = ((JetNullableType) typeElement).getInnerType();
+                KtTypeElement typeElement = diagnosticWithParameters.getPsiElement().getTypeElement();
+                while (typeElement instanceof KtNullableType) {
+                    typeElement = ((KtNullableType) typeElement).getInnerType();
                 }
-                if (!(typeElement instanceof JetUserType)) return null;
+                if (!(typeElement instanceof KtUserType)) return null;
                 Integer size = diagnosticWithParameters.getA();
-                return new AddStarProjectionsFix((JetUserType) typeElement, size) {};
+                return new AddStarProjectionsFix((KtUserType) typeElement, size) {};
             }
         };
     }
@@ -92,11 +90,11 @@ public abstract class AddStarProjectionsFix extends JetIntentionAction<JetUserTy
         return new JetSingleIntentionActionFactory() {
             @Override
             public IntentionAction createAction(Diagnostic diagnostic) {
-                DiagnosticWithParameters1<JetElement, Integer> diagnosticWithParameters = Errors.WRONG_NUMBER_OF_TYPE_ARGUMENTS.cast(diagnostic);
+                DiagnosticWithParameters1<KtElement, Integer> diagnosticWithParameters = Errors.WRONG_NUMBER_OF_TYPE_ARGUMENTS.cast(diagnostic);
 
                 Integer size = diagnosticWithParameters.getA();
 
-                JetUserType userType = QuickFixUtil.getParentElementOfType(diagnostic, JetUserType.class);
+                KtUserType userType = QuickFixUtil.getParentElementOfType(diagnostic, KtUserType.class);
                 if (userType == null) return null;
 
                 return new AddStarProjectionsFix(userType, size) {
@@ -109,15 +107,15 @@ public abstract class AddStarProjectionsFix extends JetIntentionAction<JetUserTy
                     }
 
                     private boolean isZeroTypeArguments() {
-                        return element.getTypeArguments().isEmpty();
+                        return getElement().getTypeArguments().isEmpty();
                     }
 
                     private boolean isInsideJavaClassCall() {
-                        PsiElement parent = element.getParent().getParent().getParent().getParent();
-                        if (parent instanceof JetCallExpression) {
-                            JetExpression calleeExpression = ((JetCallExpression) parent).getCalleeExpression();
-                            if (calleeExpression instanceof JetSimpleNameExpression) {
-                                JetSimpleNameExpression simpleNameExpression = (JetSimpleNameExpression) calleeExpression;
+                        PsiElement parent = getElement().getParent().getParent().getParent().getParent();
+                        if (parent instanceof KtCallExpression) {
+                            KtExpression calleeExpression = ((KtCallExpression) parent).getCalleeExpression();
+                            if (calleeExpression instanceof KtSimpleNameExpression) {
+                                KtSimpleNameExpression simpleNameExpression = (KtSimpleNameExpression) calleeExpression;
                                 // Resolve is expensive so we use a heuristic here: the case is rare enough not to be annoying
                                 return "javaClass".equals(simpleNameExpression.getReferencedName());
                             }

@@ -19,11 +19,13 @@ package org.jetbrains.kotlin.load.kotlin
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.VirtualFile
 import org.jetbrains.annotations.TestOnly
+import org.jetbrains.kotlin.load.java.JvmAbi
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.psi.JetFile
-import org.jetbrains.kotlin.psi.JetNamedFunction
-import org.jetbrains.kotlin.psi.JetProperty
+import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtNamedFunction
+import org.jetbrains.kotlin.psi.KtProperty
+import org.jetbrains.kotlin.psi.KtScript
 import org.jetbrains.kotlin.resolve.jvm.JvmClassName
 import java.util.*
 
@@ -38,18 +40,20 @@ public object PackagePartClassUtils {
             if (str.isEmpty())
                 "_$PART_CLASS_NAME_SUFFIX"
             else
-                capitalizeAsJavaClassName(sanitizeAsJavaIdentifier(str)) + PART_CLASS_NAME_SUFFIX
-
-    public @JvmStatic fun sanitizeAsJavaIdentifier(str: String): String =
-            str.replace("[^\\p{L}\\p{Digit}]".toRegex(), "_")
+                capitalizeAsJavaClassName(JvmAbi.sanitizeAsJavaIdentifier(str)) + PART_CLASS_NAME_SUFFIX
 
     private @JvmStatic fun capitalizeAsJavaClassName(str: String): String =
             // NB use Locale.ENGLISH so that build is locale-independent.
             // See Javadoc on java.lang.String.toUpperCase() for more details.
-            if (Character.isJavaIdentifierStart(str.charAt(0)))
+            if (Character.isJavaIdentifierStart(str[0]))
                 str.substring(0, 1).toUpperCase(Locale.ENGLISH) + str.substring(1)
             else
                 "_$str"
+
+    @TestOnly
+    @JvmStatic
+    public fun getDefaultFileClassFqName(packageFqName: FqName, file: VirtualFile): FqName =
+            getPackagePartFqName(packageFqName, file.name)
 
     @TestOnly
     @JvmStatic
@@ -64,21 +68,25 @@ public object PackagePartClassUtils {
 
     @Deprecated("Migrate to JvmFileClassesProvider")
     @JvmStatic
-    public fun getPackagePartInternalName(file: JetFile): String =
+    public fun getPackagePartInternalName(file: KtFile): String =
             JvmClassName.byFqNameWithoutInnerClasses(getPackagePartFqName(file)).internalName
 
     @Deprecated("Migrate to JvmFileClassesProvider")
     @JvmStatic
-    public fun getPackagePartFqName(file: JetFile): FqName =
+    public fun getPackagePartFqName(file: KtFile): FqName =
             getPackagePartFqName(file.packageFqName, file.name)
 
     @JvmStatic
-    public fun getFilesWithCallables(files: Collection<JetFile>): List<JetFile> =
+    public fun getFilesWithCallables(files: Collection<KtFile>): List<KtFile> =
             files.filter { fileHasTopLevelCallables(it) }
 
     @JvmStatic
-    public fun fileHasTopLevelCallables(file: JetFile): Boolean =
-            file.declarations.any { it is JetProperty || it is JetNamedFunction }
+    public fun fileHasTopLevelCallables(file: KtFile): Boolean =
+            file.declarations.any {
+                it is KtProperty ||
+                it is KtNamedFunction ||
+                it is KtScript
+            }
 
     @JvmStatic
     public fun getFilePartShortName(fileName: String): String =

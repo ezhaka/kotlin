@@ -26,6 +26,7 @@ import org.jetbrains.kotlin.codegen.state.GenerationState
 import org.jetbrains.kotlin.config.IncrementalCompilation
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor
 import org.jetbrains.kotlin.descriptors.PackageFragmentDescriptor
+import org.jetbrains.kotlin.descriptors.Visibilities
 import org.jetbrains.kotlin.diagnostics.DiagnosticUtils
 import org.jetbrains.kotlin.fileClasses.JvmFileClassUtil
 import org.jetbrains.kotlin.fileClasses.getFileClassType
@@ -43,7 +44,7 @@ import org.jetbrains.kotlin.resolve.jvm.diagnostics.MultifileClassPart
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.OtherOrigin
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodSignature
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
-import org.jetbrains.kotlin.resolve.scopes.JetScope
+import org.jetbrains.kotlin.resolve.scopes.KtScope
 import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedCallableMemberDescriptor
 import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedPropertyDescriptor
 import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedSimpleFunctionDescriptor
@@ -54,7 +55,7 @@ import java.util.*
 
 public class MultifileClassCodegen(
         private val state: GenerationState,
-        public val files: Collection<JetFile>,
+        public val files: Collection<KtFile>,
         private val facadeFqName: FqName
 ) {
     private val facadeClassType = AsmUtil.asmTypeByFqNameWithoutInnerClasses(facadeFqName)
@@ -70,7 +71,7 @@ public class MultifileClassCodegen(
                 getDeserializedCallables(compiledPackageFragment)
 
     private fun getDeserializedCallables(compiledPackageFragment: PackageFragmentDescriptor) =
-            compiledPackageFragment.getMemberScope().getDescriptors(DescriptorKindFilter.CALLABLES, JetScope.ALL_NAME_FILTER).filterIsInstance<DeserializedCallableMemberDescriptor>()
+            compiledPackageFragment.getMemberScope().getDescriptors(DescriptorKindFilter.CALLABLES, KtScope.ALL_NAME_FILTER).filterIsInstance<DeserializedCallableMemberDescriptor>()
 
     public val packageParts = PackageParts(facadeFqName.parent().asString())
 
@@ -82,7 +83,7 @@ public class MultifileClassCodegen(
         val declarationOrigin = MultifileClass(originFile, actualPackageFragment, facadeFqName)
         val classBuilder = state.factory.newVisitor(declarationOrigin, facadeClassType, files)
 
-        val filesWithCallables = files.filter { it.declarations.any { it is JetNamedFunction || it is JetProperty } }
+        val filesWithCallables = files.filter { it.declarations.any { it is KtNamedFunction || it is KtProperty } }
 
         val singleSourceFile = if (previouslyCompiledCallables.isNotEmpty()) null else filesWithCallables.singleOrNull()
 
@@ -146,15 +147,12 @@ public class MultifileClassCodegen(
         writeKotlinMultifileFacadeAnnotationIfNeeded(partFqNames)
     }
 
-    public fun generateClassOrObject(classOrObject: JetClassOrObject) {
-        val file = classOrObject.getContainingJetFile()
-        val partType = state.fileClassesProvider.getFileClassType(file)
-        val context = state.rootContext.intoMultifileClassPart(packageFragment!!, facadeClassType, partType)
-        MemberCodegen.genClassOrObject(context, classOrObject, state, null)
+    public fun generateClassOrObject(classOrObject: KtClassOrObject, packagePartContext: FieldOwnerContext<PackageFragmentDescriptor>) {
+        MemberCodegen.genClassOrObject(packagePartContext, classOrObject, state, null)
     }
 
     private fun generatePart(
-            file: JetFile,
+            file: KtFile,
             generateCallableMemberTasks: MutableMap<CallableMemberDescriptor, () -> Unit>,
             partFqNames: MutableList<FqName>
     ) {
@@ -164,18 +162,18 @@ public class MultifileClassCodegen(
         var generatePart = false
         val partClassInfo = state.fileClassesProvider.getFileClassInfo(file)
         val partType = AsmUtil.asmTypeByFqNameWithoutInnerClasses(partClassInfo.fileClassFqName)
-        val partContext = state.rootContext.intoMultifileClassPart(packageFragment, facadeClassType, partType)
+        val partContext = state.rootContext.intoMultifileClassPart(packageFragment, facadeClassType, partType, file)
 
         for (declaration in file.declarations) {
-            if (declaration is JetProperty || declaration is JetNamedFunction) {
+            if (declaration is KtProperty || declaration is KtNamedFunction) {
                 generatePart = true
             }
-            else if (declaration is JetClassOrObject) {
+            else if (declaration is KtClassOrObject) {
                 if (state.generateDeclaredClassFilter.shouldGenerateClass(declaration)) {
-                    generateClassOrObject(declaration)
+                    generateClassOrObject(declaration, partContext)
                 }
             }
-            else if (declaration is JetScript) {
+            else if (declaration is KtScript) {
                 // SCRIPT: generate script code, should be separate execution branch
                 if (state.generateDeclaredClassFilter.shouldGenerateScript(declaration)) {
                     ScriptCodegen.createScriptCodegen(declaration, state, partContext).generate()
@@ -198,11 +196,12 @@ public class MultifileClassCodegen(
         val facadeContext = state.rootContext.intoMultifileClass(packageFragment, facadeClassType, partType)
         val memberCodegen = createCodegenForPartOfMultifileFacade(facadeContext)
         for (declaration in file.declarations) {
-            if (declaration is JetNamedFunction || declaration is JetProperty) {
+            if (declaration is KtNamedFunction || declaration is KtProperty) {
                 val descriptor = state.bindingContext.get(BindingContext.DECLARATION_TO_DESCRIPTOR, declaration)
                 assert(descriptor is CallableMemberDescriptor) { "Expected callable member, was " + descriptor + " for " + declaration.text }
-                generateCallableMemberTasks.put(descriptor as CallableMemberDescriptor,
-                                                { memberCodegen.genFunctionOrProperty(declaration) })
+                if (!Visibilities.isPrivate((descriptor as CallableMemberDescriptor).visibility)) {
+                    generateCallableMemberTasks.put(descriptor, { memberCodegen.genFunctionOrProperty(declaration) })
+                }
             }
         }
     }
@@ -274,8 +273,8 @@ public class MultifileClassCodegen(
         av.visitEnd()
     }
 
-    private fun createCodegenForPartOfMultifileFacade(facadeContext: FieldOwnerContext<*>): MemberCodegen<JetFile> =
-            object : MemberCodegen<JetFile>(state, null, facadeContext, null, classBuilder) {
+    private fun createCodegenForPartOfMultifileFacade(facadeContext: FieldOwnerContext<*>): MemberCodegen<KtFile> =
+            object : MemberCodegen<KtFile>(state, null, facadeContext, null, classBuilder) {
                 override fun generateDeclaration() = throw UnsupportedOperationException()
                 override fun generateBody() = throw UnsupportedOperationException()
                 override fun generateKotlinAnnotation() = throw UnsupportedOperationException()
@@ -288,7 +287,7 @@ public class MultifileClassCodegen(
     companion object {
         private val FACADE_CLASS_ATTRIBUTES = Opcodes.ACC_PUBLIC or Opcodes.ACC_FINAL
 
-        private fun getOnlyPackageFragment(packageFqName: FqName, files: Collection<JetFile>, bindingContext: BindingContext): PackageFragmentDescriptor? {
+        private fun getOnlyPackageFragment(packageFqName: FqName, files: Collection<KtFile>, bindingContext: BindingContext): PackageFragmentDescriptor? {
             val fragments = SmartList<PackageFragmentDescriptor>()
             for (file in files) {
                 val fragment = bindingContext.get(BindingContext.FILE_TO_PACKAGE_FRAGMENT, file)

@@ -27,10 +27,10 @@ import org.jetbrains.kotlin.js.translate.context.Namer;
 import org.jetbrains.kotlin.js.translate.context.TranslationContext;
 import org.jetbrains.kotlin.js.translate.general.AbstractTranslator;
 import org.jetbrains.kotlin.js.translate.utils.TranslationUtils;
-import org.jetbrains.kotlin.psi.JetDeclarationWithBody;
-import org.jetbrains.kotlin.psi.JetFunctionLiteralExpression;
+import org.jetbrains.kotlin.psi.KtDeclarationWithBody;
+import org.jetbrains.kotlin.psi.KtFunctionLiteralExpression;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
-import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilPackage;
+import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt;
 
 import java.util.HashMap;
 import java.util.List;
@@ -41,11 +41,10 @@ import static org.jetbrains.kotlin.js.translate.utils.BindingUtils.getFunctionDe
 import static org.jetbrains.kotlin.js.translate.utils.ErrorReportingUtils.message;
 import static org.jetbrains.kotlin.js.translate.utils.FunctionBodyTranslator.translateFunctionBody;
 import static org.jetbrains.kotlin.js.translate.utils.JsAstUtils.setParameters;
-import static org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilPackage.isEffectivelyPublicApi;
 
 public final class FunctionTranslator extends AbstractTranslator {
     @NotNull
-    public static FunctionTranslator newInstance(@NotNull JetDeclarationWithBody function,
+    public static FunctionTranslator newInstance(@NotNull KtDeclarationWithBody function,
             @NotNull TranslationContext context) {
         return new FunctionTranslator(function, context);
     }
@@ -53,7 +52,7 @@ public final class FunctionTranslator extends AbstractTranslator {
     @NotNull
     private TranslationContext functionBodyContext;
     @NotNull
-    private final JetDeclarationWithBody functionDeclaration;
+    private final KtDeclarationWithBody functionDeclaration;
     @Nullable
     private JsName extensionFunctionReceiverName;
     @NotNull
@@ -61,7 +60,7 @@ public final class FunctionTranslator extends AbstractTranslator {
     @NotNull
     private final FunctionDescriptor descriptor;
 
-    private FunctionTranslator(@NotNull JetDeclarationWithBody functionDeclaration, @NotNull TranslationContext context) {
+    private FunctionTranslator(@NotNull KtDeclarationWithBody functionDeclaration, @NotNull TranslationContext context) {
         super(context);
         this.descriptor = getFunctionDescriptor(context.bindingContext(), functionDeclaration);
         this.functionDeclaration = functionDeclaration;
@@ -99,7 +98,7 @@ public final class FunctionTranslator extends AbstractTranslator {
         JsName functionName = context().getNameForDescriptor(descriptor);
         generateFunctionObject();
 
-        if (shouldBeInlined(descriptor) && isEffectivelyPublicApi(descriptor)) {
+        if (shouldBeInlined(descriptor) && DescriptorUtilsKt.isEffectivelyPublicApi(descriptor)) {
             InlineMetadata metadata = InlineMetadata.compose(functionObject, descriptor);
             return new JsPropertyInitializer(functionName.makeRef(), metadata.getFunctionWithMetadata());
         }
@@ -148,7 +147,7 @@ public final class FunctionTranslator extends AbstractTranslator {
     public static void addParameters(List<JsParameter> list, FunctionDescriptor descriptor, TranslationContext context) {
         for (ValueParameterDescriptor valueParameter : descriptor.getValueParameters()) {
             JsParameter jsParameter = new JsParameter(context.getNameForDescriptor(valueParameter));
-            MetadataProperties.setHasDefaultValue(jsParameter, DescriptorUtilPackage.hasDefaultValue(valueParameter));
+            MetadataProperties.setHasDefaultValue(jsParameter, DescriptorUtilsKt.hasDefaultValue(valueParameter));
             list.add(jsParameter);
         }
     }
@@ -161,6 +160,6 @@ public final class FunctionTranslator extends AbstractTranslator {
     }
 
     private boolean isExtensionFunction() {
-        return DescriptorUtils.isExtension(descriptor) && !(functionDeclaration instanceof JetFunctionLiteralExpression);
+        return DescriptorUtils.isExtension(descriptor) && !(functionDeclaration instanceof KtFunctionLiteralExpression);
     }
 }

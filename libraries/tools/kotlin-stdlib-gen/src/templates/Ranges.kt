@@ -8,10 +8,26 @@ fun ranges(): List<GenericFunction> {
 
     templates add f("reversed()") {
         only(RangesOfPrimitives, ProgressionsOfPrimitives)
-        exclude(PrimitiveType.Boolean)
+        only(PrimitiveType.integralPrimitives)
         doc(ProgressionsOfPrimitives) { "Returns a progression that goes over the same range in the opposite direction with the same step." }
         doc(RangesOfPrimitives) { "Returns a progression that goes over this range in reverse direction." }
         returns("TProgression")
+        body(RangesOfPrimitives) {
+            "return TProgression(end, start, -ONE)"
+        }
+        body(ProgressionsOfPrimitives) {
+            "return TProgression(end, start, -increment)"
+        }
+    }
+
+    templates add f("reversed()") {
+        only(RangesOfPrimitives, ProgressionsOfPrimitives)
+        only(defaultPrimitives - PrimitiveType.Boolean - PrimitiveType.integralPrimitives)
+        doc(ProgressionsOfPrimitives) { "Returns a progression that goes over the same range in the opposite direction with the same step." }
+        doc(RangesOfPrimitives) { "Returns a progression that goes over this range in reverse direction." }
+        returns("TProgression")
+        deprecate(Deprecation("This range implementation has unclear semantics and will be removed soon.", level = DeprecationLevel.WARNING))
+        annotations("""@Suppress("DEPRECATION_ERROR")""")
         body(RangesOfPrimitives) {
             "return TProgression(end, start, -ONE)"
         }
@@ -24,10 +40,34 @@ fun ranges(): List<GenericFunction> {
         infix(true)
 
         only(RangesOfPrimitives, ProgressionsOfPrimitives)
-        exclude(PrimitiveType.Boolean)
+        only(PrimitiveType.integralPrimitives)
         doc(ProgressionsOfPrimitives) { "Returns a progression that goes over the same range with the given step." }
         doc(RangesOfPrimitives) { "Returns a progression that goes over this range with given step." }
         returns("TProgression")
+        body(RangesOfPrimitives) {
+            """
+            checkStepIsPositive(step > 0, step)
+            return TProgression(start, end, step)
+            """
+        }
+        body(ProgressionsOfPrimitives) {
+            """
+            checkStepIsPositive(step > 0, step)
+            return TProgression(start, end, if (increment > 0) step else -step)
+            """
+        }
+    }
+
+    templates add f("step(step: SUM)") {
+        infix(true)
+
+        only(RangesOfPrimitives, ProgressionsOfPrimitives)
+        only(defaultPrimitives - PrimitiveType.Boolean - PrimitiveType.integralPrimitives)
+        doc(ProgressionsOfPrimitives) { "Returns a progression that goes over the same range with the given step." }
+        doc(RangesOfPrimitives) { "Returns a progression that goes over this range with given step." }
+        returns("TProgression")
+        deprecate(Deprecation("This range implementation has unclear semantics and will be removed soon.", level = DeprecationLevel.WARNING))
+        annotations("""@Suppress("DEPRECATION_ERROR")""")
         body(RangesOfPrimitives) {
             """
             checkStepIsPositive(step > 0, step)
@@ -66,6 +106,11 @@ fun ranges(): List<GenericFunction> {
             """
         }
 
+        if (!fromType.isIntegral() || !toType.isIntegral()) {
+            deprecate(Deprecation("This range implementation has unclear semantics and will be removed soon.", level = DeprecationLevel.WARNING))
+            annotations("""@Suppress("DEPRECATION_ERROR")""")
+        }
+
         val fromExpr = if (elementType == fromType) "this" else "this.to$elementType()"
         val toExpr = if (elementType == toType) "to" else "to.to$elementType()"
         val incrementExpr = when (elementType) {
@@ -79,7 +124,7 @@ fun ranges(): List<GenericFunction> {
     }
 
     val numericPrimitives = PrimitiveType.numericPrimitives
-    val numericPermutations = numericPrimitives flatMap { fromType -> numericPrimitives map { toType -> fromType to toType }}
+    val numericPermutations = numericPrimitives.flatMap { fromType -> numericPrimitives.map { toType -> fromType to toType }}
     val primitivePermutations = numericPermutations + (PrimitiveType.Char to PrimitiveType.Char)
 
     templates addAll primitivePermutations.map { downTo(it.first, it.second) }
@@ -99,6 +144,11 @@ fun ranges(): List<GenericFunction> {
             Returns a range from this value up to but excluding the specified [to] value.
             ${ if (elementType == toType) "The [to] value must be greater than [$elementType.MIN_VALUE]." else "" }
             """
+        }
+
+        if (!fromType.isIntegral() || !toType.isIntegral()) {
+            deprecate(Deprecation("This range implementation has unclear semantics and will be removed soon.", level = DeprecationLevel.WARNING))
+            annotations("""@Suppress("DEPRECATION_ERROR")""")
         }
 
         val fromExpr = if (elementType == fromType) "this" else "this.to$elementType()"
@@ -129,27 +179,22 @@ fun ranges(): List<GenericFunction> {
     fun contains(rangeType: PrimitiveType, itemType: PrimitiveType) = f("contains(item: $itemType)") {
         operator(true)
 
-        val meaningless = (rangeType.isNumeric() != itemType.isNumeric())
-        if (!meaningless) {
-            only(Ranges)
-            onlyPrimitives(Ranges, rangeType)
-            platformName("${rangeType.name.decapitalize()}RangeContains")
-            returns("Boolean")
-            doc { "Checks if the specified [item] belongs to this range." }
-            body { "return start <= item && item <= end" }
+        if (!rangeType.isIntegral()) {
+            deprecate(Deprecation("This range implementation has unclear semantics and will be removed soon.", level = DeprecationLevel.WARNING))
+            annotations("""@Suppress("DEPRECATION_ERROR")""")
         }
-        else {
-            only(RangesOfPrimitives)
-            only(rangeType)
-            returns("Nothing")
-            annotations("""@Deprecated("The 'contains' operation for a range of $rangeType and $itemType item is not supported and should not be used.")""")
-            body { """throw UnsupportedOperationException()""" }
-        }
+
+        check(rangeType.isNumeric() == itemType.isNumeric()) { "Require rangeType and itemType both be numeric or both not, got: $rangeType, $itemType" }
+        only(Ranges)
+        onlyPrimitives(Ranges, rangeType)
+        platformName("${rangeType.name.decapitalize()}RangeContains")
+        returns("Boolean")
+        doc { "Checks if the specified [item] belongs to this range." }
+        body { "return start <= item && item <= end" }
     }
 
-    val allPermutations = (numericPrimitives + PrimitiveType.Char).let { it.flatMap { from -> it.map { to -> from to to } }}
 
-    templates addAll allPermutations.filter { it.first != it.second }.map { contains(it.first, it.second) }
+    templates addAll numericPermutations.filter { it.first != it.second }.map { contains(it.first, it.second) }
 
     return templates
 }

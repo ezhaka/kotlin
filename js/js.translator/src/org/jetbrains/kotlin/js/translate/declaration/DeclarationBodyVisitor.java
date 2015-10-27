@@ -20,7 +20,6 @@ import com.google.dart.compiler.backend.js.ast.JsExpression;
 import com.google.dart.compiler.backend.js.ast.JsFunction;
 import com.google.dart.compiler.backend.js.ast.JsPropertyInitializer;
 import com.intellij.util.SmartList;
-import jet.runtime.typeinfo.KotlinSignature;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.descriptors.ClassDescriptor;
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor;
@@ -34,7 +33,7 @@ import org.jetbrains.kotlin.js.translate.initializer.ClassInitializerTranslator;
 import org.jetbrains.kotlin.js.translate.utils.BindingUtils;
 import org.jetbrains.kotlin.js.translate.utils.TranslationUtils;
 import org.jetbrains.kotlin.psi.*;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 
 import java.util.List;
 
@@ -44,7 +43,6 @@ import static org.jetbrains.kotlin.js.translate.utils.BindingUtils.getFunctionDe
 import static org.jetbrains.kotlin.js.translate.utils.JsDescriptorUtils.getSupertypesWithoutFakes;
 
 public class DeclarationBodyVisitor extends TranslatorVisitor<Void> {
-    @KotlinSignature("val result: MutableList<JsPropertyInitializer>")
     protected final List<JsPropertyInitializer> result;
     protected final List<JsPropertyInitializer> staticResult;
     protected final List<JsPropertyInitializer> enumEntryList = new SmartList<JsPropertyInitializer>();
@@ -69,15 +67,15 @@ public class DeclarationBodyVisitor extends TranslatorVisitor<Void> {
     }
 
     @Override
-    public Void visitClass(@NotNull JetClass expression, TranslationContext context) {
+    public Void visitClass(@NotNull KtClass expression, TranslationContext context) {
         return null;
     }
 
     @Override
-    public Void visitEnumEntry(@NotNull JetEnumEntry enumEntry, TranslationContext data) {
+    public Void visitEnumEntry(@NotNull KtEnumEntry enumEntry, TranslationContext data) {
         JsExpression jsEnumEntryCreation;
         ClassDescriptor descriptor = getClassDescriptor(data.bindingContext(), enumEntry);
-        List<JetType> supertypes = getSupertypesWithoutFakes(descriptor);
+        List<KotlinType> supertypes = getSupertypesWithoutFakes(descriptor);
         if (enumEntry.getBody() != null || supertypes.size() > 1) {
             jsEnumEntryCreation = ClassTranslator.generateClassCreation(enumEntry, data);
         } else {
@@ -89,7 +87,7 @@ public class DeclarationBodyVisitor extends TranslatorVisitor<Void> {
     }
 
     @Override
-    public Void visitObjectDeclaration(@NotNull JetObjectDeclaration declaration, TranslationContext context) {
+    public Void visitObjectDeclaration(@NotNull KtObjectDeclaration declaration, TranslationContext context) {
         if (!declaration.isCompanion()) {
             // parsed it in initializer visitor => no additional actions are needed
             return null;
@@ -103,7 +101,7 @@ public class DeclarationBodyVisitor extends TranslatorVisitor<Void> {
     }
 
     @Override
-    public Void visitNamedFunction(@NotNull JetNamedFunction expression, TranslationContext context) {
+    public Void visitNamedFunction(@NotNull KtNamedFunction expression, TranslationContext context) {
         FunctionDescriptor descriptor = getFunctionDescriptor(context.bindingContext(), expression);
         if (descriptor.getModality() == Modality.ABSTRACT) {
             return null;
@@ -115,20 +113,20 @@ public class DeclarationBodyVisitor extends TranslatorVisitor<Void> {
     }
 
     @Override
-    public Void visitProperty(@NotNull JetProperty expression, TranslationContext context) {
+    public Void visitProperty(@NotNull KtProperty expression, TranslationContext context) {
         PropertyDescriptor propertyDescriptor = BindingUtils.getPropertyDescriptor(context.bindingContext(), expression);
         PropertyTranslatorKt.translateAccessors(propertyDescriptor, expression, result, context);
         return null;
     }
 
     @Override
-    public Void visitAnonymousInitializer(@NotNull JetClassInitializer expression, TranslationContext context) {
+    public Void visitAnonymousInitializer(@NotNull KtClassInitializer expression, TranslationContext context) {
         // parsed it in initializer visitor => no additional actions are needed
         return null;
     }
 
     @Override
-    public Void visitSecondaryConstructor(@NotNull JetSecondaryConstructor constructor, TranslationContext data) {
+    public Void visitSecondaryConstructor(@NotNull KtSecondaryConstructor constructor, TranslationContext data) {
         return null;
     }
 }

@@ -22,7 +22,7 @@ import com.intellij.openapi.util.io.FileUtil;
 import com.intellij.util.ArrayUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.cli.common.modules.ModuleBuilder;
-import org.jetbrains.kotlin.cli.common.output.outputUtils.OutputUtilsPackage;
+import org.jetbrains.kotlin.cli.common.output.outputUtils.OutputUtilsKt;
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles;
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment;
 import org.jetbrains.kotlin.codegen.ClassFileFactory;
@@ -30,9 +30,8 @@ import org.jetbrains.kotlin.codegen.GenerationUtils;
 import org.jetbrains.kotlin.codegen.forTestCompile.ForTestCompileRuntime;
 import org.jetbrains.kotlin.config.CompilerConfiguration;
 import org.jetbrains.kotlin.load.kotlin.ModuleVisibilityManager;
-import org.jetbrains.kotlin.load.kotlin.PackageClassUtils;
-import org.jetbrains.kotlin.name.FqName;
-import org.jetbrains.kotlin.psi.JetFile;
+import org.jetbrains.kotlin.load.kotlin.PackagePartClassUtils;
+import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.test.ConfigurationKind;
 import org.jetbrains.kotlin.test.JetTestUtils;
 import org.jetbrains.kotlin.test.TestCaseWithTmpdir;
@@ -59,29 +58,31 @@ public abstract class AbstractCompileKotlinAgainstKotlinTest extends TestCaseWit
 
     public void doTest(@NotNull String fileName) throws Exception {
         compileA(new File(fileName));
-        compileB(new File(fileName.replaceFirst("A\\.kt$", "B.kt")));
-        invokeMain();
+        String fileNameB = fileName.replaceFirst("A\\.kt$", "B.kt");
+        compileB(new File(fileNameB));
+        invokeMain(fileNameB);
     }
 
 
-    private void invokeMain() throws Exception {
-        Method main = generatedClass().getMethod("main", String[].class);
+    private void invokeMain(@NotNull String fileName) throws Exception {
+        Method main = generatedClass(fileName).getMethod("main", String[].class);
         main.invoke(null, new Object[] {ArrayUtil.EMPTY_STRING_ARRAY});
     }
 
-    protected void invokeBox() throws Exception {
-        Method box = generatedClass().getMethod("box");
+    protected void invokeBox(@NotNull String fileName) throws Exception {
+        Method box = generatedClass(fileName).getMethod("box");
         String result = (String) box.invoke(null);
         assertEquals("OK", result);
     }
 
     @NotNull
-    private Class<?> generatedClass() throws Exception {
+    private Class<?> generatedClass(@NotNull String fileName) throws Exception {
         URLClassLoader classLoader = new URLClassLoader(
                 new URL[]{ bDir.toURI().toURL(), aDir.toURI().toURL() },
                 ForTestCompileRuntime.runtimeAndReflectJarClassLoader()
         );
-        return classLoader.loadClass(PackageClassUtils.getPackageClassName(FqName.ROOT));
+        String fileLastName = new File(fileName).getName();
+        return classLoader.loadClass(PackagePartClassUtils.getFilePartShortName(fileLastName));
     }
 
     protected ClassFileFactory compileA(@NotNull File ktAFile) throws IOException {
@@ -107,13 +108,13 @@ public abstract class AbstractCompileKotlinAgainstKotlinTest extends TestCaseWit
 
         String text = FileUtil.loadFile(file, true);
 
-        JetFile psiFile = JetTestUtils.createFile(file.getName(), text, jetCoreEnvironment.getProject());
+        KtFile psiFile = JetTestUtils.createFile(file.getName(), text, jetCoreEnvironment.getProject());
 
         ModuleVisibilityManager.SERVICE.getInstance(jetCoreEnvironment.getProject()).addModule(new ModuleBuilder("module for test", tmpdir.getAbsolutePath(), "test"));
 
         ClassFileFactory outputFiles = GenerationUtils.compileFileGetClassFileFactoryForTest(psiFile, jetCoreEnvironment);
 
-        OutputUtilsPackage.writeAllTo(outputFiles, outputDir);
+        OutputUtilsKt.writeAllTo(outputFiles, outputDir);
 
         Disposer.dispose(disposable);
         return outputFiles;

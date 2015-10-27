@@ -28,18 +28,13 @@ import com.intellij.psi.util.PsiTreeUtil;
 import com.intellij.testFramework.ParsingTestCase;
 import com.intellij.util.PathUtil;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.kotlin.JetNodeTypes;
-import org.jetbrains.kotlin.psi.IfNotParsed;
-import org.jetbrains.kotlin.psi.JetElement;
-import org.jetbrains.kotlin.psi.JetPsiFactory;
-import org.jetbrains.kotlin.psi.JetVisitorVoid;
+import org.jetbrains.kotlin.KtNodeTypes;
+import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.test.JetTestUtils;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-
-import static org.jetbrains.kotlin.psi.PsiPackage.JetPsiFactory;
 
 public abstract class AbstractJetParsingTest extends ParsingTestCase {
     static {
@@ -55,7 +50,7 @@ public abstract class AbstractJetParsingTest extends ParsingTestCase {
         super(".", "kt", new JetParserDefinition());
     }
 
-    private static void checkPsiGetters(JetElement elem) throws Throwable {
+    private static void checkPsiGetters(KtElement elem) throws Throwable {
         Method[] methods = elem.getClass().getDeclaredMethods();
         for (Method method : methods) {
             String methodName = method.getName();
@@ -88,24 +83,24 @@ public abstract class AbstractJetParsingTest extends ParsingTestCase {
     }
 
     protected void doParsingTest(@NotNull String filePath) throws Exception {
-        doBaseTest(filePath, JetNodeTypes.JET_FILE);
+        doBaseTest(filePath, KtNodeTypes.JET_FILE);
     }
 
     protected void doExpressionCodeFragmentParsingTest(@NotNull String filePath) throws Exception {
-        doBaseTest(filePath, JetNodeTypes.EXPRESSION_CODE_FRAGMENT);
+        doBaseTest(filePath, KtNodeTypes.EXPRESSION_CODE_FRAGMENT);
     }
 
     protected void doBlockCodeFragmentParsingTest(@NotNull String filePath) throws Exception {
-        doBaseTest(filePath, JetNodeTypes.BLOCK_CODE_FRAGMENT);
+        doBaseTest(filePath, KtNodeTypes.BLOCK_CODE_FRAGMENT);
     }
 
     private void doBaseTest(@NotNull String filePath, @NotNull IElementType fileType) throws Exception {
         myFileExt = FileUtilRt.getExtension(PathUtil.getFileName(filePath));
         myFile = createFile(filePath, fileType);
 
-        myFile.acceptChildren(new JetVisitorVoid() {
+        myFile.acceptChildren(new KtVisitorVoid() {
             @Override
-            public void visitJetElement(@NotNull JetElement element) {
+            public void visitJetElement(@NotNull KtElement element) {
                 element.acceptChildren(this);
                 try {
                     checkPsiGetters(element);
@@ -120,11 +115,11 @@ public abstract class AbstractJetParsingTest extends ParsingTestCase {
     }
 
     private PsiFile createFile(@NotNull String filePath, @NotNull IElementType fileType) throws Exception {
-        JetPsiFactory psiFactory = JetPsiFactory(myProject);
-        if (fileType == JetNodeTypes.EXPRESSION_CODE_FRAGMENT) {
+        KtPsiFactory psiFactory = KtPsiFactoryKt.KtPsiFactory(myProject);
+        if (fileType == KtNodeTypes.EXPRESSION_CODE_FRAGMENT) {
             return psiFactory.createExpressionCodeFragment(loadFile(filePath), null);
         }
-        else if (fileType == JetNodeTypes.BLOCK_CODE_FRAGMENT) {
+        else if (fileType == KtNodeTypes.BLOCK_CODE_FRAGMENT) {
             return psiFactory.createBlockCodeFragment(loadFile(filePath), null);
         }
         else {

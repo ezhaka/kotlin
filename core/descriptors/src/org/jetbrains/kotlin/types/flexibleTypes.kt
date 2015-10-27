@@ -19,14 +19,14 @@ package org.jetbrains.kotlin.types
 import org.jetbrains.kotlin.name.ClassId
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.renderer.DescriptorRenderer
-import org.jetbrains.kotlin.types.checker.JetTypeChecker
+import org.jetbrains.kotlin.types.checker.KotlinTypeChecker
 
 public interface FlexibleTypeCapabilities {
-    fun <T: TypeCapability> getCapability(capabilityClass: Class<T>, jetType: JetType, flexibility: Flexibility): T?
+    fun <T: TypeCapability> getCapability(capabilityClass: Class<T>, jetType: KotlinType, flexibility: Flexibility): T?
     val id: String
 
     object NONE : FlexibleTypeCapabilities {
-        override fun <T : TypeCapability> getCapability(capabilityClass: Class<T>, jetType: JetType, flexibility: Flexibility): T? = null
+        override fun <T : TypeCapability> getCapability(capabilityClass: Class<T>, jetType: KotlinType, flexibility: Flexibility): T? = null
         override val id: String get() = "NONE"
     }
 }
@@ -41,37 +41,37 @@ public interface Flexibility : TypeCapability, SubtypingRepresentatives {
     }
 
     // lowerBound is a subtype of upperBound
-    public val lowerBound: JetType
-    public val upperBound: JetType
+    public val lowerBound: KotlinType
+    public val upperBound: KotlinType
 
     public val extraCapabilities: FlexibleTypeCapabilities
 
-    override val subTypeRepresentative: JetType
+    override val subTypeRepresentative: KotlinType
         get() = lowerBound
 
-    override val superTypeRepresentative: JetType
+    override val superTypeRepresentative: KotlinType
         get() = upperBound
 
-    override fun sameTypeConstructor(type: JetType) = false
+    override fun sameTypeConstructor(type: KotlinType) = false
 }
 
-public fun JetType.isFlexible(): Boolean = this.getCapability(javaClass<Flexibility>()) != null
-public fun JetType.flexibility(): Flexibility = this.getCapability(javaClass<Flexibility>())!!
+public fun KotlinType.isFlexible(): Boolean = this.getCapability(javaClass<Flexibility>()) != null
+public fun KotlinType.flexibility(): Flexibility = this.getCapability(javaClass<Flexibility>())!!
 
-public fun JetType.isNullabilityFlexible(): Boolean {
+public fun KotlinType.isNullabilityFlexible(): Boolean {
     val flexibility = this.getCapability(javaClass<Flexibility>()) ?: return false
     return TypeUtils.isNullableType(flexibility.lowerBound) != TypeUtils.isNullableType(flexibility.upperBound)
 }
 
-// This function is intended primarily for sets: since JetType.equals() represents _syntactical_ equality of types,
-// whereas JetTypeChecker.DEFAULT.equalsTypes() represents semantic equality
+// This function is intended primarily for sets: since KotlinType.equals() represents _syntactical_ equality of types,
+// whereas KotlinTypeChecker.DEFAULT.equalsTypes() represents semantic equality
 // A set of types (e.g. exact bounds etc) may contain, for example, X, X? and X!
-// These are not equal syntactically (by JetType.equals()), but X! is _compatible_ with others as exact bounds,
+// These are not equal syntactically (by KotlinType.equals()), but X! is _compatible_ with others as exact bounds,
 // moreover, X! is a better fit.
 //
 // So, we are looking for a type among this set such that it is equal to all others semantically
-// (by JetTypeChecker.DEFAULT.equalsTypes()), and fits at least as well as they do.
-fun Collection<JetType>.singleBestRepresentative(): JetType? {
+// (by KotlinTypeChecker.DEFAULT.equalsTypes()), and fits at least as well as they do.
+fun Collection<KotlinType>.singleBestRepresentative(): KotlinType? {
     if (this.size() == 1) return this.first()
 
     return this.firstOrNull {
@@ -80,7 +80,7 @@ fun Collection<JetType>.singleBestRepresentative(): JetType? {
             other ->
             // We consider error types equal to anything here, so that intersections like
             // {Array<String>, Array<[ERROR]>} work correctly
-            candidate == other || JetTypeChecker.ERROR_TYPES_ARE_EQUAL_TO_ANYTHING.equalTypes(candidate, other)
+            candidate == other || KotlinTypeChecker.ERROR_TYPES_ARE_EQUAL_TO_ANYTHING.equalTypes(candidate, other)
         }
     }
 }
@@ -97,21 +97,21 @@ fun Collection<TypeProjection>.singleBestRepresentative(): TypeProjection? {
     return TypeProjectionImpl(projectionKinds.single(), bestType)
 }
 
-public fun JetType.lowerIfFlexible(): JetType = if (this.isFlexible()) this.flexibility().lowerBound else this
-public fun JetType.upperIfFlexible(): JetType = if (this.isFlexible()) this.flexibility().upperBound else this
+public fun KotlinType.lowerIfFlexible(): KotlinType = if (this.isFlexible()) this.flexibility().lowerBound else this
+public fun KotlinType.upperIfFlexible(): KotlinType = if (this.isFlexible()) this.flexibility().upperBound else this
 
 public interface NullAwareness : TypeCapability {
-    public fun makeNullableAsSpecified(nullable: Boolean): JetType
+    public fun makeNullableAsSpecified(nullable: Boolean): KotlinType
     public fun computeIsNullable(): Boolean
 }
 
 interface FlexibleTypeDelegation : TypeCapability {
-    public val delegateType: JetType
+    public val delegateType: KotlinType
 }
 
 public open class DelegatingFlexibleType protected constructor(
-        override val lowerBound: JetType,
-        override val upperBound: JetType,
+        override val lowerBound: KotlinType,
+        override val upperBound: KotlinType,
         override val extraCapabilities: FlexibleTypeCapabilities
 ) : DelegatingType(), NullAwareness, Flexibility, FlexibleTypeDelegation {
     companion object {
@@ -123,7 +123,7 @@ public open class DelegatingFlexibleType protected constructor(
         )
 
         @JvmStatic
-        fun create(lowerBound: JetType, upperBound: JetType, extraCapabilities: FlexibleTypeCapabilities): JetType {
+        fun create(lowerBound: KotlinType, upperBound: KotlinType, extraCapabilities: FlexibleTypeCapabilities): KotlinType {
             if (lowerBound == upperBound) return lowerBound
             return DelegatingFlexibleType(lowerBound, upperBound, extraCapabilities)
         }
@@ -134,7 +134,7 @@ public open class DelegatingFlexibleType protected constructor(
             assert (!lowerBound.isFlexible()) { "Lower bound of a flexible type can not be flexible: $lowerBound" }
             assert (!upperBound.isFlexible()) { "Upper bound of a flexible type can not be flexible: $upperBound" }
             assert (lowerBound != upperBound) { "Lower and upper bounds are equal: $lowerBound == $upperBound" }
-            assert (JetTypeChecker.DEFAULT.isSubtypeOf(lowerBound, upperBound)) {
+            assert (KotlinTypeChecker.DEFAULT.isSubtypeOf(lowerBound, upperBound)) {
                 "Lower bound $lowerBound of a flexible type must be a subtype of the upper bound $upperBound"
             }
         }
@@ -150,7 +150,7 @@ public open class DelegatingFlexibleType protected constructor(
         return super<DelegatingType>.getCapability(capabilityClass)
     }
 
-    override fun makeNullableAsSpecified(nullable: Boolean): JetType {
+    override fun makeNullableAsSpecified(nullable: Boolean): KotlinType {
         return create(
                 TypeUtils.makeNullableAsSpecified(lowerBound, nullable),
                 TypeUtils.makeNullableAsSpecified(upperBound, nullable),
@@ -161,7 +161,7 @@ public open class DelegatingFlexibleType protected constructor(
 
     override fun isMarkedNullable(): Boolean = getCapability(javaClass<NullAwareness>())!!.computeIsNullable()
 
-    override val delegateType: JetType = lowerBound
+    override val delegateType: KotlinType = lowerBound
 
     override fun getDelegate() = getCapability(javaClass<FlexibleTypeDelegation>())!!.delegateType
 

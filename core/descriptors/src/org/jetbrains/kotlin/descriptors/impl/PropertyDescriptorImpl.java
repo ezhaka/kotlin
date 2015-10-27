@@ -24,14 +24,14 @@ import org.jetbrains.kotlin.descriptors.annotations.Annotations;
 import org.jetbrains.kotlin.name.Name;
 import org.jetbrains.kotlin.resolve.DescriptorFactory;
 import org.jetbrains.kotlin.types.DescriptorSubstitutor;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.types.TypeSubstitutor;
 import org.jetbrains.kotlin.types.Variance;
 import org.jetbrains.kotlin.utils.SmartSet;
 
 import java.util.*;
 
-import static org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilPackage.getBuiltIns;
+import static org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt.getBuiltIns;
 
 public class PropertyDescriptorImpl extends VariableDescriptorWithInitializerImpl implements PropertyDescriptor {
     private final Modality modality;
@@ -89,17 +89,17 @@ public class PropertyDescriptorImpl extends VariableDescriptorWithInitializerImp
     }
 
     public void setType(
-            @NotNull JetType outType,
+            @NotNull KotlinType outType,
             @ReadOnly @NotNull List<? extends TypeParameterDescriptor> typeParameters,
             @Nullable ReceiverParameterDescriptor dispatchReceiverParameter,
-            @Nullable JetType receiverType
+            @Nullable KotlinType receiverType
     ) {
         ReceiverParameterDescriptor extensionReceiverParameter = DescriptorFactory.createExtensionReceiverParameterForCallable(this, receiverType);
         setType(outType, typeParameters, dispatchReceiverParameter, extensionReceiverParameter);
     }
 
     public void setType(
-            @NotNull JetType outType,
+            @NotNull KotlinType outType,
             @ReadOnly @NotNull List<? extends TypeParameterDescriptor> typeParameters,
             @Nullable ReceiverParameterDescriptor dispatchReceiverParameter,
             @Nullable ReceiverParameterDescriptor extensionReceiverParameter
@@ -145,7 +145,7 @@ public class PropertyDescriptorImpl extends VariableDescriptorWithInitializerImp
 
     @NotNull
     @Override
-    public JetType getReturnType() {
+    public KotlinType getReturnType() {
         return getType();
     }
 
@@ -227,8 +227,8 @@ public class PropertyDescriptorImpl extends VariableDescriptorWithInitializerImp
                 originalTypeParameters, originalSubstitutor.getSubstitution(), substitutedDescriptor, substitutedTypeParameters
         );
 
-        JetType originalOutType = getType();
-        JetType outType = substitutor.substitute(originalOutType, Variance.OUT_VARIANCE);
+        KotlinType originalOutType = getType();
+        KotlinType outType = substitutor.substitute(originalOutType, Variance.OUT_VARIANCE);
         if (outType == null) {
             return null; // TODO : tell the user that the property was projected out
         }
@@ -244,7 +244,7 @@ public class PropertyDescriptorImpl extends VariableDescriptorWithInitializerImp
             substitutedDispatchReceiver = null;
         }
 
-        JetType substitutedReceiverType;
+        KotlinType substitutedReceiverType;
         if (extensionReceiverParameter != null) {
             substitutedReceiverType = substitutor.substitute(extensionReceiverParameter.getType(), Variance.IN_VARIANCE);
             if (substitutedReceiverType == null) return null;
@@ -256,16 +256,16 @@ public class PropertyDescriptorImpl extends VariableDescriptorWithInitializerImp
         substitutedDescriptor.setType(outType, substitutedTypeParameters, substitutedDispatchReceiver, substitutedReceiverType);
 
         PropertyGetterDescriptorImpl newGetter = getter == null ? null : new PropertyGetterDescriptorImpl(
-                substitutedDescriptor, getter.getAnnotations(), newModality, convertVisibility(getter.getVisibility(), newVisibility),
-                getter.hasBody(), getter.isDefault(), kind, original == null ? null : original.getGetter(), SourceElement.NO_SOURCE
+                substitutedDescriptor, getter.getAnnotations(), newModality, getter.getVisibility(),
+                getter.hasBody(), getter.isDefault(), getter.isExternal(), kind, original == null ? null : original.getGetter(), SourceElement.NO_SOURCE
         );
         if (newGetter != null) {
-            JetType returnType = getter.getReturnType();
+            KotlinType returnType = getter.getReturnType();
             newGetter.initialize(returnType != null ? substitutor.substitute(returnType, Variance.OUT_VARIANCE) : null);
         }
         PropertySetterDescriptorImpl newSetter = setter == null ? null : new PropertySetterDescriptorImpl(
-                substitutedDescriptor, setter.getAnnotations(), newModality, convertVisibility(setter.getVisibility(), newVisibility),
-                setter.hasBody(), setter.isDefault(), kind, original == null ? null : original.getSetter(), SourceElement.NO_SOURCE
+                substitutedDescriptor, setter.getAnnotations(), newModality, setter.getVisibility(),
+                setter.hasBody(), setter.isDefault(), setter.isExternal(), kind, original == null ? null : original.getSetter(), SourceElement.NO_SOURCE
         );
         if (newSetter != null) {
             List<ValueParameterDescriptor> substitutedValueParameters = FunctionDescriptorImpl.getSubstitutedValueParameters(

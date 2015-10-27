@@ -6,30 +6,26 @@ class Some {
 // EXIST:  abstract
 // EXIST:  as
 // EXIST:  class
-// EXIST:  enum
+// EXIST:  enum class
 // EXIST:  final
 // EXIST:  fun
 // EXIST: get
-// EXIST:  in
-/*why?*/
+// EXIST: "get() = "
+// EXIST: "get() {}"
 // EXIST:  inner
 // EXIST:  internal
 // EXIST:  object
 // EXIST:  open
-// EXIST:  out
-/*why?*/
-// EXIST:  reified
-/*why?*/
 // EXIST:  override
 // EXIST:  private
 // EXIST:  protected
 // EXIST:  public
 // EXIST: set
+// EXIST: "set(value) = "
+// EXIST: "set(value) {}"
 // EXIST:  interface
 // EXIST:  val
 // EXIST:  var
-// EXIST:  vararg
-/*why?*/
 // EXIST:  constructor
 // EXIST:  init
 // EXIST:  companion object
@@ -39,10 +35,8 @@ class Some {
 // EXIST:  lateinit
 // EXIST:  data
 // EXIST:  inline
-// EXIST:  noinline
 // EXIST:  tailrec
 // EXIST:  external
-// EXIST:  annotation
-// EXIST:  crossinline
+// EXIST:  annotation class
 // EXIST:  const
 // NOTHING_ELSE

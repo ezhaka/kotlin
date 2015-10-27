@@ -19,14 +19,13 @@ package org.jetbrains.kotlin.asJava
 import com.intellij.openapi.util.Comparing
 import com.intellij.openapi.util.Key
 import com.intellij.psi.*
-import com.intellij.psi.impl.compiled.ClsFileImpl
+import com.intellij.psi.impl.DebugUtil
 import com.intellij.psi.impl.java.stubs.PsiJavaFileStub
 import com.intellij.psi.impl.light.LightClass
 import com.intellij.psi.impl.light.LightMethod
 import com.intellij.psi.scope.PsiScopeProcessor
 import com.intellij.psi.search.SearchScope
 import com.intellij.psi.stubs.IStubElementType
-import com.intellij.psi.stubs.PsiClassHolderFileStub
 import com.intellij.psi.stubs.StubElement
 import com.intellij.psi.util.CachedValue
 import com.intellij.psi.util.CachedValuesManager
@@ -37,7 +36,7 @@ import org.jetbrains.kotlin.codegen.binding.PsiCodegenPredictor
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.fileClasses.NoResolveFileClassesProvider
 import org.jetbrains.kotlin.idea.KotlinLanguage
-import org.jetbrains.kotlin.lexer.JetTokens.*
+import org.jetbrains.kotlin.lexer.KtTokens.*
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.FqNameUnsafe
 import org.jetbrains.kotlin.platform.JavaToKotlinClassMap
@@ -51,8 +50,8 @@ import javax.swing.Icon
 public open class KotlinLightClassForExplicitDeclaration(
         manager: PsiManager,
         protected val classFqName: FqName, // FqName of (possibly inner) class
-        protected val classOrObject: JetClassOrObject)
-: KotlinWrappingLightClass(manager), JetJavaMirrorMarker, StubBasedPsiElement<KotlinClassOrObjectStub<out JetClassOrObject>> {
+        protected val classOrObject: KtClassOrObject)
+: KotlinWrappingLightClass(manager), JetJavaMirrorMarker, StubBasedPsiElement<KotlinClassOrObjectStub<out KtClassOrObject>> {
     private var delegate: PsiClass? = null
 
     private fun getLocalClassParent(): PsiElement? {
@@ -89,37 +88,37 @@ public open class KotlinLightClassForExplicitDeclaration(
             return method
         }
 
-        var declaration: PsiElement? = JetPsiUtil.getTopmostParentOfTypes(
+        var declaration: PsiElement? = KtPsiUtil.getTopmostParentOfTypes(
                 classOrObject,
-                JetNamedFunction::class.java,
-                JetConstructor::class.java,
-                JetProperty::class.java,
-                JetClassInitializer::class.java,
-                JetParameter::class.java)
+                KtNamedFunction::class.java,
+                KtConstructor::class.java,
+                KtProperty::class.java,
+                KtClassInitializer::class.java,
+                KtParameter::class.java)
 
-        if (declaration is JetParameter) {
-            declaration = declaration.getStrictParentOfType<JetNamedDeclaration>()
+        if (declaration is KtParameter) {
+            declaration = declaration.getStrictParentOfType<KtNamedDeclaration>()
         }
 
-        if (declaration is JetFunction) {
+        if (declaration is KtFunction) {
             return getParentByPsiMethod(LightClassUtil.getLightClassMethod(declaration), declaration.name, false)
         }
 
         // Represent the property as a fake method with the same name
-        if (declaration is JetProperty) {
+        if (declaration is KtProperty) {
             return getParentByPsiMethod(LightClassUtil.getLightClassPropertyMethods(declaration).getter, declaration.name, true)
         }
 
-        if (declaration is JetClassInitializer) {
+        if (declaration is KtClassInitializer) {
             val parent = declaration.parent
             val grandparent = parent.parent
 
-            if (parent is JetClassBody && grandparent is JetClassOrObject) {
+            if (parent is KtClassBody && grandparent is KtClassOrObject) {
                 return LightClassUtil.getPsiClass(grandparent)
             }
         }
 
-        if (declaration is JetClass) {
+        if (declaration is KtClass) {
             return LightClassUtil.getPsiClass(declaration)
         }
         return null
@@ -134,12 +133,12 @@ public open class KotlinLightClassForExplicitDeclaration(
             containingClass
     }
 
-    override fun getOrigin(): JetClassOrObject = classOrObject
+    override fun getOrigin(): KtClassOrObject = classOrObject
 
     override fun getFqName(): FqName = classFqName
 
     override fun copy(): PsiElement {
-        return KotlinLightClassForExplicitDeclaration(manager, classFqName, classOrObject.copy() as JetClassOrObject)
+        return KotlinLightClassForExplicitDeclaration(manager, classFqName, classOrObject.copy() as KtClassOrObject)
     }
 
     override fun getDelegate(): PsiClass {
@@ -156,12 +155,7 @@ public open class KotlinLightClassForExplicitDeclaration(
                     "Can't get text for outermost class"
                 }
 
-                val stubFileText: String? = try {
-                    javaFileStub.psi.text
-                }
-                catch (e: Exception) {
-                    "Can't get stub text"
-                }
+                val stubFileText = DebugUtil.stubTreeToString(javaFileStub)
 
                 throw IllegalStateException("Class was not found $classFqName\nin $ktFileText\nstub: \n$stubFileText")
             }
@@ -185,13 +179,7 @@ public open class KotlinLightClassForExplicitDeclaration(
         val virtualFile = classOrObject.containingFile.virtualFile
         assert(virtualFile != null) { "No virtual file for " + classOrObject.text }
 
-        object : ClsFileImpl(ClassFileViewProvider(getManager(), virtualFile)) {
-            override fun getPackageName(): String {
-                return classOrObject.getContainingJetFile().packageFqName.asString()
-            }
-
-            override fun getStub(): PsiClassHolderFileStub<PsiJavaFile> = getJavaFileStub()
-
+        object : FakeFileForLightClass(classOrObject.getContainingJetFile().packageFqName, virtualFile, myManager, this, { getJavaFileStub() }) {
             override fun processDeclarations(
                     processor: PsiScopeProcessor,
                     state: ResolveState,
@@ -244,8 +232,6 @@ public open class KotlinLightClassForExplicitDeclaration(
 
     override fun getParent(): PsiElement? = _parent
 
-    override fun getContext(): PsiElement? = getParent()
-
     private val _typeParameterList: PsiTypeParameterList by lazy {
         LightClassUtil.buildLightTypeParameterList(this, classOrObject)
     }
@@ -295,7 +281,7 @@ public open class KotlinLightClassForExplicitDeclaration(
         if (isAbstract() || isSealed()) {
             psiModifiers.add(PsiModifier.ABSTRACT)
         }
-        else if (!(classOrObject.hasModifier(OPEN_KEYWORD) || (classOrObject is JetClass && classOrObject.isEnum()))) {
+        else if (!(classOrObject.hasModifier(OPEN_KEYWORD) || (classOrObject is KtClass && classOrObject.isEnum()))) {
             psiModifiers.add(PsiModifier.FINAL)
         }
 
@@ -322,9 +308,9 @@ public open class KotlinLightClassForExplicitDeclaration(
             val typeReference = annotationEntry.typeReference ?: continue
 
             val typeElement = typeReference.typeElement
-            if (typeElement !is JetUserType) continue // If it's not a user type, it's definitely not a ref to deprecated
+            if (typeElement !is KtUserType) continue // If it's not a user type, it's definitely not a ref to deprecated
 
-            val fqName = JetPsiUtil.toQualifiedName(typeElement) ?: continue
+            val fqName = KtPsiUtil.toQualifiedName(typeElement) ?: continue
 
             if (deprecatedFqName == fqName) return true
             if (deprecatedName == fqName.asString()) return true
@@ -333,15 +319,15 @@ public open class KotlinLightClassForExplicitDeclaration(
     }
 
     override fun isInterface(): Boolean {
-        if (classOrObject !is JetClass) return false
+        if (classOrObject !is KtClass) return false
         return classOrObject.isInterface() || classOrObject.isAnnotation()
     }
 
-    override fun isAnnotationType(): Boolean = classOrObject is JetClass && classOrObject.isAnnotation()
+    override fun isAnnotationType(): Boolean = classOrObject is KtClass && classOrObject.isAnnotation()
 
-    override fun isEnum(): Boolean = classOrObject is JetClass && classOrObject.isEnum()
+    override fun isEnum(): Boolean = classOrObject is KtClass && classOrObject.isEnum()
 
-    override fun hasTypeParameters(): Boolean = classOrObject is JetClass && !classOrObject.typeParameters.isEmpty()
+    override fun hasTypeParameters(): Boolean = classOrObject is KtClass && !classOrObject.typeParameters.isEmpty()
 
     override fun isValid(): Boolean = classOrObject.isValid
 
@@ -378,7 +364,7 @@ public open class KotlinLightClassForExplicitDeclaration(
     override fun getOwnInnerClasses(): List<PsiClass> {
         return getDelegate().innerClasses
             .map {
-                val declaration = ClsWrapperStubPsiFactory.getOriginalDeclaration(it) as JetClassOrObject?
+                val declaration = ClsWrapperStubPsiFactory.getOriginalDeclaration(it) as KtClassOrObject?
                 if (declaration != null) create(myManager, declaration, it) else null
             }
             .filterNotNull()
@@ -387,7 +373,7 @@ public open class KotlinLightClassForExplicitDeclaration(
     override fun getUseScope(): SearchScope = getOrigin().useScope
 
     override fun getElementType(): IStubElementType<out StubElement<*>, *>? = classOrObject.elementType
-    override fun getStub(): KotlinClassOrObjectStub<out JetClassOrObject>? = classOrObject.stub
+    override fun getStub(): KotlinClassOrObjectStub<out KtClassOrObject>? = classOrObject.stub
 
     companion object {
         private val JAVA_API_STUB = Key.create<CachedValue<OutermostKotlinClassLightClassData>>("JAVA_API_STUB")
@@ -402,7 +388,7 @@ public open class KotlinLightClassForExplicitDeclaration(
         @JvmOverloads
         public fun create(
                 manager: PsiManager,
-                classOrObject: JetClassOrObject,
+                classOrObject: KtClassOrObject,
                 psiClass: PsiClass? = null
         ): KotlinLightClassForExplicitDeclaration? {
             if (LightClassUtil.belongsToKotlinBuiltIns(classOrObject.getContainingJetFile())) {
@@ -411,7 +397,7 @@ public open class KotlinLightClassForExplicitDeclaration(
 
             val fqName = predictFqName(classOrObject) ?: return null
 
-            if (classOrObject is JetObjectDeclaration && classOrObject.isObjectLiteral()) {
+            if (classOrObject is KtObjectDeclaration && classOrObject.isObjectLiteral()) {
                 return KotlinLightClassForAnonymousDeclaration(manager, fqName, classOrObject)
             }
 
@@ -425,7 +411,7 @@ public open class KotlinLightClassForExplicitDeclaration(
             return KotlinLightClassForExplicitDeclaration(manager, fqName, classOrObject)
         }
 
-        private fun predictFqName(classOrObject: JetClassOrObject): FqName? {
+        private fun predictFqName(classOrObject: KtClassOrObject): FqName? {
             if (classOrObject.isLocal()) {
                 val data = getLightClassDataExactly(classOrObject)
                 return data?.jvmQualifiedName
@@ -434,11 +420,11 @@ public open class KotlinLightClassForExplicitDeclaration(
             return if (internalName == null) null else JvmClassName.byInternalName(internalName).fqNameForClassNameWithoutDollars
         }
 
-        public fun getLightClassData(classOrObject: JetClassOrObject): OutermostKotlinClassLightClassData {
+        public fun getLightClassData(classOrObject: KtClassOrObject): OutermostKotlinClassLightClassData {
             return getLightClassCachedValue(classOrObject).value
         }
 
-        public fun getLightClassCachedValue(classOrObject: JetClassOrObject): CachedValue<OutermostKotlinClassLightClassData> {
+        public fun getLightClassCachedValue(classOrObject: KtClassOrObject): CachedValue<OutermostKotlinClassLightClassData> {
             val outermostClassOrObject = getOutermostClassOrObject(classOrObject)
             var value = outermostClassOrObject.getUserData(JAVA_API_STUB)
             if (value == null) {
@@ -449,13 +435,13 @@ public open class KotlinLightClassForExplicitDeclaration(
             return value
         }
 
-        private fun getLightClassDataExactly(classOrObject: JetClassOrObject): LightClassDataForKotlinClass? {
+        private fun getLightClassDataExactly(classOrObject: KtClassOrObject): LightClassDataForKotlinClass? {
             val data = getLightClassData(classOrObject)
             return data.dataForClass(classOrObject)
         }
 
-        private fun getOutermostClassOrObject(classOrObject: JetClassOrObject): JetClassOrObject {
-            val outermostClass = JetPsiUtil.getOutermostClassOrObject(classOrObject) ?:
+        private fun getOutermostClassOrObject(classOrObject: KtClassOrObject): KtClassOrObject {
+            val outermostClass = KtPsiUtil.getOutermostClassOrObject(classOrObject) ?:
                 throw IllegalStateException("Attempt to build a light class for a local class: " + classOrObject.text)
 
             return outermostClass

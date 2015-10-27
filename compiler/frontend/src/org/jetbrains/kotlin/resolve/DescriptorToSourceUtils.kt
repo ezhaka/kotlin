@@ -17,15 +17,14 @@
 package org.jetbrains.kotlin.resolve
 
 import com.intellij.psi.PsiElement
-import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor
+import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.DECLARATION
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.SYNTHESIZED
-import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
-import org.jetbrains.kotlin.descriptors.DeclarationDescriptorWithSource
-import org.jetbrains.kotlin.descriptors.PropertyAccessorDescriptor
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor
-import org.jetbrains.kotlin.psi.JetAnnotationEntry
-import org.jetbrains.kotlin.psi.JetFile
+import org.jetbrains.kotlin.idea.MainFunctionDetector
+import org.jetbrains.kotlin.psi.KtAnnotationEntry
+import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.resolve.source.getPsi
 import java.util.ArrayList
 
@@ -56,8 +55,8 @@ public object DescriptorToSourceUtils {
     }
 
     @JvmStatic
-    public fun getSourceFromAnnotation(descriptor: AnnotationDescriptor): JetAnnotationEntry? {
-        return descriptor.source.getPsi() as? JetAnnotationEntry
+    public fun getSourceFromAnnotation(descriptor: AnnotationDescriptor): KtAnnotationEntry? {
+        return descriptor.source.getPsi() as? KtAnnotationEntry
     }
 
     // NOTE this is also used by KDoc
@@ -71,14 +70,24 @@ public object DescriptorToSourceUtils {
     }
 
     @JvmStatic
-    public fun getContainingFile(declarationDescriptor: DeclarationDescriptor): JetFile? {
+    public fun getContainingFile(declarationDescriptor: DeclarationDescriptor): KtFile? {
         // declarationDescriptor may describe a synthesized element which doesn't have PSI
         // To workaround that, we find a top-level parent (which is inside a PackageFragmentDescriptor), which is guaranteed to have PSI
         val descriptor = findTopLevelParent(declarationDescriptor) ?: return null
 
         val declaration = descriptorToDeclaration(descriptor) ?: return null
 
-        return declaration.getContainingFile() as? JetFile
+        return declaration.getContainingFile() as? KtFile
+    }
+
+    @JvmStatic
+    public fun isTopLevelMainFunction(declarationDescriptor: DeclarationDescriptor, mainFunctionDetector: MainFunctionDetector): Boolean {
+        if (declarationDescriptor !is FunctionDescriptor ||
+            !DescriptorUtils.isTopLevelDeclaration(declarationDescriptor) ||
+            declarationDescriptor.name.asString() != "main") return false
+
+        val element = descriptorToDeclaration(declarationDescriptor)
+        return element is KtNamedFunction && mainFunctionDetector.isMain(element)
     }
 
     private fun findTopLevelParent(declarationDescriptor: DeclarationDescriptor): DeclarationDescriptor? {

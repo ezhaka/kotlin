@@ -16,23 +16,21 @@
 
 package org.jetbrains.kotlin.types;
 
-import org.jetbrains.kotlin.builtins.KotlinBuiltIns;
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment;
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor;
 import org.jetbrains.kotlin.descriptors.ModuleDescriptor;
-import org.jetbrains.kotlin.psi.JetNamedFunction;
+import org.jetbrains.kotlin.psi.KtNamedFunction;
+import org.jetbrains.kotlin.psi.KtPsiFactoryKt;
 import org.jetbrains.kotlin.resolve.FunctionDescriptorResolver;
 import org.jetbrains.kotlin.resolve.OverloadUtil;
 import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowInfo;
 import org.jetbrains.kotlin.resolve.jvm.platform.JvmPlatform;
-import org.jetbrains.kotlin.resolve.scopes.FileScope;
-import org.jetbrains.kotlin.resolve.scopes.utils.UtilsPackage;
+import org.jetbrains.kotlin.resolve.scopes.ImportingScope;
+import org.jetbrains.kotlin.resolve.scopes.utils.ScopeUtilsKt;
 import org.jetbrains.kotlin.test.ConfigurationKind;
 import org.jetbrains.kotlin.test.JetLiteFixture;
 import org.jetbrains.kotlin.test.JetTestUtils;
-import org.jetbrains.kotlin.tests.di.DiPackage;
-
-import static org.jetbrains.kotlin.psi.PsiPackage.JetPsiFactory;
+import org.jetbrains.kotlin.tests.di.InjectionKt;
 
 public class JetOverloadTest extends JetLiteFixture {
 
@@ -47,7 +45,7 @@ public class JetOverloadTest extends JetLiteFixture {
     @Override
     public void setUp() throws Exception {
         super.setUp();
-        functionDescriptorResolver = DiPackage.createContainerForTests(getProject(), root).getFunctionDescriptorResolver();
+        functionDescriptorResolver = InjectionKt.createContainerForTests(getProject(), root).getFunctionDescriptorResolver();
     }
 
     @Override
@@ -163,19 +161,17 @@ public class JetOverloadTest extends JetLiteFixture {
     private void assertOverloadabilityRelation(String funA, String funB, boolean expectedIsError) {
         FunctionDescriptor a = makeFunction(funA);
         FunctionDescriptor b = makeFunction(funB);
-        {
-            OverloadUtil.OverloadCompatibilityInfo overloadableWith = OverloadUtil.isOverloadable(a, b);
-            assertEquals(overloadableWith.getMessage(), expectedIsError, !overloadableWith.isSuccess());
-        }
-        {
-            OverloadUtil.OverloadCompatibilityInfo overloadableWith = OverloadUtil.isOverloadable(b, a);
-            assertEquals(overloadableWith.getMessage(), expectedIsError, !overloadableWith.isSuccess());
-        }
+
+        boolean aOverloadableWithB = OverloadUtil.isOverloadable(a, b);
+        assertEquals(expectedIsError, !aOverloadableWithB);
+
+        boolean bOverloadableWithA = OverloadUtil.isOverloadable(b, a);
+        assertEquals(expectedIsError, !bOverloadableWithA);
     }
 
     private FunctionDescriptor makeFunction(String funDecl) {
-        JetNamedFunction function = JetPsiFactory(getProject()).createFunction(funDecl);
-        FileScope scope = UtilsPackage.memberScopeAsFileScope(JvmPlatform.INSTANCE$.getBuiltIns().getBuiltInsPackageScope());
+        KtNamedFunction function = KtPsiFactoryKt.KtPsiFactory(getProject()).createFunction(funDecl);
+        ImportingScope scope = ScopeUtilsKt.memberScopeAsImportingScope(JvmPlatform.INSTANCE$.getBuiltIns().getBuiltInsPackageScope());
         return functionDescriptorResolver.resolveFunctionDescriptor(root, scope, function, JetTestUtils.DUMMY_TRACE, DataFlowInfo.EMPTY);
     }
 }

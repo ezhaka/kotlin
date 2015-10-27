@@ -23,7 +23,7 @@ import org.jetbrains.kotlin.descriptors.annotations.AnnotationWithTarget
 import org.jetbrains.kotlin.resolve.constants.ConstantValue
 import org.jetbrains.kotlin.serialization.ProtoBuf
 import org.jetbrains.kotlin.serialization.deserialization.*
-import org.jetbrains.kotlin.types.JetType
+import org.jetbrains.kotlin.types.KotlinType
 
 class KotlinJavascriptAnnotationAndConstantLoader(
         module: ModuleDescriptor
@@ -74,11 +74,17 @@ class KotlinJavascriptAnnotationAndConstantLoader(
         return annotations.map { proto -> deserializer.deserializeAnnotation(proto, nameResolver) }
     }
 
+    override fun loadTypeParameterAnnotations(proto: ProtoBuf.TypeParameter, nameResolver: NameResolver): List<AnnotationDescriptor> {
+        val annotations = proto.getExtension(JsProtoBuf.typeParameterAnnotation).orEmpty()
+        return annotations.map { proto -> deserializer.deserializeAnnotation(proto, nameResolver) }
+    }
+
     override fun loadPropertyConstant(
             container: ProtoContainer,
             proto: ProtoBuf.Property,
-            expectedType: JetType
+            expectedType: KotlinType
     ): ConstantValue<*>? {
+        if (!proto.hasExtension(JsProtoBuf.compileTimeValue)) return null
         val value = proto.getExtension(JsProtoBuf.compileTimeValue)
         return deserializer.resolveValue(expectedType, value, container.nameResolver)
     }

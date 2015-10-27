@@ -24,14 +24,14 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.js.config.LibrarySourcesConfig;
-import org.jetbrains.kotlin.js.descriptorUtils.DescriptorUtilsPackage;
+import org.jetbrains.kotlin.js.descriptorUtils.DescriptorUtilsKt;
 import org.jetbrains.kotlin.js.translate.context.TranslationContext;
 import org.jetbrains.kotlin.name.Name;
-import org.jetbrains.kotlin.psi.JetExpression;
+import org.jetbrains.kotlin.psi.KtExpression;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
 import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue;
 import org.jetbrains.kotlin.resolve.scopes.receivers.ThisReceiver;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.util.OperatorNameConventions;
 
 import java.util.Collection;
@@ -42,7 +42,6 @@ import static org.jetbrains.kotlin.js.config.LibrarySourcesConfig.BUILTINS_JS_MO
 import static org.jetbrains.kotlin.js.translate.utils.AnnotationsUtils.isNativeObject;
 import static org.jetbrains.kotlin.resolve.DescriptorToSourceUtils.descriptorToDeclaration;
 import static org.jetbrains.kotlin.resolve.DescriptorUtils.*;
-import static org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilPackage.getBuiltIns;
 
 public final class JsDescriptorUtils {
     // TODO: maybe we should use external annotations or something else.
@@ -81,11 +80,11 @@ public final class JsDescriptorUtils {
     }
 
     @NotNull
-    public static List<JetType> getSupertypesWithoutFakes(ClassDescriptor descriptor) {
-        Collection<JetType> supertypes = descriptor.getTypeConstructor().getSupertypes();
-        return ContainerUtil.filter(supertypes, new Condition<JetType>() {
+    public static List<KotlinType> getSupertypesWithoutFakes(ClassDescriptor descriptor) {
+        Collection<KotlinType> supertypes = descriptor.getTypeConstructor().getSupertypes();
+        return ContainerUtil.filter(supertypes, new Condition<KotlinType>() {
             @Override
-            public boolean value(JetType type) {
+            public boolean value(KotlinType type) {
                 ClassDescriptor classDescriptor = getClassDescriptorForType(type);
 
                 return !FAKE_CLASSES.contains(getFqNameSafe(classDescriptor).asString()) &&
@@ -157,13 +156,13 @@ public final class JsDescriptorUtils {
 
     public static boolean isBuiltin(@NotNull DeclarationDescriptor descriptor) {
         PackageFragmentDescriptor containingPackageFragment = DescriptorUtils.getParentOfType(descriptor, PackageFragmentDescriptor.class);
-        return containingPackageFragment == getBuiltIns(descriptor).getBuiltInsPackageFragment();
+        return containingPackageFragment == org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt.getBuiltIns(descriptor).getBuiltInsPackageFragment();
     }
 
     @Nullable
-    public static Name getNameIfStandardType(@NotNull JetExpression expression, @NotNull TranslationContext context) {
-        JetType type = context.bindingContext().getType(expression);
-        return type != null ? DescriptorUtilsPackage.getNameIfStandardType(type) : null;
+    public static Name getNameIfStandardType(@NotNull KtExpression expression, @NotNull TranslationContext context) {
+        KotlinType type = context.bindingContext().getType(expression);
+        return type != null ? DescriptorUtilsKt.getNameIfStandardType(type) : null;
     }
 
     @NotNull

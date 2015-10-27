@@ -24,6 +24,7 @@ import com.intellij.lang.annotation.Annotation
 import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.lang.annotation.Annotator
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.colors.CodeInsightColors
 import com.intellij.openapi.editor.colors.TextAttributesKey
 import com.intellij.openapi.progress.ProcessCanceledException
@@ -31,8 +32,9 @@ import com.intellij.openapi.util.TextRange
 import com.intellij.psi.MultiRangeReference
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
+import com.intellij.util.containers.MultiMap
 import com.intellij.xml.util.XmlStringUtil
-import org.jetbrains.annotations.TestOnly
+import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.diagnostics.Diagnostic
 import org.jetbrains.kotlin.diagnostics.Errors
 import org.jetbrains.kotlin.diagnostics.Severity
@@ -42,19 +44,22 @@ import org.jetbrains.kotlin.idea.caches.resolve.analyzeFullyAndGetResult
 import org.jetbrains.kotlin.idea.quickfix.QuickFixes
 import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.idea.util.ProjectRootsUtil
-import org.jetbrains.kotlin.psi.JetCodeFragment
-import org.jetbrains.kotlin.psi.JetFile
-import org.jetbrains.kotlin.psi.JetParameter
-import org.jetbrains.kotlin.psi.JetReferenceExpression
+import org.jetbrains.kotlin.psi.KtCodeFragment
+import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtParameter
+import org.jetbrains.kotlin.psi.KtReferenceExpression
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.diagnostics.Diagnostics
+import org.jetbrains.kotlin.utils.singletonOrEmptyList
+import java.lang.reflect.*
+import java.util.*
 
 public open class JetPsiChecker : Annotator, HighlightRangeExtension {
 
     override fun annotate(element: PsiElement, holder: AnnotationHolder) {
-        if (!(ProjectRootsUtil.isInProjectOrLibraryContent(element) || element.getContainingFile() is JetCodeFragment)) return
+        if (!(ProjectRootsUtil.isInProjectOrLibraryContent(element) || element.getContainingFile() is KtCodeFragment)) return
 
-        val file = element.getContainingFile() as JetFile
+        val file = element.getContainingFile() as KtFile
 
         val analysisResult = file.analyzeFullyAndGetResult()
         if (analysisResult.isError()) {
@@ -69,186 +74,238 @@ public open class JetPsiChecker : Annotator, HighlightRangeExtension {
     }
 
     override fun isForceHighlightParents(file: PsiFile): Boolean {
-        return file is JetFile
+        return file is KtFile
     }
 
-    open protected fun shouldSuppressUnusedParameter(parameter: JetParameter): Boolean = false
+    open protected fun shouldSuppressUnusedParameter(parameter: KtParameter): Boolean = false
 
     fun annotateElement(element: PsiElement, holder: AnnotationHolder, diagnostics: Diagnostics) {
-        if (ProjectRootsUtil.isInProjectSource(element) || element.getContainingFile() is JetCodeFragment) {
-            val elementAnnotator = ElementAnnotator(element, holder)
-            for (diagnostic in diagnostics.forElement(element)) {
-                elementAnnotator.registerDiagnosticAnnotations(diagnostic)
-            }
-        }
-    }
-
-    private inner class ElementAnnotator(private val element: PsiElement, private val holder: AnnotationHolder) {
-        private var isMarkedWithRedeclaration = false
-
-        fun registerDiagnosticAnnotations(diagnostic: Diagnostic) {
-            if (!diagnostic.isValid()) return
-
-            assert(diagnostic.getPsiElement() == element)
-
-            val textRanges = diagnostic.getTextRanges()
-            val factory = diagnostic.getFactory()
-            when (diagnostic.getSeverity()) {
-                Severity.ERROR -> {
-
-                    when (factory) {
-                        in Errors.UNRESOLVED_REFERENCE_DIAGNOSTICS -> {
-                            val referenceExpression = diagnostic.getPsiElement() as JetReferenceExpression
-                            val reference = referenceExpression.mainReference
-                            if (reference is MultiRangeReference) {
-                                for (range in reference.getRanges()) {
-                                    val annotation = holder.createErrorAnnotation(range.shiftRight(referenceExpression.getTextOffset()), getDefaultMessage(diagnostic))
-                                    setUpAnnotation(diagnostic, annotation, ProblemHighlightType.LIKE_UNKNOWN_SYMBOL)
-                                }
-                            }
-                            else {
-                                for (textRange in textRanges) {
-                                    val annotation = holder.createErrorAnnotation(textRange, getDefaultMessage(diagnostic))
-                                    setUpAnnotation(diagnostic, annotation, ProblemHighlightType.LIKE_UNKNOWN_SYMBOL)
-                                }
-                            }
-                        }
-
-                        Errors.ILLEGAL_ESCAPE -> {
-                            for (textRange in textRanges) {
-                                val annotation = holder.createErrorAnnotation(textRange, getDefaultMessage(diagnostic))
-                                annotation.setTooltip(getMessage(diagnostic))
-                                annotation.setTextAttributes(JetHighlightingColors.INVALID_STRING_ESCAPE)
-                            }
-                        }
-
-                        Errors.REDECLARATION -> {
-                            if (!isMarkedWithRedeclaration) {
-                                isMarkedWithRedeclaration = true
-                                val annotation = holder.createErrorAnnotation(diagnostic.getTextRanges()[0], "")
-                                setUpAnnotation(diagnostic, annotation, null)
-                            }
-                        }
-
-                        else -> {
-                            for (textRange in textRanges) {
-                                val annotation = holder.createErrorAnnotation(textRange, getDefaultMessage(diagnostic))
-                                setUpAnnotation(diagnostic, annotation, if (factory == Errors.INVISIBLE_REFERENCE)
-                                    ProblemHighlightType.LIKE_UNKNOWN_SYMBOL
-                                else
-                                    null)
-                            }
-                        }
-                    }
-                }
-                Severity.WARNING -> {
-                    if (factory == Errors.UNUSED_PARAMETER && shouldSuppressUnusedParameter(diagnostic.getPsiElement() as JetParameter)) {
-                        return
-                    }
-
-                    for (textRange in textRanges) {
-                        val annotation = holder.createWarningAnnotation(textRange, getDefaultMessage(diagnostic))
-
-                        when (factory) {
-                            Errors.DEPRECATED_SYMBOL,
-                            Errors.DEPRECATED_SYMBOL_WITH_MESSAGE -> annotation.setTextAttributes(CodeInsightColors.DEPRECATED_ATTRIBUTES)
-                        }
-
-                        setUpAnnotation(diagnostic, annotation, if (factory in Errors.UNUSED_ELEMENT_DIAGNOSTICS)
-                            ProblemHighlightType.LIKE_UNUSED_SYMBOL
-                        else
-                            null)
-                    }
-                }
-            }
-        }
-
-        private fun setUpAnnotation(diagnostic: Diagnostic, annotation: Annotation, highlightType: ProblemHighlightType?) {
-            annotation.setTooltip(getMessage(diagnostic))
-            registerQuickFix(annotation, diagnostic)
-
-            if (highlightType != null) {
-                annotation.setHighlightType(highlightType)
-            }
-        }
-
-        private fun registerQuickFix(annotation: Annotation, diagnostic: Diagnostic) {
-            createQuickfixes(diagnostic).forEach {
-                annotation.registerFix(it)
-            }
-
-            // Making warnings suppressable
-            if (diagnostic.getSeverity() == Severity.WARNING) {
-                annotation.setProblemGroup(KotlinSuppressableWarningProblemGroup(diagnostic.getFactory()))
-
-                val fixes = annotation.getQuickFixes()
-                if (fixes == null || fixes.isEmpty()) {
-                    // if there are no quick fixes we need to register an EmptyIntentionAction to enable 'suppress' actions
-                    annotation.registerFix(EmptyIntentionAction(diagnostic.getFactory().getName()))
-                }
-            }
-        }
-
-        private fun getMessage(diagnostic: Diagnostic): String {
-            var message = IdeErrorMessages.render(diagnostic)
-            if (KotlinInternalMode.enabled || ApplicationManager.getApplication().isUnitTestMode()) {
-                val factoryName = diagnostic.getFactory().getName()
-                if (message.startsWith("<html>")) {
-                    message = "<html>[$factoryName] ${message.substring("<html>".length())}"
-                }
-                else {
-                    message = "[$factoryName] $message"
-                }
-            }
-            if (!message.startsWith("<html>")) {
-                message = "<html><body>${XmlStringUtil.escapeString(message)}</body></html>"
-            }
-            return message
-        }
-
-        private fun getDefaultMessage(diagnostic: Diagnostic): String {
-            val message = DefaultErrorMessages.render(diagnostic)
-            if (KotlinInternalMode.enabled || ApplicationManager.getApplication().isUnitTestMode()) {
-                return "[${diagnostic.getFactory().getName()}] $message"
-            }
-            return message
+        if (ProjectRootsUtil.isInProjectSource(element) || element.getContainingFile() is KtCodeFragment) {
+            ElementAnnotator(element, holder, { param -> shouldSuppressUnusedParameter(param) }).registerDiagnosticsAnnotations(diagnostics.forElement(element))
         }
     }
 
     companion object {
-        var namesHighlightingEnabled = true
-            @TestOnly set
-
-        @JvmStatic
-        fun highlightName(holder: AnnotationHolder, psiElement: PsiElement, attributesKey: TextAttributesKey) {
-            if (namesHighlightingEnabled) {
-                holder.createInfoAnnotation(psiElement, null).setTextAttributes(attributesKey)
-            }
-        }
-
-        @JvmStatic
-        fun highlightName(holder: AnnotationHolder, textRange: TextRange, attributesKey: TextAttributesKey) {
-            if (namesHighlightingEnabled) {
-                holder.createInfoAnnotation(textRange, null).setTextAttributes(attributesKey)
-            }
-        }
-
         private fun getAfterAnalysisVisitor(holder: AnnotationHolder, bindingContext: BindingContext) = arrayOf(
                 PropertiesHighlightingVisitor(holder, bindingContext),
                 FunctionsHighlightingVisitor(holder, bindingContext),
                 VariablesHighlightingVisitor(holder, bindingContext),
                 TypeKindHighlightingVisitor(holder, bindingContext)
-                //DeprecatedAnnotationVisitor(holder, bindingContext)
         )
 
-        public fun createQuickfixes(diagnostic: Diagnostic): Collection<IntentionAction> {
-            val result = arrayListOf<IntentionAction>()
-            val intentionActionsFactories = QuickFixes.getInstance().getActionFactories(diagnostic.getFactory())
-            for (intentionActionsFactory in intentionActionsFactories.filterNotNull()) {
-                result.addAll(intentionActionsFactory.createActions(diagnostic))
-            }
-            result.addAll(QuickFixes.getInstance().getActions(diagnostic.getFactory()))
-            return result
+        public fun createQuickFixes(diagnostic: Diagnostic): Collection<IntentionAction> =
+                createQuickFixes(diagnostic.singletonOrEmptyList())[diagnostic]
+    }
+}
+
+private fun createQuickFixes(similarDiagnostics: Collection<Diagnostic>): MultiMap<Diagnostic, IntentionAction> {
+    val first = similarDiagnostics.minBy { it.toString() }
+    val factory = similarDiagnostics.first().factory
+
+    val actions = MultiMap<Diagnostic, IntentionAction>()
+
+    val intentionActionsFactories = QuickFixes.getInstance().getActionFactories(factory)
+    for (intentionActionsFactory in intentionActionsFactories.filterNotNull()) {
+        val allProblemsActions = intentionActionsFactory.createActionsForAllProblems(similarDiagnostics)
+        if (!allProblemsActions.isEmpty()) {
+            actions.putValues(first, allProblemsActions)
         }
+        else {
+            for (diagnostic in similarDiagnostics) {
+                actions.putValues(diagnostic, intentionActionsFactory.createActions(diagnostic))
+            }
+        }
+    }
+
+    for (diagnostic in similarDiagnostics) {
+        actions.putValues(diagnostic, QuickFixes.getInstance().getActions(diagnostic.getFactory()))
+    }
+
+    actions.values().forEach { NoDeclarationDescriptorsChecker.check(it.javaClass) }
+
+    return actions
+}
+
+private object NoDeclarationDescriptorsChecker {
+    private val LOG = Logger.getInstance(NoDeclarationDescriptorsChecker::class.java)
+
+    private val checkedQuickFixClasses = Collections.synchronizedSet(HashSet<Class<*>>())
+
+    fun check(quickFixClass: Class<*>) {
+        if (!checkedQuickFixClasses.add(quickFixClass)) return
+
+        for (field in quickFixClass.declaredFields) {
+            checkType(field.genericType, field)
+        }
+
+        @Suppress("UNNECESSARY_SAFE_CALL") // Wrong UNNECESSARY_SAFE_CALL
+        quickFixClass.superclass?.let { check(it) }
+    }
+
+    private fun checkType(type: Type, field: Field) {
+        when (type) {
+            is Class<*> -> {
+                if (DeclarationDescriptor::class.java.isAssignableFrom(type)) {
+                    LOG.error("QuickFix class ${field.declaringClass.name} contains field ${field.name} that holds DeclarationDescriptor")
+                }
+            }
+
+            is GenericArrayType -> checkType(type.genericComponentType, field)
+
+            is ParameterizedType -> {
+                if (Collection::class.java.isAssignableFrom(type.rawType as Class<*>)) {
+                    type.actualTypeArguments.forEach { checkType(it, field) }
+                }
+            }
+
+            is WildcardType -> type.upperBounds.forEach { checkType(it, field) }
+        }
+    }
+}
+
+private class ElementAnnotator(private val element: PsiElement,
+                               private val holder: AnnotationHolder,
+                               private val shouldSuppressUnusedParameter: (KtParameter) -> Boolean) {
+    fun registerDiagnosticsAnnotations(diagnostics: Collection<Diagnostic>) {
+        diagnostics.groupBy { it.factory }.forEach { group -> registerDiagnosticAnnotations(group.value) }
+    }
+
+    private fun registerDiagnosticAnnotations(diagnostics: List<Diagnostic>) {
+        assert(diagnostics.isNotEmpty())
+
+        val validDiagnostics = diagnostics.filter { it.isValid }
+        if (validDiagnostics.isEmpty()) return
+
+        val diagnostic = diagnostics.first()
+        val factory = diagnostic.getFactory()
+
+        assert(diagnostics.all { it.getPsiElement() == element && it.factory == factory })
+
+        val ranges = diagnostic.textRanges
+
+        val presentationInfo: AnnotationPresentationInfo = when (factory.severity) {
+            Severity.ERROR -> {
+                when (factory) {
+                    in Errors.UNRESOLVED_REFERENCE_DIAGNOSTICS -> {
+                        val referenceExpression = element as KtReferenceExpression
+                        val reference = referenceExpression.mainReference
+                        if (reference is MultiRangeReference) {
+                            AnnotationPresentationInfo(
+                                    ranges = reference.getRanges().map { it.shiftRight(referenceExpression.getTextOffset()) },
+                                    highlightType = ProblemHighlightType.LIKE_UNKNOWN_SYMBOL)
+                        }
+                        else {
+                            AnnotationPresentationInfo(ranges, highlightType = ProblemHighlightType.LIKE_UNKNOWN_SYMBOL)
+                        }
+                    }
+
+                    Errors.ILLEGAL_ESCAPE -> AnnotationPresentationInfo(ranges, textAttributes = JetHighlightingColors.INVALID_STRING_ESCAPE)
+
+                    Errors.REDECLARATION -> AnnotationPresentationInfo(
+                            ranges = listOf(diagnostic.getTextRanges().first()), nonDefaultMessage = "")
+
+                    else -> {
+                        AnnotationPresentationInfo(
+                                ranges,
+                                highlightType = if (factory == Errors.INVISIBLE_REFERENCE)
+                                    ProblemHighlightType.LIKE_UNKNOWN_SYMBOL
+                                else
+                                    null)
+                    }
+                }
+            }
+            Severity.WARNING -> {
+                if (factory == Errors.UNUSED_PARAMETER && shouldSuppressUnusedParameter(element as KtParameter)) {
+                    return
+                }
+
+                AnnotationPresentationInfo(
+                        ranges,
+                        textAttributes = if (factory == Errors.DEPRECATION) CodeInsightColors.DEPRECATED_ATTRIBUTES else null,
+                        highlightType = if (factory in Errors.UNUSED_ELEMENT_DIAGNOSTICS)
+                            ProblemHighlightType.LIKE_UNUSED_SYMBOL
+                        else
+                            null
+                )
+            }
+            Severity.INFO -> return // Do nothing
+        }
+
+        setUpAnnotations(diagnostics, presentationInfo)
+    }
+
+    private fun setUpAnnotations(diagnostics: List<Diagnostic>, data: AnnotationPresentationInfo) {
+        val fixesMap = createQuickFixes(diagnostics)
+        for (range in data.ranges) {
+            for (diagnostic in diagnostics) {
+                val annotation = data.create(diagnostic, range, holder)
+                val fixes = fixesMap[diagnostic]
+
+                fixes.forEach { annotation.registerFix(it) }
+
+                if (diagnostic.getSeverity() == Severity.WARNING) {
+                    annotation.setProblemGroup(KotlinSuppressableWarningProblemGroup(diagnostic.getFactory()))
+
+                    if (fixes.isEmpty()) {
+                        // if there are no quick fixes we need to register an EmptyIntentionAction to enable 'suppress' actions
+                        annotation.registerFix(EmptyIntentionAction(diagnostic.getFactory().getName()))
+                    }
+                }
+            }
+        }
+    }
+}
+
+private class AnnotationPresentationInfo(
+        val ranges: List<TextRange>,
+        val nonDefaultMessage: String? = null,
+        val highlightType: ProblemHighlightType? = null,
+        val textAttributes: TextAttributesKey? = null) {
+
+    public fun create(diagnostic: Diagnostic, range: TextRange, holder: AnnotationHolder): Annotation {
+        val defaultMessage = nonDefaultMessage?: getDefaultMessage(diagnostic)
+
+        val annotation = when (diagnostic.severity) {
+            Severity.ERROR -> holder.createErrorAnnotation(range, defaultMessage)
+            Severity.WARNING -> holder.createWarningAnnotation(range, defaultMessage)
+            else -> throw IllegalArgumentException("Only ERROR and WARNING diagnostics are supported")
+        }
+
+        annotation.tooltip = getMessage(diagnostic)
+
+        if (highlightType != null) {
+            annotation.highlightType = highlightType
+        }
+
+        if (textAttributes != null) {
+            annotation.textAttributes = textAttributes
+        }
+
+        return annotation
+    }
+
+    private fun getMessage(diagnostic: Diagnostic): String {
+        var message = IdeErrorMessages.render(diagnostic)
+        if (KotlinInternalMode.enabled || ApplicationManager.getApplication().isUnitTestMode()) {
+            val factoryName = diagnostic.getFactory().getName()
+            if (message.startsWith("<html>")) {
+                message = "<html>[$factoryName] ${message.substring("<html>".length)}"
+            }
+            else {
+                message = "[$factoryName] $message"
+            }
+        }
+        if (!message.startsWith("<html>")) {
+            message = "<html><body>${XmlStringUtil.escapeString(message)}</body></html>"
+        }
+        return message
+    }
+
+    private fun getDefaultMessage(diagnostic: Diagnostic): String {
+        val message = DefaultErrorMessages.render(diagnostic)
+        if (KotlinInternalMode.enabled || ApplicationManager.getApplication().isUnitTestMode()) {
+            return "[${diagnostic.getFactory().getName()}] $message"
+        }
+        return message
     }
 }

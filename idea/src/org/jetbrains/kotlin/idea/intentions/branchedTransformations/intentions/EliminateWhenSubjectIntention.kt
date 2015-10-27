@@ -20,23 +20,23 @@ import com.intellij.codeInsight.intention.LowPriorityAction
 import com.intellij.openapi.editor.Editor
 import org.jetbrains.kotlin.idea.intentions.JetSelfTargetingIntention
 import org.jetbrains.kotlin.idea.intentions.branchedTransformations.toExpression
-import org.jetbrains.kotlin.psi.JetPsiFactory
-import org.jetbrains.kotlin.psi.JetSimpleNameExpression
-import org.jetbrains.kotlin.psi.JetWhenExpression
+import org.jetbrains.kotlin.psi.KtNameReferenceExpression
+import org.jetbrains.kotlin.psi.KtPsiFactory
+import org.jetbrains.kotlin.psi.KtWhenExpression
 import org.jetbrains.kotlin.psi.buildExpression
 import org.jetbrains.kotlin.psi.psiUtil.startOffset
 
-public class EliminateWhenSubjectIntention : JetSelfTargetingIntention<JetWhenExpression>(javaClass(), "Eliminate argument of 'when'"), LowPriorityAction {
-    override fun isApplicableTo(element: JetWhenExpression, caretOffset: Int): Boolean {
-        if (element.getSubjectExpression() !is JetSimpleNameExpression) return false
+public class EliminateWhenSubjectIntention : JetSelfTargetingIntention<KtWhenExpression>(javaClass(), "Eliminate argument of 'when'"), LowPriorityAction {
+    override fun isApplicableTo(element: KtWhenExpression, caretOffset: Int): Boolean {
+        if (element.getSubjectExpression() !is KtNameReferenceExpression) return false
         val lBrace = element.getOpenBrace() ?: return false
         return caretOffset <= lBrace.startOffset
     }
 
-    override fun applyTo(element: JetWhenExpression, editor: Editor) {
+    override fun applyTo(element: KtWhenExpression, editor: Editor) {
         val subject = element.getSubjectExpression()!!
 
-        val whenExpression = JetPsiFactory(element).buildExpression {
+        val whenExpression = KtPsiFactory(element).buildExpression {
             appendFixedText("when {\n")
 
             for (entry in element.getEntries()) {
@@ -46,10 +46,7 @@ public class EliminateWhenSubjectIntention : JetSelfTargetingIntention<JetWhenEx
                     appendFixedText("else")
                 }
                 else {
-                    for ((i, condition) in entry.getConditions().withIndex()) {
-                        if (i > 0) appendFixedText(",")
-                        appendExpression(condition.toExpression(subject))
-                    }
+                    appendExpressions(entry.conditions.map { it.toExpression(subject) })
                 }
                 appendFixedText("->")
 

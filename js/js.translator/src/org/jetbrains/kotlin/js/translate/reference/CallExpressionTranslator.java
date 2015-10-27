@@ -21,13 +21,14 @@ import com.google.gwt.dev.js.ThrowExceptionOnErrorReporter;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.descriptors.*;
-import org.jetbrains.kotlin.js.parser.ParserPackage;
+import org.jetbrains.kotlin.js.parser.ParserUtilsKt;
 import org.jetbrains.kotlin.js.resolve.diagnostics.JsCallChecker;
 import org.jetbrains.kotlin.js.translate.callTranslator.CallTranslator;
 import org.jetbrains.kotlin.js.translate.context.TranslationContext;
-import org.jetbrains.kotlin.psi.JetCallExpression;
-import org.jetbrains.kotlin.psi.JetExpression;
+import org.jetbrains.kotlin.psi.KtCallExpression;
+import org.jetbrains.kotlin.psi.KtExpression;
 import org.jetbrains.kotlin.psi.ValueArgument;
+import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilKt;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
 import org.jetbrains.kotlin.resolve.inline.InlineUtil;
 
@@ -36,18 +37,17 @@ import java.util.List;
 import static org.jetbrains.kotlin.js.resolve.diagnostics.JsCallChecker.isJsCall;
 import static org.jetbrains.kotlin.js.translate.utils.PsiUtils.getFunctionDescriptor;
 import static org.jetbrains.kotlin.js.translate.utils.InlineUtils.setInlineCallMetadata;
-import static org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilPackage.getFunctionResolvedCallWithAssert;
 import static org.jetbrains.kotlin.resolve.constants.evaluate.ConstantExpressionEvaluator.getConstant;
 
 public final class CallExpressionTranslator extends AbstractCallExpressionTranslator {
 
     @NotNull
     public static JsNode translate(
-            @NotNull JetCallExpression expression,
+            @NotNull KtCallExpression expression,
             @Nullable JsExpression receiver,
             @NotNull TranslationContext context
     ) {
-        ResolvedCall<? extends FunctionDescriptor> resolvedCall = getFunctionResolvedCallWithAssert(expression, context.bindingContext());
+        ResolvedCall<? extends FunctionDescriptor> resolvedCall = CallUtilKt.getFunctionResolvedCallWithAssert(expression, context.bindingContext());
 
         if (isJsCall(resolvedCall)) {
             return (new CallExpressionTranslator(expression, receiver, context)).translateJsCode();
@@ -62,7 +62,7 @@ public final class CallExpressionTranslator extends AbstractCallExpressionTransl
         return callExpression;
     }
 
-    public static boolean shouldBeInlined(@NotNull JetCallExpression expression, @NotNull TranslationContext context) {
+    public static boolean shouldBeInlined(@NotNull KtCallExpression expression, @NotNull TranslationContext context) {
         if (!context.getConfig().isInlineEnabled()) return false;
 
         CallableDescriptor descriptor = getFunctionDescriptor(expression, context);
@@ -83,7 +83,7 @@ public final class CallExpressionTranslator extends AbstractCallExpressionTransl
     }
 
     private CallExpressionTranslator(
-            @NotNull JetCallExpression expression,
+            @NotNull KtCallExpression expression,
             @Nullable JsExpression receiver,
             @NotNull TranslationContext context
     ) {
@@ -98,7 +98,7 @@ public final class CallExpressionTranslator extends AbstractCallExpressionTransl
     @NotNull
     private JsNode translateJsCode() {
         List<? extends ValueArgument> arguments = expression.getValueArguments();
-        JetExpression argumentExpression = arguments.get(0).getArgumentExpression();
+        KtExpression argumentExpression = arguments.get(0).getArgumentExpression();
         assert argumentExpression != null;
 
         List<JsStatement> statements = parseJsCode(argumentExpression);
@@ -119,7 +119,7 @@ public final class CallExpressionTranslator extends AbstractCallExpressionTransl
     }
 
     @NotNull
-    private List<JsStatement> parseJsCode(@NotNull JetExpression jsCodeExpression) {
+    private List<JsStatement> parseJsCode(@NotNull KtExpression jsCodeExpression) {
         String jsCode = JsCallChecker.extractStringValue(getConstant(jsCodeExpression, context().bindingContext()));
 
         assert jsCode != null : "jsCode must be compile time string " + jsCodeExpression.getText();
@@ -131,6 +131,6 @@ public final class CallExpressionTranslator extends AbstractCallExpressionTransl
         assert currentScope instanceof JsFunctionScope : "Usage of js outside of function is unexpected";
         JsScope temporaryRootScope = new JsRootScope(new JsProgram("<js code>"));
         JsScope scope = new DelegatingJsFunctionScopeWithTemporaryParent((JsFunctionScope) currentScope, temporaryRootScope);
-        return ParserPackage.parse(jsCode, ThrowExceptionOnErrorReporter.INSTANCE$, scope);
+        return ParserUtilsKt.parse(jsCode, ThrowExceptionOnErrorReporter.INSTANCE$, scope);
     }
 }

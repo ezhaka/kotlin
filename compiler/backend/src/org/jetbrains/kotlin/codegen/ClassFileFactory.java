@@ -33,7 +33,7 @@ import org.jetbrains.kotlin.load.java.JvmAbi;
 import org.jetbrains.kotlin.load.kotlin.PackagePartClassUtils;
 import org.jetbrains.kotlin.load.kotlin.PackageParts;
 import org.jetbrains.kotlin.name.FqName;
-import org.jetbrains.kotlin.psi.JetFile;
+import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOrigin;
 import org.jetbrains.kotlin.serialization.jvm.JvmPackageTable;
 import org.jetbrains.org.objectweb.asm.Type;
@@ -85,9 +85,6 @@ public class ClassFileFactory implements OutputFileCollection {
         if (!isDone) {
             isDone = true;
             Collection<PackageCodegen> packageCodegens = package2codegen.values();
-            for (PackageCodegen codegen : packageCodegens) {
-                codegen.done();
-            }
             Collection<MultifileClassCodegen> multifileClassCodegens = multifileClass2codegen.values();
             for (MultifileClassCodegen codegen : multifileClassCodegens) {
                 codegen.done();
@@ -114,7 +111,7 @@ public class ClassFileFactory implements OutputFileCollection {
             sourceFiles.addAll(toIoFilesIgnoringNonPhysical(PackagePartClassUtils.getFilesWithCallables(codegen.getFiles())));
         }
 
-        for (PackageParts part : CodegenPackage.addCompiledPartsAndSort(parts, state)) {
+        for (PackageParts part : ClassFileUtilsKt.addCompiledPartsAndSort(parts, state)) {
             PackageParts.Companion.serialize(part, builder);
         }
 
@@ -226,7 +223,7 @@ public class ClassFileFactory implements OutputFileCollection {
     }
 
     @NotNull
-    public PackageCodegen forPackage(@NotNull FqName fqName, @NotNull Collection<JetFile> files) {
+    public PackageCodegen forPackage(@NotNull FqName fqName, @NotNull Collection<KtFile> files) {
         assert !isDone : "Already done!";
         PackageCodegen codegen = package2codegen.get(fqName);
         if (codegen == null) {
@@ -238,7 +235,7 @@ public class ClassFileFactory implements OutputFileCollection {
     }
 
     @NotNull
-    public MultifileClassCodegen forMultifileClass(@NotNull FqName facadeFqName, @NotNull Collection<JetFile> files) {
+    public MultifileClassCodegen forMultifileClass(@NotNull FqName facadeFqName, @NotNull Collection<KtFile> files) {
         assert !isDone : "Already done!";
         MultifileClassCodegen codegen = multifileClass2codegen.get(facadeFqName);
         if (codegen == null) {
@@ -337,14 +334,14 @@ public class ClassFileFactory implements OutputFileCollection {
         public abstract String asText(ClassBuilderFactory factory);
     }
 
-    public void removeInlinedClasses(Set<String> classNamesToRemove) {
+    public void removeClasses(Set<String> classNamesToRemove) {
         for (String classInternalName : classNamesToRemove) {
             generators.remove(classInternalName + ".class");
         }
     }
 
     @TestOnly
-    public List<JetFile> getInputFiles() {
+    public List<KtFile> getInputFiles() {
         return state.getFiles();
     }
 }

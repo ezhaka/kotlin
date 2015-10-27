@@ -21,22 +21,23 @@ import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.core.moveFunctionLiteralOutsideParentheses
-import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.psi.KtCallExpression
+import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.kotlin.psi.psiUtil.containsInside
 import org.jetbrains.kotlin.psi.psiUtil.startOffset
+import org.jetbrains.kotlin.psi.unpackFunctionLiteral
 import org.jetbrains.kotlin.resolve.BindingContext
-import org.jetbrains.kotlin.resolve.calls.callUtil.getValueArgumentsInParentheses
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 
-public class MoveLambdaOutsideParenthesesIntention : JetSelfTargetingIntention<JetCallExpression>(javaClass(), "Move lambda argument out of parentheses") {
-    override fun isApplicableTo(element: JetCallExpression, caretOffset: Int): Boolean {
+public class MoveLambdaOutsideParenthesesIntention : JetSelfTargetingIntention<KtCallExpression>(javaClass(), "Move lambda argument out of parentheses") {
+    override fun isApplicableTo(element: KtCallExpression, caretOffset: Int): Boolean {
         if (element.getFunctionLiteralArguments().isNotEmpty()) return false
         val argument = element.getValueArguments().lastOrNull() ?: return false
         val expression = argument.getArgumentExpression() ?: return false
         val functionLiteral = expression.unpackFunctionLiteral() ?: return false
 
         val callee = element.getCalleeExpression()
-        if (callee is JetSimpleNameExpression) {
+        if (callee is KtNameReferenceExpression) {
             val bindingContext = element.analyze(BodyResolveMode.PARTIAL)
             val targets = bindingContext[BindingContext.REFERENCE_TARGET, callee]?.let { listOf(it) }
                           ?: bindingContext[BindingContext.AMBIGUOUS_REFERENCE_TARGET, callee]
@@ -56,11 +57,11 @@ public class MoveLambdaOutsideParenthesesIntention : JetSelfTargetingIntention<J
         return !bodyRange.containsInside(caretOffset)
     }
 
-    override fun applyTo(element: JetCallExpression, editor: Editor) {
+    override fun applyTo(element: KtCallExpression, editor: Editor) {
         element.moveFunctionLiteralOutsideParentheses()
     }
 
-    fun applyTo(element: JetCallExpression) {
+    fun applyTo(element: KtCallExpression) {
         element.moveFunctionLiteralOutsideParentheses()
     }
 }

@@ -28,6 +28,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.cli.jvm.compiler.CliLightClassGenerationSupport;
 import org.jetbrains.kotlin.cli.jvm.compiler.JvmPackagePartProvider;
+import org.jetbrains.kotlin.context.ContextKt;
 import org.jetbrains.kotlin.context.GlobalContext;
 import org.jetbrains.kotlin.context.ModuleContext;
 import org.jetbrains.kotlin.context.SimpleGlobalContext;
@@ -38,9 +39,9 @@ import org.jetbrains.kotlin.diagnostics.*;
 import org.jetbrains.kotlin.name.FqName;
 import org.jetbrains.kotlin.name.Name;
 import org.jetbrains.kotlin.psi.Call;
-import org.jetbrains.kotlin.psi.JetElement;
-import org.jetbrains.kotlin.psi.JetExpression;
-import org.jetbrains.kotlin.psi.JetFile;
+import org.jetbrains.kotlin.psi.KtElement;
+import org.jetbrains.kotlin.psi.KtExpression;
+import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.resolve.*;
 import org.jetbrains.kotlin.resolve.calls.model.MutableResolvedCall;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
@@ -55,13 +56,11 @@ import org.jetbrains.kotlin.test.InTextDirectivesUtils;
 import org.jetbrains.kotlin.test.JetTestUtils;
 import org.jetbrains.kotlin.test.util.DescriptorValidator;
 import org.jetbrains.kotlin.test.util.RecursiveDescriptorComparator;
-import org.jetbrains.kotlin.utils.UtilsPackage;
+import org.jetbrains.kotlin.utils.ExceptionUtilsKt;
 
 import java.io.File;
 import java.util.*;
 
-import static org.jetbrains.kotlin.context.ContextPackage.withModule;
-import static org.jetbrains.kotlin.context.ContextPackage.withProject;
 import static org.jetbrains.kotlin.diagnostics.Errors.*;
 import static org.jetbrains.kotlin.test.util.RecursiveDescriptorComparator.RECURSIVE;
 import static org.jetbrains.kotlin.test.util.RecursiveDescriptorComparator.RECURSIVE_ALL;
@@ -120,7 +119,7 @@ public abstract class AbstractJetDiagnosticsTest extends BaseDiagnosticsTest {
             TestModule testModule = entry.getKey();
             List<? extends TestFile> testFilesInModule = entry.getValue();
 
-            List<JetFile> jetFiles = getJetFiles(testFilesInModule, true);
+            List<KtFile> jetFiles = getJetFiles(testFilesInModule, true);
 
             ModuleDescriptorImpl module = modules.get(testModule);
             BindingTrace moduleTrace = new CliLightClassGenerationSupport.NoScopeRecordCliBindingTrace();
@@ -128,7 +127,7 @@ public abstract class AbstractJetDiagnosticsTest extends BaseDiagnosticsTest {
             moduleBindings.put(testModule, moduleTrace.getBindingContext());
 
 
-            ModuleContext moduleContext = withModule(withProject(context, getProject()), module);
+            ModuleContext moduleContext = ContextKt.withModule(ContextKt.withProject(context, getProject()), module);
             analyzeModuleContents(moduleContext, jetFiles, moduleTrace);
 
             checkAllResolvedCallsAreCompleted(jetFiles, moduleTrace.getBindingContext());
@@ -178,13 +177,13 @@ public abstract class AbstractJetDiagnosticsTest extends BaseDiagnosticsTest {
 
         // now we throw a previously found error, if any
         if (exceptionFromDescriptorValidation != null) {
-            throw UtilsPackage.rethrow(exceptionFromDescriptorValidation);
+            throw ExceptionUtilsKt.rethrow(exceptionFromDescriptorValidation);
         }
         if (exceptionFromLazyResolveLogValidation != null) {
-            throw UtilsPackage.rethrow(exceptionFromLazyResolveLogValidation);
+            throw ExceptionUtilsKt.rethrow(exceptionFromLazyResolveLogValidation);
         }
         if (exceptionFromDynamicCallDescriptorsValidation != null) {
-            throw UtilsPackage.rethrow(exceptionFromDynamicCallDescriptorsValidation);
+            throw ExceptionUtilsKt.rethrow(exceptionFromDynamicCallDescriptorsValidation);
         }
     }
 
@@ -235,7 +234,7 @@ public abstract class AbstractJetDiagnosticsTest extends BaseDiagnosticsTest {
 
     protected void analyzeModuleContents(
             @NotNull ModuleContext moduleContext,
-            @NotNull List<JetFile> jetFiles,
+            @NotNull List<KtFile> jetFiles,
             @NotNull BindingTrace moduleTrace
     ) {
         // New JavaDescriptorResolver is created for each module, which is good because it emulates different Java libraries for each module,
@@ -367,8 +366,8 @@ public abstract class AbstractJetDiagnosticsTest extends BaseDiagnosticsTest {
         return moduleDescriptor;
     }
 
-    private static void checkAllResolvedCallsAreCompleted(@NotNull List<JetFile> jetFiles, @NotNull BindingContext bindingContext) {
-        for (JetFile file : jetFiles) {
+    private static void checkAllResolvedCallsAreCompleted(@NotNull List<KtFile> jetFiles, @NotNull BindingContext bindingContext) {
+        for (KtFile file : jetFiles) {
             if (!AnalyzingUtils.getSyntaxErrorRanges(file).isEmpty()) {
                 return;
             }
@@ -376,7 +375,7 @@ public abstract class AbstractJetDiagnosticsTest extends BaseDiagnosticsTest {
 
         ImmutableMap<Call, ResolvedCall<?>> resolvedCallsEntries = bindingContext.getSliceContents(BindingContext.RESOLVED_CALL);
         for (Map.Entry<Call, ResolvedCall<?>> entry : resolvedCallsEntries.entrySet()) {
-            JetElement element = entry.getKey().getCallElement();
+            KtElement element = entry.getKey().getCallElement();
             ResolvedCall<?> resolvedCall = entry.getValue();
 
             DiagnosticUtils.LineAndColumn lineAndColumn =
@@ -394,7 +393,7 @@ public abstract class AbstractJetDiagnosticsTest extends BaseDiagnosticsTest {
         Set<DiagnosticFactory1<PsiElement, Collection<? extends ResolvedCall<?>>>> diagnosticsStoringResolvedCalls1 = Sets.newHashSet(
                 OVERLOAD_RESOLUTION_AMBIGUITY, NONE_APPLICABLE, CANNOT_COMPLETE_RESOLVE, UNRESOLVED_REFERENCE_WRONG_RECEIVER,
                 ASSIGN_OPERATOR_AMBIGUITY, ITERATOR_AMBIGUITY);
-        Set<DiagnosticFactory2<JetExpression, ? extends Comparable<? extends Comparable<?>>, Collection<? extends ResolvedCall<?>>>>
+        Set<DiagnosticFactory2<KtExpression, ? extends Comparable<? extends Comparable<?>>, Collection<? extends ResolvedCall<?>>>>
                 diagnosticsStoringResolvedCalls2 = Sets.newHashSet(
                 COMPONENT_FUNCTION_AMBIGUITY, DELEGATE_SPECIAL_FUNCTION_AMBIGUITY, DELEGATE_SPECIAL_FUNCTION_NONE_APPLICABLE);
         Diagnostics diagnostics = bindingContext.getDiagnostics();

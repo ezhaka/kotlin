@@ -35,25 +35,24 @@ import org.jetbrains.kotlin.codegen.state.GenerationState;
 import org.jetbrains.kotlin.codegen.state.JetTypeMapper;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.jvm.RuntimeAssertionInfo;
-import org.jetbrains.kotlin.lexer.JetTokens;
+import org.jetbrains.kotlin.lexer.KtTokens;
 import org.jetbrains.kotlin.load.java.JavaVisibilities;
 import org.jetbrains.kotlin.load.java.JvmAnnotationNames;
 import org.jetbrains.kotlin.load.java.descriptors.JavaCallableMemberDescriptor;
 import org.jetbrains.kotlin.name.FqName;
+import org.jetbrains.kotlin.resolve.DeprecationUtilKt;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
 import org.jetbrains.kotlin.resolve.annotations.AnnotationUtilKt;
-import org.jetbrains.kotlin.resolve.annotations.AnnotationsPackage;
-import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilPackage;
 import org.jetbrains.kotlin.resolve.inline.InlineUtil;
+import org.jetbrains.kotlin.resolve.jvm.JavaDescriptorResolverKt;
 import org.jetbrains.kotlin.resolve.jvm.JvmClassName;
-import org.jetbrains.kotlin.resolve.jvm.JvmPackage;
 import org.jetbrains.kotlin.resolve.jvm.JvmPrimitiveType;
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOrigin;
 import org.jetbrains.kotlin.serialization.DescriptorSerializer;
 import org.jetbrains.kotlin.serialization.jvm.BitEncoding;
 import org.jetbrains.kotlin.synthetic.SyntheticJavaPropertyDescriptor;
-import org.jetbrains.kotlin.types.JetType;
-import org.jetbrains.kotlin.types.TypesPackage;
+import org.jetbrains.kotlin.types.FlexibleTypesKt;
+import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.org.objectweb.asm.*;
 import org.jetbrains.org.objectweb.asm.commons.InstructionAdapter;
 import org.jetbrains.org.objectweb.asm.commons.Method;
@@ -69,6 +68,7 @@ import static org.jetbrains.kotlin.codegen.JvmCodegenUtil.isJvmInterface;
 import static org.jetbrains.kotlin.load.java.JvmAnnotationNames.KOTLIN_SYNTHETIC_CLASS;
 import static org.jetbrains.kotlin.resolve.DescriptorUtils.*;
 import static org.jetbrains.kotlin.resolve.jvm.AsmTypes.*;
+import static org.jetbrains.kotlin.resolve.jvm.annotations.AnnotationUtilKt.hasJvmFieldAnnotation;
 import static org.jetbrains.kotlin.types.TypeUtils.isNullableType;
 import static org.jetbrains.org.objectweb.asm.Opcodes.*;
 
@@ -176,7 +176,7 @@ public class AsmUtil {
     public static boolean isStaticMethod(OwnerKind kind, CallableMemberDescriptor functionDescriptor) {
         return isStaticKind(kind) ||
                JetTypeMapper.isStaticAccessor(functionDescriptor) ||
-               AnnotationsPackage.isPlatformStaticInObjectOrClass(functionDescriptor);
+               AnnotationUtilKt.isPlatformStaticInObjectOrClass(functionDescriptor);
     }
 
     public static boolean isStaticKind(OwnerKind kind) {
@@ -192,7 +192,11 @@ public class AsmUtil {
             }
         }
 
-        if (AnnotationsPackage.isPlatformStaticInCompanionObject(functionDescriptor)) {
+        if (functionDescriptor.getOriginal().isExternal()) {
+            flags |= Opcodes.ACC_NATIVE;
+        }
+
+        if (AnnotationUtilKt.isPlatformStaticInCompanionObject(functionDescriptor)) {
             // Native method will be a member of the class, the companion object method will be delegated to it
             flags &= ~Opcodes.ACC_NATIVE;
         }
@@ -214,7 +218,6 @@ public class AsmUtil {
         }
 
         if (JetTypeMapper.isAccessor(functionDescriptor)
-            || functionDescriptor.getVisibility() == Visibilities.INTERNAL
             || AnnotationUtilKt.hasJvmSyntheticAnnotation(functionDescriptor)) {
             flags |= ACC_SYNTHETIC;
         }
@@ -226,9 +229,9 @@ public class AsmUtil {
         int flags = getVisibilityAccessFlag(functionDescriptor);
         flags |= getVarargsFlag(functionDescriptor);
         flags |= getDeprecatedAccessFlag(functionDescriptor);
-        if (DescriptorUtilPackage.isAnnotatedAsHidden(functionDescriptor)
+        if (DeprecationUtilKt.isAnnotatedAsHidden(functionDescriptor)
             || functionDescriptor instanceof PropertyAccessorDescriptor
-               && DescriptorUtilPackage.isAnnotatedAsHidden(((PropertyAccessorDescriptor) functionDescriptor).getCorrespondingProperty())) {
+               && DeprecationUtilKt.isAnnotatedAsHidden(((PropertyAccessorDescriptor) functionDescriptor).getCorrespondingProperty())) {
             flags |= ACC_SYNTHETIC;
         }
         return flags;
@@ -240,9 +243,13 @@ public class AsmUtil {
         if (specialCase != null) {
             return specialCase;
         }
-        Integer defaultMapping = visibilityToAccessFlag.get(descriptor.getVisibility());
+        return getDefaultVisibilityFlag(descriptor.getVisibility());
+    }
+
+    public static int getDefaultVisibilityFlag(@NotNull Visibility visibility) {
+        Integer defaultMapping = visibilityToAccessFlag.get(visibility);
         if (defaultMapping == null) {
-            throw new IllegalStateException(descriptor.getVisibility() + " is not a valid visibility in backend: " + descriptor);
+            throw new IllegalStateException(visibility + " is not a valid visibility in backend");
         }
         return defaultMapping;
     }
@@ -334,7 +341,7 @@ public class AsmUtil {
         }
 
         if (memberDescriptor instanceof ConstructorDescriptor && isAnonymousObject(memberDescriptor.getContainingDeclaration())) {
-            return NO_FLAG_PACKAGE_PRIVATE;
+            return getVisibilityAccessFlagForAnonymous((ClassDescriptor) memberDescriptor.getContainingDeclaration());
         }
 
         if (memberDescriptor instanceof SyntheticJavaPropertyDescriptor) {
@@ -375,11 +382,11 @@ public class AsmUtil {
             }
         }
 
-        if (memberDescriptor instanceof PropertyDescriptor && ((PropertyDescriptor) memberDescriptor).isConst()) return null;
-
-        if (containingDeclaration instanceof PackageFragmentDescriptor) {
-            return ACC_PUBLIC;
+        if (memberDescriptor instanceof PropertyDescriptor &&
+            ((PropertyDescriptor) memberDescriptor).isConst() || hasJvmFieldAnnotation(memberDescriptor)) {
+            return null;
         }
+
         return null;
     }
 
@@ -425,7 +432,7 @@ public class AsmUtil {
             allFields.add(Pair.create(CAPTURED_THIS_FIELD, typeMapper.mapType(captureThis)));
         }
 
-        JetType captureReceiverType = closure.getCaptureReceiverType();
+        KotlinType captureReceiverType = closure.getCaptureReceiverType();
         if (captureReceiverType != null) {
             allFields.add(Pair.create(CAPTURED_RECEIVER_FIELD, typeMapper.mapType(captureReceiverType)));
         }
@@ -551,7 +558,7 @@ public class AsmUtil {
                 right.put(rightType, v);
                 genAreEqualCall(v);
 
-                if (opToken == JetTokens.EXCLEQ || opToken == JetTokens.EXCLEQEQEQ) {
+                if (opToken == KtTokens.EXCLEQ || opToken == KtTokens.EXCLEQEQEQ) {
                     genInvertBoolean(v);
                 }
                 return Unit.INSTANCE$;
@@ -631,7 +638,7 @@ public class AsmUtil {
             @NotNull CallableDescriptor parameter,
             @NotNull String name
     ) {
-        JetType type = parameter.getReturnType();
+        KotlinType type = parameter.getReturnType();
         if (type == null || isNullableType(type)) return;
         
         int index = frameMap.getIndex(parameter);
@@ -659,14 +666,14 @@ public class AsmUtil {
             @NotNull String assertMethodToCall
     ) {
         // Assertions are generated elsewhere for platform types
-        if (JvmPackage.getPLATFORM_TYPES()) return false;
+        if (JavaDescriptorResolverKt.getPLATFORM_TYPES()) return false;
 
         if (!state.isCallAssertionsEnabled()) return false;
 
         if (!isDeclaredInJava(descriptor)) return false;
 
-        JetType type = descriptor.getReturnType();
-        if (type == null || isNullableType(TypesPackage.lowerIfFlexible(type))) return false;
+        KotlinType type = descriptor.getReturnType();
+        if (type == null || isNullableType(FlexibleTypesKt.lowerIfFlexible(type))) return false;
 
         Type asmType = state.getTypeMapper().mapReturnType(descriptor);
         if (asmType.getSort() == Type.OBJECT || asmType.getSort() == Type.ARRAY) {
@@ -779,10 +786,13 @@ public class AsmUtil {
     }
 
     public static boolean isPropertyWithBackingFieldCopyInOuterClass(@NotNull PropertyDescriptor propertyDescriptor) {
+        boolean isExtensionProperty = propertyDescriptor.getExtensionReceiverParameter() != null;
         DeclarationDescriptor propertyContainer = propertyDescriptor.getContainingDeclaration();
-        return propertyDescriptor.isConst()
-               && isInterfaceCompanionObject(propertyContainer)
-               && propertyDescriptor.getVisibility() == Visibilities.PUBLIC;
+        return !propertyDescriptor.isVar()
+               && !isExtensionProperty
+               && isCompanionObject(propertyContainer) && isInterface(propertyContainer.getContainingDeclaration())
+               && areBothAccessorDefault(propertyDescriptor)
+               && getVisibilityForSpecialPropertyBackingField(propertyDescriptor, false) == ACC_PUBLIC;
     }
 
     public static boolean isCompanionObjectWithBackingFieldsInOuter(@NotNull DeclarationDescriptor companionObject) {

@@ -49,9 +49,9 @@ public class JetInspectionTestGenerated extends AbstractJetInspectionTest {
             doTest(fileName);
         }
 
-        @TestMetadata("conventionNameCalls/replaceGet/inspectionData/inspections.test")
-        public void testConventionNameCalls_replaceGet_inspectionData_Inspections_test() throws Exception {
-            String fileName = JetTestUtils.navigationMetadata("idea/testData/intentions/conventionNameCalls/replaceGet/inspectionData/inspections.test");
+        @TestMetadata("conventionNameCalls/replaceGetOrSet/inspectionData/inspections.test")
+        public void testConventionNameCalls_replaceGetOrSet_inspectionData_Inspections_test() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("idea/testData/intentions/conventionNameCalls/replaceGetOrSet/inspectionData/inspections.test");
             doTest(fileName);
         }
 
@@ -64,6 +64,12 @@ public class JetInspectionTestGenerated extends AbstractJetInspectionTest {
         @TestMetadata("deprecatedCallableAddReplaceWith/inspectionData/inspections.test")
         public void testDeprecatedCallableAddReplaceWith_inspectionData_Inspections_test() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("idea/testData/intentions/deprecatedCallableAddReplaceWith/inspectionData/inspections.test");
+            doTest(fileName);
+        }
+
+        @TestMetadata("objectLiteralToLambda/inspectionData/inspections.test")
+        public void testObjectLiteralToLambda_inspectionData_Inspections_test() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("idea/testData/intentions/objectLiteralToLambda/inspectionData/inspections.test");
             doTest(fileName);
         }
 
@@ -97,6 +103,12 @@ public class JetInspectionTestGenerated extends AbstractJetInspectionTest {
         @TestMetadata("conflictingExtensionProperty/inspectionData/inspections.test")
         public void testConflictingExtensionProperty_inspectionData_Inspections_test() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("idea/testData/inspections/conflictingExtensionProperty/inspectionData/inspections.test");
+            doTest(fileName);
+        }
+
+        @TestMetadata("equalsAndHashCode/inspectionData/inspections.test")
+        public void testEqualsAndHashCode_inspectionData_Inspections_test() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("idea/testData/inspections/equalsAndHashCode/inspectionData/inspections.test");
             doTest(fileName);
         }
 

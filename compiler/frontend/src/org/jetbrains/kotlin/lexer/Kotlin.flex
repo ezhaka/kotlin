@@ -103,11 +103,6 @@ FLOATING_POINT_LITERAL3=({DIGIT})+({EXPONENT_PART})({FLOATING_POINT_LITERAL_SUFF
 FLOATING_POINT_LITERAL4=({DIGIT})+({FLOATING_POINT_LITERAL_SUFFIX})
 FLOATING_POINT_LITERAL_SUFFIX=[Ff]
 EXPONENT_PART=[Ee]["+""-"]?({DIGIT})*
-//HEX_DOUBLE_LITERAL={HEX_SIGNIFICAND}{BINARY_EXPONENT}[Dd]?
-HEX_DOUBLE_LITERAL={HEX_SIGNIFICAND}{BINARY_EXPONENT}?
-BINARY_EXPONENT=[Pp][+-]?{DIGIT}+
-HEX_SIGNIFICAND={HEX_INTEGER_LITERAL}|0[Xx]{HEX_DIGIT}*\.{HEX_DIGIT}+
-//HEX_SIGNIFICAND={HEX_INTEGER_LITERAL}|{HEX_INTEGER_LITERAL}\.|0[Xx]{HEX_DIGIT}*\.{HEX_DIGIT}+
 
 CHARACTER_LITERAL="'"([^\\\'\n]|{ESCAPE_SEQUENCE})*("'"|\\)?
 // TODO: introduce symbols (e.g. 'foo) as another way to write string literals
@@ -236,7 +231,6 @@ LONG_TEMPLATE_ENTRY_START=\$\{
 {INTEGER_LITERAL} { return JetTokens.INTEGER_LITERAL; }
 
 {DOUBLE_LITERAL}     { return JetTokens.FLOAT_LITERAL; }
-{HEX_DOUBLE_LITERAL} { return JetTokens.FLOAT_LITERAL; }
 
 {CHARACTER_LITERAL} { return JetTokens.CHARACTER_LITERAL; }
 
@@ -263,7 +257,6 @@ LONG_TEMPLATE_ENTRY_START=\$\{
 "var"        { return JetTokens.VAR_KEYWORD ;}
 "fun"        { return JetTokens.FUN_KEYWORD ;}
 "for"        { return JetTokens.FOR_KEYWORD ;}
-//"new"        { return JetTokens.NEW_KEYWORD ;}
 "is"         { return JetTokens.IS_KEYWORD ;}
 "in"         { return JetTokens.IN_KEYWORD ;}
 "if"         { return JetTokens.IF_KEYWORD ;}
@@ -286,13 +279,8 @@ LONG_TEMPLATE_ENTRY_START=\$\{
 ">="         { return JetTokens.GTEQ      ; }
 "=="         { return JetTokens.EQEQ      ; }
 "!="         { return JetTokens.EXCLEQ    ; }
-//"!!"         { return JetTokens.EXCLEXCL  ; }
 "&&"         { return JetTokens.ANDAND    ; }
 "||"         { return JetTokens.OROR      ; }
-//"?."         { return JetTokens.SAFE_ACCESS;}
-//"?:"         { return JetTokens.ELVIS     ; }
-//".*"         { return JetTokens.MAP       ; }
-//".?"         { return JetTokens.FILTER    ; }
 "*="         { return JetTokens.MULTEQ    ; }
 "/="         { return JetTokens.DIVEQ     ; }
 "%="         { return JetTokens.PERCEQ    ; }

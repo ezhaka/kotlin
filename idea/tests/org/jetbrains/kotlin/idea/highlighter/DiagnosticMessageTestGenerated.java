@@ -31,8 +31,20 @@ import java.util.regex.Pattern;
 @TestDataPath("$PROJECT_ROOT")
 @RunWith(JUnit3RunnerWithInners.class)
 public class DiagnosticMessageTestGenerated extends AbstractDiagnosticMessageTest {
+    @TestMetadata("abstractBaseClassMemberNotImplemented.kt")
+    public void testAbstractBaseClassMemberNotImplemented() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("idea/testData/diagnosticMessage/abstractBaseClassMemberNotImplemented.kt");
+        doTest(fileName);
+    }
+
     public void testAllFilesPresentInDiagnosticMessage() throws Exception {
         JetTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("idea/testData/diagnosticMessage"), Pattern.compile("^(.+)\\.kt$"), false);
+    }
+
+    @TestMetadata("annotationsForResolve.kt")
+    public void testAnnotationsForResolve() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("idea/testData/diagnosticMessage/annotationsForResolve.kt");
+        doTest(fileName);
     }
 
     @TestMetadata("assignedButNeverAccessedVariable.kt")
@@ -200,12 +212,6 @@ public class DiagnosticMessageTestGenerated extends AbstractDiagnosticMessageTes
     @TestMetadata("upperBoundViolated.kt")
     public void testUpperBoundViolated() throws Exception {
         String fileName = JetTestUtils.navigationMetadata("idea/testData/diagnosticMessage/upperBoundViolated.kt");
-        doTest(fileName);
-    }
-
-    @TestMetadata("wrongReturnTypeInImplementation.kt")
-    public void testWrongReturnTypeInImplementation() throws Exception {
-        String fileName = JetTestUtils.navigationMetadata("idea/testData/diagnosticMessage/wrongReturnTypeInImplementation.kt");
         doTest(fileName);
     }
 }

@@ -16,11 +16,9 @@
 
 package org.jetbrains.kotlin.idea.util
 
-import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor
-import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
-import org.jetbrains.kotlin.descriptors.ModuleDescriptor
-import org.jetbrains.kotlin.descriptors.SimpleFunctionDescriptor
-import org.jetbrains.kotlin.lexer.JetTokens
+import org.jetbrains.kotlin.descriptors.*
+import org.jetbrains.kotlin.idea.resolve.ResolutionFacade
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.getReceiverExpression
 import org.jetbrains.kotlin.psi.psiUtil.isImportDirectiveExpression
@@ -32,40 +30,43 @@ import org.jetbrains.kotlin.resolve.calls.smartcasts.SmartCastManager
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindExclude
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
 import org.jetbrains.kotlin.resolve.scopes.receivers.ExpressionReceiver
-import org.jetbrains.kotlin.types.JetType
+import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.utils.addToStdlib.singletonOrEmptyList
 
-public sealed class CallType<TReceiver : JetElement?>(val descriptorKindFilter: DescriptorKindFilter) {
+public sealed class CallType<TReceiver : KtElement?>(val descriptorKindFilter: DescriptorKindFilter) {
     object UNKNOWN : CallType<Nothing?>(DescriptorKindFilter.ALL)
 
     object DEFAULT : CallType<Nothing?>(DescriptorKindFilter.ALL)
 
-    object DOT : CallType<JetExpression>(DescriptorKindFilter.ALL)
+    object DOT : CallType<KtExpression>(DescriptorKindFilter.ALL)
 
-    object SAFE : CallType<JetExpression>(DescriptorKindFilter.ALL)
+    object SAFE : CallType<KtExpression>(DescriptorKindFilter.ALL)
 
-    object INFIX : CallType<JetExpression>(DescriptorKindFilter.FUNCTIONS exclude NonInfixExclude)
+    object INFIX : CallType<KtExpression>(DescriptorKindFilter.FUNCTIONS exclude NonInfixExclude)
 
-    object OPERATOR : CallType<JetExpression>(DescriptorKindFilter.FUNCTIONS exclude NonOperatorExclude)
+    object OPERATOR : CallType<KtExpression>(DescriptorKindFilter.FUNCTIONS exclude NonOperatorExclude)
 
-    object CALLABLE_REFERENCE : CallType<JetTypeReference?>(DescriptorKindFilter.CALLABLES exclude CallableReferenceExclude)
+    object CALLABLE_REFERENCE : CallType<KtTypeReference?>(DescriptorKindFilter.CALLABLES exclude CallableReferenceExclude)
 
-    object IMPORT_DIRECTIVE : CallType<JetExpression?>(DescriptorKindFilter.ALL)
+    object IMPORT_DIRECTIVE : CallType<KtExpression?>(DescriptorKindFilter.ALL)
 
-    object PACKAGE_DIRECTIVE : CallType<JetExpression?>(DescriptorKindFilter.PACKAGES)
+    object PACKAGE_DIRECTIVE : CallType<KtExpression?>(DescriptorKindFilter.PACKAGES)
 
-    object TYPE : CallType<JetExpression?>(DescriptorKindFilter(DescriptorKindFilter.CLASSIFIERS_MASK or DescriptorKindFilter.PACKAGES_MASK))
+    object TYPE : CallType<KtExpression?>(DescriptorKindFilter(DescriptorKindFilter.CLASSIFIERS_MASK or DescriptorKindFilter.PACKAGES_MASK) exclude DescriptorKindExclude.EnumEntry)
 
-    private object NonInfixExclude : DescriptorKindExclude {
-        //TODO: check 'infix' modifier
+    object DELEGATE : CallType<KtExpression?>(DescriptorKindFilter.FUNCTIONS)
+
+    object ANNOTATION : CallType<KtExpression?>(DescriptorKindFilter(DescriptorKindFilter.CLASSIFIERS_MASK or DescriptorKindFilter.PACKAGES_MASK) exclude NonAnnotationClassifierExclude)
+
+    private object NonInfixExclude : DescriptorKindExclude() {
         override fun excludes(descriptor: DeclarationDescriptor) =
-                !(descriptor is SimpleFunctionDescriptor && descriptor.valueParameters.size() == 1)
+                !(descriptor is SimpleFunctionDescriptor && descriptor.isInfix)
 
         override val fullyExcludedDescriptorKinds: Int
             get() = 0
     }
 
-    private object NonOperatorExclude : DescriptorKindExclude {
+    private object NonOperatorExclude : DescriptorKindExclude() {
         override fun excludes(descriptor: DeclarationDescriptor) =
                 !(descriptor is SimpleFunctionDescriptor && descriptor.isOperator)
 
@@ -73,7 +74,7 @@ public sealed class CallType<TReceiver : JetElement?>(val descriptorKindFilter: 
             get() = 0
     }
 
-    private object CallableReferenceExclude : DescriptorKindExclude {
+    private object CallableReferenceExclude : DescriptorKindExclude() {
         override fun excludes(descriptor: DeclarationDescriptor) /* currently not supported for locals, synthetic and genetic */
                 = descriptor !is CallableMemberDescriptor || descriptor.kind == CallableMemberDescriptor.Kind.SYNTHESIZED || descriptor.typeParameters.isNotEmpty()
 
@@ -81,27 +82,37 @@ public sealed class CallType<TReceiver : JetElement?>(val descriptorKindFilter: 
             get() = 0
     }
 
+    private object NonAnnotationClassifierExclude : DescriptorKindExclude() {
+        override fun excludes(descriptor: DeclarationDescriptor): Boolean {
+            if (descriptor !is ClassifierDescriptor) return false
+            return descriptor !is ClassDescriptor || descriptor.getKind() != ClassKind.ANNOTATION_CLASS
+        }
+
+        override val fullyExcludedDescriptorKinds: Int get() = 0
+    }
 }
 
-public sealed class CallTypeAndReceiver<TReceiver : JetElement?, TCallType : CallType<TReceiver>>(
+public sealed class CallTypeAndReceiver<TReceiver : KtElement?, TCallType : CallType<TReceiver>>(
         val callType: TCallType,
         val receiver: TReceiver
 ) {
     object UNKNOWN : CallTypeAndReceiver<Nothing?, CallType.UNKNOWN>(CallType.UNKNOWN, null)
     object DEFAULT : CallTypeAndReceiver<Nothing?, CallType.DEFAULT>(CallType.DEFAULT, null)
-    class DOT(receiver: JetExpression) : CallTypeAndReceiver<JetExpression, CallType.DOT>(CallType.DOT, receiver)
-    class SAFE(receiver: JetExpression) : CallTypeAndReceiver<JetExpression, CallType.SAFE>(CallType.SAFE, receiver)
-    class INFIX(receiver: JetExpression) : CallTypeAndReceiver<JetExpression, CallType.INFIX>(CallType.INFIX, receiver)
-    class OPERATOR(receiver: JetExpression) : CallTypeAndReceiver<JetExpression, CallType.OPERATOR>(CallType.OPERATOR, receiver)
-    class CALLABLE_REFERENCE(receiver: JetTypeReference?) : CallTypeAndReceiver<JetTypeReference?, CallType.CALLABLE_REFERENCE>(CallType.CALLABLE_REFERENCE, receiver)
-    class IMPORT_DIRECTIVE(receiver: JetExpression?) : CallTypeAndReceiver<JetExpression?, CallType.IMPORT_DIRECTIVE>(CallType.IMPORT_DIRECTIVE, receiver)
-    class PACKAGE_DIRECTIVE(receiver: JetExpression?) : CallTypeAndReceiver<JetExpression?, CallType.PACKAGE_DIRECTIVE>(CallType.PACKAGE_DIRECTIVE, receiver)
-    class TYPE(receiver: JetExpression?) : CallTypeAndReceiver<JetExpression?, CallType.TYPE>(CallType.TYPE, receiver)
+    class DOT(receiver: KtExpression) : CallTypeAndReceiver<KtExpression, CallType.DOT>(CallType.DOT, receiver)
+    class SAFE(receiver: KtExpression) : CallTypeAndReceiver<KtExpression, CallType.SAFE>(CallType.SAFE, receiver)
+    class INFIX(receiver: KtExpression) : CallTypeAndReceiver<KtExpression, CallType.INFIX>(CallType.INFIX, receiver)
+    class OPERATOR(receiver: KtExpression) : CallTypeAndReceiver<KtExpression, CallType.OPERATOR>(CallType.OPERATOR, receiver)
+    class CALLABLE_REFERENCE(receiver: KtTypeReference?) : CallTypeAndReceiver<KtTypeReference?, CallType.CALLABLE_REFERENCE>(CallType.CALLABLE_REFERENCE, receiver)
+    class IMPORT_DIRECTIVE(receiver: KtExpression?) : CallTypeAndReceiver<KtExpression?, CallType.IMPORT_DIRECTIVE>(CallType.IMPORT_DIRECTIVE, receiver)
+    class PACKAGE_DIRECTIVE(receiver: KtExpression?) : CallTypeAndReceiver<KtExpression?, CallType.PACKAGE_DIRECTIVE>(CallType.PACKAGE_DIRECTIVE, receiver)
+    class TYPE(receiver: KtExpression?) : CallTypeAndReceiver<KtExpression?, CallType.TYPE>(CallType.TYPE, receiver)
+    class DELEGATE(receiver: KtExpression?) : CallTypeAndReceiver<KtExpression?, CallType.DELEGATE>(CallType.DELEGATE, receiver)
+    class ANNOTATION(receiver: KtExpression?) : CallTypeAndReceiver<KtExpression?, CallType.ANNOTATION>(CallType.ANNOTATION, receiver)
 
     companion object {
-        public fun detect(expression: JetSimpleNameExpression): CallTypeAndReceiver<*, *> {
+        public fun detect(expression: KtSimpleNameExpression): CallTypeAndReceiver<*, *> {
             val parent = expression.parent
-            if (parent is JetCallableReferenceExpression) {
+            if (parent is KtCallableReferenceExpression) {
                 return CallTypeAndReceiver.CALLABLE_REFERENCE(parent.typeReference)
             }
 
@@ -115,44 +126,49 @@ public sealed class CallTypeAndReceiver<TReceiver : JetElement?, TCallType : Cal
                 return CallTypeAndReceiver.PACKAGE_DIRECTIVE(receiverExpression)
             }
 
-            if (parent is JetUserType) {
+            if (parent is KtUserType) {
+                val constructorCallee = (parent.parent as? KtTypeReference)?.parent as? KtConstructorCalleeExpression
+                if (constructorCallee != null && constructorCallee.parent is KtAnnotationEntry) {
+                    return CallTypeAndReceiver.ANNOTATION(receiverExpression)
+                }
+
                 return CallTypeAndReceiver.TYPE(receiverExpression)
             }
 
             when (expression) {
-                is JetOperationReferenceExpression -> {
+                is KtOperationReferenceExpression -> {
                     if (receiverExpression == null) {
                         return UNKNOWN // incomplete code
                     }
                     return when (parent) {
-                        is JetBinaryExpression -> {
-                            if (parent.operationToken == JetTokens.IDENTIFIER)
+                        is KtBinaryExpression -> {
+                            if (parent.operationToken == KtTokens.IDENTIFIER)
                                 CallTypeAndReceiver.INFIX(receiverExpression)
                             else
                                 CallTypeAndReceiver.OPERATOR(receiverExpression)
                         }
 
-                        is JetUnaryExpression -> CallTypeAndReceiver.OPERATOR(receiverExpression)
+                        is KtUnaryExpression -> CallTypeAndReceiver.OPERATOR(receiverExpression)
 
                         else -> error("Unknown parent for JetOperationReferenceExpression: $parent")
                     }
                 }
 
-                is JetNameReferenceExpression -> {
+                is KtNameReferenceExpression -> {
                     if (receiverExpression == null) {
                         return CallTypeAndReceiver.DEFAULT
                     }
 
                     return when (parent) {
-                        is JetCallExpression -> {
-                            if ((parent.parent as JetQualifiedExpression).operationSign == JetTokens.SAFE_ACCESS)
+                        is KtCallExpression -> {
+                            if ((parent.parent as KtQualifiedExpression).operationSign == KtTokens.SAFE_ACCESS)
                                 CallTypeAndReceiver.SAFE(receiverExpression)
                             else
                                 CallTypeAndReceiver.DOT(receiverExpression)
                         }
 
-                        is JetQualifiedExpression -> {
-                            if (parent.operationSign == JetTokens.SAFE_ACCESS)
+                        is KtQualifiedExpression -> {
+                            if (parent.operationSign == KtTokens.SAFE_ACCESS)
                                 CallTypeAndReceiver.SAFE(receiverExpression)
                             else
                                 CallTypeAndReceiver.DOT(receiverExpression)
@@ -170,25 +186,29 @@ public sealed class CallTypeAndReceiver<TReceiver : JetElement?, TCallType : Cal
 
 public fun CallTypeAndReceiver<*, *>.receiverTypes(
         bindingContext: BindingContext,
-        position: JetExpression,
+        position: KtExpression,
         moduleDescriptor: ModuleDescriptor,
+        resolutionFacade: ResolutionFacade,
         predictableSmartCastsOnly: Boolean
-): Collection<JetType>? {
-    val receiverExpression: JetExpression?
+): Collection<KotlinType>? {
+    val receiverExpression: KtExpression?
     when (this) {
         is CallTypeAndReceiver.CALLABLE_REFERENCE -> {
             return receiver?.let { bindingContext[BindingContext.TYPE, it] }.singletonOrEmptyList()
         }
 
         is CallTypeAndReceiver.DEFAULT -> receiverExpression = null
+
         is CallTypeAndReceiver.DOT -> receiverExpression = receiver
         is CallTypeAndReceiver.SAFE -> receiverExpression = receiver
         is CallTypeAndReceiver.INFIX -> receiverExpression = receiver
         is CallTypeAndReceiver.OPERATOR -> receiverExpression = receiver
+        is CallTypeAndReceiver.DELEGATE -> receiverExpression = receiver
 
         is CallTypeAndReceiver.IMPORT_DIRECTIVE,
         is CallTypeAndReceiver.PACKAGE_DIRECTIVE,
         is CallTypeAndReceiver.TYPE,
+        is CallTypeAndReceiver.ANNOTATION,
         is CallTypeAndReceiver.UNKNOWN ->
             return null
 
@@ -200,7 +220,7 @@ public fun CallTypeAndReceiver<*, *>.receiverTypes(
         expressionType?.let { listOf(ExpressionReceiver(receiverExpression, expressionType)) } ?: return emptyList()
     }
     else {
-        val resolutionScope = bindingContext[BindingContext.RESOLUTION_SCOPE, position] ?: return emptyList()
+        val resolutionScope = position.getResolutionScope(bindingContext, resolutionFacade)
         resolutionScope.getImplicitReceiversWithInstance().map { it.value }
     }
 

@@ -20,11 +20,11 @@ fun foo() {
 }
 
 fun unnecessarySafeCall(x: String) {
-    x?.length()
+    x?.length
 }
 
 fun unnecessaryExclExcl(x: String) {
-    x!!.length()
+    x!!.length
 }
 
 fun unnecessaryCast(x: String) = x as String
@@ -39,13 +39,14 @@ annotation class Fancy(val param: Int)
 
 @Fancy(<caret>i) class D
 
-class Foo {
-    var x: Int = 0
-        get = $x
-        set(value) { $x = value }
+class CustomDelegate {
+    operator fun get(thisRef: Any?, prop: PropertyMetadata): String = ""
+    operator fun set(thisRef: Any?, prop: PropertyMetadata, value: String) {}
 }
 
 class B {
+    var a: String by CustomDelegate()
+
     fun plus(a: A): A = A()
 }
 

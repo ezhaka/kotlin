@@ -25,10 +25,10 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.diagnostics.Diagnostic;
 import org.jetbrains.kotlin.idea.JetBundle;
 import org.jetbrains.kotlin.idea.core.quickfix.QuickFixUtil;
-import org.jetbrains.kotlin.lexer.JetTokens;
+import org.jetbrains.kotlin.lexer.KtTokens;
 import org.jetbrains.kotlin.psi.*;
 
-public class RemovePsiElementSimpleFix extends JetIntentionAction<PsiElement> {
+public class RemovePsiElementSimpleFix extends KotlinQuickFixAction<PsiElement> {
 
     private final PsiElement element;
     private final String text;
@@ -53,18 +53,18 @@ public class RemovePsiElementSimpleFix extends JetIntentionAction<PsiElement> {
     }
 
     @Override
-    public void invoke(@NotNull Project project, Editor editor, JetFile file) throws IncorrectOperationException {
+    public void invoke(@NotNull Project project, Editor editor, KtFile file) throws IncorrectOperationException {
         element.delete();
     }
 
     public static JetSingleIntentionActionFactory createRemoveImportFactory() {
         return new JetSingleIntentionActionFactory() {
             @Override
-            public JetIntentionAction<PsiElement> createAction(Diagnostic diagnostic) {
-                JetImportDirective directive = QuickFixUtil.getParentElementOfType(diagnostic, JetImportDirective.class);
+            public KotlinQuickFixAction<PsiElement> createAction(Diagnostic diagnostic) {
+                KtImportDirective directive = QuickFixUtil.getParentElementOfType(diagnostic, KtImportDirective.class);
                 if (directive == null) return null;
                 else {
-                    JetExpression exp = directive.getImportedReference();
+                    KtExpression exp = directive.getImportedReference();
                     if (exp != null) {
                         return new RemovePsiElementSimpleFix(directive,
                                                              JetBundle.message("remove.conflicting.import", exp.getText()));
@@ -79,9 +79,9 @@ public class RemovePsiElementSimpleFix extends JetIntentionAction<PsiElement> {
     public static JetSingleIntentionActionFactory createRemoveSpreadFactory() {
         return new JetSingleIntentionActionFactory() {
             @Override
-            public JetIntentionAction<PsiElement> createAction(Diagnostic diagnostic) {
+            public KotlinQuickFixAction<PsiElement> createAction(Diagnostic diagnostic) {
                 PsiElement element = diagnostic.getPsiElement();
-                if ((element instanceof LeafPsiElement) && ((LeafPsiElement) element).getElementType() == JetTokens.MUL) {
+                if ((element instanceof LeafPsiElement) && ((LeafPsiElement) element).getElementType() == KtTokens.MUL) {
                     return new RemovePsiElementSimpleFix(element, JetBundle.message("remove.spread.sign"));
                 }
                 else return null;
@@ -92,8 +92,8 @@ public class RemovePsiElementSimpleFix extends JetIntentionAction<PsiElement> {
     public static JetSingleIntentionActionFactory createRemoveTypeArgumentsFactory() {
         return new JetSingleIntentionActionFactory() {
             @Override
-            public JetIntentionAction<PsiElement> createAction(Diagnostic diagnostic) {
-                JetTypeArgumentList element = QuickFixUtil.getParentElementOfType(diagnostic, JetTypeArgumentList.class);
+            public KotlinQuickFixAction<PsiElement> createAction(Diagnostic diagnostic) {
+                KtTypeArgumentList element = QuickFixUtil.getParentElementOfType(diagnostic, KtTypeArgumentList.class);
                 if (element == null) return null;
                 return new RemovePsiElementSimpleFix(element,
                                                      JetBundle.message("remove.type.arguments"));
@@ -104,14 +104,14 @@ public class RemovePsiElementSimpleFix extends JetIntentionAction<PsiElement> {
     public static JetSingleIntentionActionFactory createRemoveVariableFactory() {
         return new JetSingleIntentionActionFactory() {
             @Override
-            public JetIntentionAction<PsiElement> createAction(Diagnostic diagnostic) {
-                final JetProperty expression = QuickFixUtil.getParentElementOfType(diagnostic, JetProperty.class);
+            public KotlinQuickFixAction<PsiElement> createAction(Diagnostic diagnostic) {
+                final KtProperty expression = QuickFixUtil.getParentElementOfType(diagnostic, KtProperty.class);
                 if (expression == null) return null;
                 return new RemovePsiElementSimpleFix(expression,
                                                      JetBundle.message("remove.variable.action", (expression.getName()))) {
                     @Override
-                    public void invoke(@NotNull Project project, Editor editor, JetFile file) throws IncorrectOperationException {
-                        JetExpression initializer = expression.getInitializer();
+                    public void invoke(@NotNull Project project, Editor editor, KtFile file) throws IncorrectOperationException {
+                        KtExpression initializer = expression.getInitializer();
                         if (initializer != null) {
                             expression.replace(initializer);
                         }

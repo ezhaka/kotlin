@@ -41,25 +41,23 @@ import org.jetbrains.kotlin.idea.core.refactoring.j2k
 import org.jetbrains.kotlin.idea.core.refactoring.toPsiDirectory
 import org.jetbrains.kotlin.idea.intentions.JetSelfTargetingRangeIntention
 import org.jetbrains.kotlin.idea.util.application.executeCommand
-import org.jetbrains.kotlin.idea.util.application.runWithAlternativeResolveEnabled
+import org.jetbrains.kotlin.idea.util.runWithAlternativeResolveEnabled
 import org.jetbrains.kotlin.idea.util.application.runWriteAction
-import org.jetbrains.kotlin.psi.JetClass
-import org.jetbrains.kotlin.psi.JetClassOrObject
-import org.jetbrains.kotlin.psi.JetEnumEntry
-import org.jetbrains.kotlin.psi.JetNamedFunction
+import org.jetbrains.kotlin.idea.util.runWhenSmart
+import org.jetbrains.kotlin.psi.KtClass
+import org.jetbrains.kotlin.psi.KtClassOrObject
+import org.jetbrains.kotlin.psi.KtEnumEntry
+import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.psi.psiUtil.endOffset
 import org.jetbrains.kotlin.psi.psiUtil.startOffset
 import org.jetbrains.kotlin.utils.addToStdlib.singletonList
 import java.util.*
 
-class KotlinCreateTestIntention : JetSelfTargetingRangeIntention<JetClassOrObject>(
-        JetClassOrObject::class.java,
-        CodeInsightBundle.message("intention.create.test")
-) {
-    override fun applicabilityRange(element: JetClassOrObject): TextRange? {
+class KotlinCreateTestIntention : JetSelfTargetingRangeIntention<KtClassOrObject>(KtClassOrObject::class.java, "Create test") {
+    override fun applicabilityRange(element: KtClassOrObject): TextRange? {
         if (element.isLocal()) return null
-        if (element is JetEnumEntry) return null
-        if (element is JetClass && (element.isAnnotation() || element.isInterface())) return null
+        if (element is KtEnumEntry) return null
+        if (element is KtClass && (element.isAnnotation() || element.isInterface())) return null
         if (ModuleUtilCore.findModuleForPsiElement(element) == null) return null
         if (element.resolveToDescriptorIfAny() == null) return null
 
@@ -69,7 +67,7 @@ class KotlinCreateTestIntention : JetSelfTargetingRangeIntention<JetClassOrObjec
         )
     }
 
-    override fun applyTo(element: JetClassOrObject, editor: Editor) {
+    override fun applyTo(element: KtClassOrObject, editor: Editor) {
         object : CreateTestAction() {
             // Based on the com.intellij.testIntegration.createTest.JavaTestGenerator.createTestClass()
             private fun findTestClass(targetDirectory: PsiDirectory, className: String): PsiClass? {
@@ -136,30 +134,32 @@ class KotlinCreateTestIntention : JetSelfTargetingRangeIntention<JetClassOrObjec
                     }
                 } as? PsiClass ?: return
 
-                val generatedFile = generatedClass.containingFile as? PsiJavaFile ?: return
+                project.runWhenSmart {
+                    val generatedFile = generatedClass.containingFile as? PsiJavaFile ?: return@runWhenSmart
 
-                if (generatedClass.language == JavaLanguage.INSTANCE) {
-                    project.executeCommand("Convert class '${generatedClass.name}' to Kotlin", this) {
-                        runWriteAction {
-                            generatedClass.methods.forEach { it.throwsList.referenceElements.forEach { it.delete() } }
-                        }
-
-                        if (existingClass != null) {
+                    if (generatedClass.language == JavaLanguage.INSTANCE) {
+                        project.executeCommand("Convert class '${generatedClass.name}' to Kotlin", this) {
                             runWriteAction {
-                                val existingMethodNames = existingClass
-                                        .declarations
-                                        .filterIsInstance<JetNamedFunction>()
-                                        .mapTo(HashSet()) { it.name }
-                                generatedClass
-                                        .methods
-                                        .filter { it.name !in existingMethodNames }
-                                        .forEach { it.j2k()?.let { existingClass.addDeclaration(it) } }
-                                generatedClass.delete()
+                                generatedClass.methods.forEach { it.throwsList.referenceElements.forEach { it.delete() } }
                             }
-                            NavigationUtil.activateFileWithPsiElement(existingClass)
-                        }
-                        else {
-                            JavaToKotlinAction.convertFiles(generatedFile.singletonList(), project, false).singleOrNull()
+
+                            if (existingClass != null) {
+                                runWriteAction {
+                                    val existingMethodNames = existingClass
+                                            .declarations
+                                            .filterIsInstance<KtNamedFunction>()
+                                            .mapTo(HashSet()) { it.name }
+                                    generatedClass
+                                            .methods
+                                            .filter { it.name !in existingMethodNames }
+                                            .forEach { it.j2k()?.let { existingClass.addDeclaration(it) } }
+                                    generatedClass.delete()
+                                }
+                                NavigationUtil.activateFileWithPsiElement(existingClass)
+                            }
+                            else {
+                                JavaToKotlinAction.convertFiles(generatedFile.singletonList(), project, false).singleOrNull()
+                            }
                         }
                     }
                 }

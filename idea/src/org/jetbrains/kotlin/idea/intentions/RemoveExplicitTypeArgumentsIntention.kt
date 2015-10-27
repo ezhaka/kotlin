@@ -21,6 +21,7 @@ import com.intellij.openapi.editor.Editor
 import org.jetbrains.kotlin.idea.resolve.frontendService
 import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
 import org.jetbrains.kotlin.idea.inspections.IntentionBasedInspection
+import org.jetbrains.kotlin.idea.util.getResolutionScope
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.BindingTraceContext
@@ -29,25 +30,25 @@ import org.jetbrains.kotlin.resolve.calls.CallResolver
 import org.jetbrains.kotlin.resolve.calls.callUtil.getResolvedCall
 import org.jetbrains.kotlin.resolve.calls.util.DelegatingCall
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
-import org.jetbrains.kotlin.types.JetType
+import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.types.TypeUtils
-import org.jetbrains.kotlin.types.checker.JetTypeChecker
+import org.jetbrains.kotlin.types.checker.KotlinTypeChecker
 
-public class RemoveExplicitTypeArgumentsInspection : IntentionBasedInspection<JetTypeArgumentList>(RemoveExplicitTypeArgumentsIntention()) {
+public class RemoveExplicitTypeArgumentsInspection : IntentionBasedInspection<KtTypeArgumentList>(RemoveExplicitTypeArgumentsIntention()) {
     override val problemHighlightType: ProblemHighlightType
         get() = ProblemHighlightType.LIKE_UNUSED_SYMBOL
 }
 
-public class RemoveExplicitTypeArgumentsIntention : JetSelfTargetingOffsetIndependentIntention<JetTypeArgumentList>(javaClass(), "Remove explicit type arguments") {
+public class RemoveExplicitTypeArgumentsIntention : JetSelfTargetingOffsetIndependentIntention<KtTypeArgumentList>(javaClass(), "Remove explicit type arguments") {
     companion object {
-        public fun isApplicableTo(element: JetTypeArgumentList, approximateFlexible: Boolean): Boolean {
-            val callExpression = element.getParent() as? JetCallExpression ?: return false
+        public fun isApplicableTo(element: KtTypeArgumentList, approximateFlexible: Boolean): Boolean {
+            val callExpression = element.getParent() as? KtCallExpression ?: return false
             if (callExpression.getTypeArguments().isEmpty()) return false
 
             val resolutionFacade = callExpression.getResolutionFacade()
             val context = resolutionFacade.analyze(callExpression, BodyResolveMode.PARTIAL)
             val calleeExpression = callExpression.getCalleeExpression() ?: return false
-            val scope = context[BindingContext.LEXICAL_SCOPE, calleeExpression/*TODO: discuss it*/] ?: return false
+            val scope = calleeExpression.getResolutionScope(context, resolutionFacade)
             val originalCall = callExpression.getResolvedCall(context) ?: return false
             val untypedCall = CallWithoutTypeArgs(originalCall.getCall())
 
@@ -57,9 +58,9 @@ public class RemoveExplicitTypeArgumentsIntention : JetSelfTargetingOffsetIndepe
             // therefore we should resolve outer call with erased type arguments for inner call
             val parent = callExpression.getParent()
             val expectedTypeIsExplicitInCode = when (parent) {
-                is JetProperty -> parent.getInitializer() == callExpression && parent.getTypeReference() != null
-                is JetDeclarationWithBody -> parent.getBodyExpression() == callExpression
-                is JetReturnExpression -> true
+                is KtProperty -> parent.getInitializer() == callExpression && parent.getTypeReference() != null
+                is KtDeclarationWithBody -> parent.getBodyExpression() == callExpression
+                is KtReturnExpression -> true
                 else -> false
             }
             val expectedType = if (expectedTypeIsExplicitInCode) {
@@ -79,9 +80,9 @@ public class RemoveExplicitTypeArgumentsIntention : JetSelfTargetingOffsetIndepe
             val args = originalCall.getTypeArguments()
             val newArgs = resolutionResults.getResultingCall().getTypeArguments()
 
-            fun equalTypes(type1: JetType, type2: JetType): Boolean {
+            fun equalTypes(type1: KotlinType, type2: KotlinType): Boolean {
                 return if (approximateFlexible) {
-                    JetTypeChecker.DEFAULT.equalTypes(type1, type2)
+                    KotlinTypeChecker.DEFAULT.equalTypes(type1, type2)
                 }
                 else {
                     type1 == type2
@@ -92,16 +93,16 @@ public class RemoveExplicitTypeArgumentsIntention : JetSelfTargetingOffsetIndepe
         }
     }
 
-    override fun isApplicableTo(element: JetTypeArgumentList): Boolean {
+    override fun isApplicableTo(element: KtTypeArgumentList): Boolean {
         return isApplicableTo(element, approximateFlexible = false)
     }
 
     private class CallWithoutTypeArgs(call: Call) : DelegatingCall(call) {
-        override fun getTypeArguments() = emptyList<JetTypeProjection>()
+        override fun getTypeArguments() = emptyList<KtTypeProjection>()
         override fun getTypeArgumentList() = null
     }
 
-    override fun applyTo(element: JetTypeArgumentList, editor: Editor) {
+    override fun applyTo(element: KtTypeArgumentList, editor: Editor) {
         element.delete()
     }
 }

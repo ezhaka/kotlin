@@ -19,20 +19,26 @@ package org.jetbrains.kotlin.codegen.state
 import com.intellij.psi.PsiElement
 import com.intellij.util.containers.MultiMap
 import org.jetbrains.kotlin.codegen.ClassBuilderFactory
+import org.jetbrains.kotlin.codegen.ClassBuilderMode
 import org.jetbrains.kotlin.codegen.SignatureCollectingClassBuilderFactory
 import org.jetbrains.kotlin.descriptors.*
-import org.jetbrains.kotlin.resolve.BindingContext
-import org.jetbrains.kotlin.resolve.jvm.diagnostics.*
-import java.util.*
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.DELEGATION
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.FAKE_OVERRIDE
-import org.jetbrains.kotlin.utils.addIfNotNull
-import org.jetbrains.kotlin.codegen.ClassBuilderMode
-import org.jetbrains.kotlin.load.java.descriptors.SamAdapterDescriptor
-import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils
 import org.jetbrains.kotlin.diagnostics.DiagnosticSink
 import org.jetbrains.kotlin.fileClasses.JvmFileClassesProvider
+import org.jetbrains.kotlin.fileClasses.isInsideJvmMultifileClassFile
+import org.jetbrains.kotlin.idea.MainFunctionDetector
+import org.jetbrains.kotlin.load.java.descriptors.SamAdapterDescriptor
+import org.jetbrains.kotlin.load.java.descriptors.getParentJavaStaticClassScope
 import org.jetbrains.kotlin.load.kotlin.incremental.components.IncrementalCache
+import org.jetbrains.kotlin.psi.KtNamedFunction
+import org.jetbrains.kotlin.resolve.BindingContext
+import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils
+import org.jetbrains.kotlin.resolve.jvm.diagnostics.*
+import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
+import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue
+import org.jetbrains.kotlin.utils.addIfNotNull
+import java.util.*
 
 private val EXTERNAL_SOURCES_KINDS = arrayOf(
         JvmDeclarationOriginKind.DELEGATION_TO_DEFAULT_IMPLS,
@@ -51,6 +57,8 @@ class BuilderFactoryForDuplicateSignatureDiagnostics(
     // Avoid errors when some classes are not loaded for some reason
     private val typeMapper = JetTypeMapper(bindingContext, ClassBuilderMode.LIGHT_CLASSES, fileClassesProvider, incrementalCache, moduleName)
 
+    private val mainFunctionDetector = MainFunctionDetector(bindingContext)
+
     override fun handleClashingSignatures(data: ConflictingJvmDeclarationsData) {
         val noOwnImplementations = data.signatureOrigins.all { it.originKind in EXTERNAL_SOURCES_KINDS }
 
@@ -61,9 +69,11 @@ class BuilderFactoryForDuplicateSignatureDiagnostics(
         else {
             for (origin in data.signatureOrigins) {
                 var element = origin.element
+
                 if (element == null || origin.originKind in EXTERNAL_SOURCES_KINDS) {
                     element = data.classOrigin.element
                 }
+
                 elements.addIfNotNull(element)
             }
         }
@@ -95,14 +105,14 @@ class BuilderFactoryForDuplicateSignatureDiagnostics(
             if (origins.size() <= 1) continue
 
             var memberElement: PsiElement? = null
-            var nonFakeCount = 0
+            var ownNonFakeCount = 0
             for (origin in origins) {
                 val member = origin.descriptor as? CallableMemberDescriptor?
-                if (member != null && member.getKind() != FAKE_OVERRIDE) {
-                    nonFakeCount++
+                if (member != null && member.containingDeclaration == classOrigin.descriptor && member.getKind() != FAKE_OVERRIDE) {
+                    ownNonFakeCount++
                     // If there's more than one real element, the clashing signature is already reported.
                     // Only clashes between fake overrides are interesting here
-                    if (nonFakeCount > 1) continue@signatures
+                    if (ownNonFakeCount > 1) continue@signatures
 
                     if (member.getKind() != DELEGATION) {
                         // Delegates don't have declarations in the code
@@ -118,7 +128,12 @@ class BuilderFactoryForDuplicateSignatureDiagnostics(
             if (elementToReportOn == null) return // TODO: it'd be better to report this error without any element at all
 
             val data = ConflictingJvmDeclarationsData(classInternalName, classOrigin, rawSignature, origins)
-            diagnostics.report(ErrorsJvm.ACCIDENTAL_OVERRIDE.on(elementToReportOn, data))
+            if (memberElement != null) {
+                diagnostics.report(ErrorsJvm.ACCIDENTAL_OVERRIDE.on(elementToReportOn, data))
+            }
+            else {
+                diagnostics.report(ErrorsJvm.CONFLICTING_INHERITED_JVM_DECLARATIONS.on(elementToReportOn, data))
+            }
         }
     }
 
@@ -143,8 +158,13 @@ class BuilderFactoryForDuplicateSignatureDiagnostics(
             }
         }
 
-        for (member in descriptor.getDefaultType().getMemberScope().getDescriptors()) {
-            processMember(member)
+        descriptor.defaultType.memberScope.getDescriptors().forEach(::processMember)
+        descriptor.getParentJavaStaticClassScope()?.run {
+            getDescriptors(DescriptorKindFilter.FUNCTIONS)
+                    .filter {
+                        it is FunctionDescriptor && Visibilities.isVisible(ReceiverValue.IRRELEVANT_RECEIVER, it, descriptor)
+                    }
+                    .forEach(::processMember)
         }
 
         return groupedBySignature

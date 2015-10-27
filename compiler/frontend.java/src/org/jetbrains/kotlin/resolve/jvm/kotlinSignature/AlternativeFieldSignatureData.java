@@ -22,19 +22,18 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.descriptors.TypeParameterDescriptor;
 import org.jetbrains.kotlin.descriptors.impl.TypeParameterDescriptorImpl;
 import org.jetbrains.kotlin.load.java.structure.JavaField;
-import org.jetbrains.kotlin.psi.JetProperty;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.psi.KtProperty;
+import org.jetbrains.kotlin.psi.KtPsiFactoryKt;
+import org.jetbrains.kotlin.types.KotlinType;
 
 import java.util.HashMap;
 
-import static org.jetbrains.kotlin.psi.PsiPackage.JetPsiFactory;
-
 public class AlternativeFieldSignatureData extends ElementAlternativeSignatureData {
-    private JetType altReturnType;
+    private KotlinType altReturnType;
 
     public AlternativeFieldSignatureData(
             @NotNull JavaField field,
-            @NotNull JetType originalReturnType,
+            @NotNull KotlinType originalReturnType,
             @NotNull Project project,
             boolean isVar
     ) {
@@ -46,7 +45,7 @@ public class AlternativeFieldSignatureData extends ElementAlternativeSignatureDa
         }
 
         setAnnotated(true);
-        JetProperty altPropertyDeclaration = JetPsiFactory(project).createProperty(signature);
+        KtProperty altPropertyDeclaration = KtPsiFactoryKt.KtPsiFactory(project).createProperty(signature);
 
         try {
             checkForSyntaxErrors(altPropertyDeclaration);
@@ -60,12 +59,12 @@ public class AlternativeFieldSignatureData extends ElementAlternativeSignatureDa
     }
 
     @NotNull
-    public JetType getReturnType() {
+    public KotlinType getReturnType() {
         checkForErrors();
         return altReturnType;
     }
 
-    private static void checkFieldAnnotation(@NotNull JetProperty altProperty, @NotNull JavaField field, boolean isVar) {
+    private static void checkFieldAnnotation(@NotNull KtProperty altProperty, @NotNull JavaField field, boolean isVar) {
         if (!ComparatorUtil.equalsNullable(field.getName().asString(), altProperty.getName())) {
             throw new AlternativeSignatureMismatchException("Field name mismatch, original: %s, alternative: %s",
                                                             field.getName().asString(), altProperty.getName());

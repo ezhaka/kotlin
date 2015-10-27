@@ -16,35 +16,24 @@
 
 package org.jetbrains.kotlin.idea.quickfix.createFromUsage.createVariable
 
-import com.intellij.psi.SmartPsiElementPointer
+import com.intellij.codeInsight.intention.IntentionAction
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
-import org.jetbrains.kotlin.diagnostics.Diagnostic
-import org.jetbrains.kotlin.idea.quickfix.NullQuickFix
-import org.jetbrains.kotlin.idea.quickfix.QuickFixWithDelegateFactory
-import org.jetbrains.kotlin.idea.quickfix.createFromUsage.CreateFromUsageFactory
+import org.jetbrains.kotlin.idea.quickfix.KotlinSingleIntentionActionFactoryWithDelegate
 import org.jetbrains.kotlin.idea.refactoring.changeSignature.JetParameterInfo
-import org.jetbrains.kotlin.psi.JetElement
+import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.resolve.BindingContext
 
-data class CreateParameterData<E : JetElement>(
+data class CreateParameterData<E : KtElement>(
         val context: BindingContext,
         val parameterInfo: JetParameterInfo,
         val originalExpression: E
 )
 
-abstract class CreateParameterFromUsageFactory<E : JetElement>: CreateFromUsageFactory<E, CreateParameterData<E>>() {
-    override fun createQuickFix(
-            originalElementPointer: SmartPsiElementPointer<E>,
-            diagnostic: Diagnostic,
-            quickFixDataFactory: (SmartPsiElementPointer<E>) -> CreateParameterData<E>?
-    ): QuickFixWithDelegateFactory? {
-        return QuickFixWithDelegateFactory {
-            quickFixDataFactory(originalElementPointer)?.let { data ->
-                CreateParameterFromUsageFix(data.parameterInfo.callableDescriptor as FunctionDescriptor,
-                                            data.context,
-                                            data.parameterInfo,
-                                            data.originalExpression)
-            } ?: NullQuickFix
-        }
+abstract class CreateParameterFromUsageFactory<E : KtElement>: KotlinSingleIntentionActionFactoryWithDelegate<E, CreateParameterData<E>>() {
+    override fun createFix(data: CreateParameterData<E>): IntentionAction? {
+        return CreateParameterFromUsageFix(
+                data.parameterInfo.callableDescriptor as FunctionDescriptor,
+                data.parameterInfo,
+                data.originalExpression)
     }
 }

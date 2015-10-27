@@ -23,21 +23,25 @@ import org.jetbrains.kotlin.diagnostics.DiagnosticSink
 import org.jetbrains.kotlin.diagnostics.Errors
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.BindingContext
-import org.jetbrains.kotlin.resolve.bindingContextUtil.get
 import org.jetbrains.kotlin.resolve.BindingTrace
 import org.jetbrains.kotlin.resolve.calls.CallTransformer
 import org.jetbrains.kotlin.resolve.calls.tasks.isDynamic
 import org.jetbrains.kotlin.types.ErrorUtils
 import org.jetbrains.kotlin.resolve.descriptorUtil.fqNameUnsafe
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall
+import org.jetbrains.kotlin.util.OperatorNameConventions
+import org.jetbrains.kotlin.util.OperatorNameConventions.PLUS
+import org.jetbrains.kotlin.util.OperatorNameConventions.MINUS
+import org.jetbrains.kotlin.util.OperatorNameConventions.UNARY_PLUS
+import org.jetbrains.kotlin.util.OperatorNameConventions.UNARY_MINUS
 
 public class OperatorValidator : SymbolUsageValidator {
 
     override fun validateCall(resolvedCall: ResolvedCall<*>?, targetDescriptor: CallableDescriptor, trace: BindingTrace, element: PsiElement) {
         val functionDescriptor = targetDescriptor as? FunctionDescriptor ?: return
-        if (functionDescriptor.isDynamic() || ErrorUtils.isError(functionDescriptor)) return
+        if (!checkNotErrorOrDynamic(functionDescriptor)) return
 
-        val jetElement = element as? JetElement ?: return
+        val jetElement = element as? KtElement ?: return
         val call = resolvedCall?.call ?: trace.bindingContext[BindingContext.CALL, jetElement]
 
         fun isInvokeCall(): Boolean {
@@ -45,15 +49,15 @@ public class OperatorValidator : SymbolUsageValidator {
         }
 
         fun isMultiDeclaration(): Boolean {
-            return (resolvedCall != null) && (call?.callElement is JetMultiDeclarationEntry)
+            return (resolvedCall != null) && (call?.callElement is KtMultiDeclarationEntry)
         }
 
         fun isConventionOperator(): Boolean {
-            if (jetElement !is JetOperationReferenceExpression) return false
+            if (jetElement !is KtOperationReferenceExpression) return false
             return jetElement.getNameForConventionalOperation() != null
         }
 
-        fun isArrayAccessExpression() = jetElement is JetArrayAccessExpression
+        fun isArrayAccessExpression() = jetElement is KtArrayAccessExpression
 
         if (isMultiDeclaration() || isInvokeCall()) {
             if (!functionDescriptor.isOperator && call != null) {
@@ -62,18 +66,38 @@ public class OperatorValidator : SymbolUsageValidator {
             return
         }
 
-        if (isConventionOperator() || isArrayAccessExpression()) {
+        val isConventionOperator = isConventionOperator()
+        if (isConventionOperator || isArrayAccessExpression()) {
             if (!functionDescriptor.isOperator) {
                 report(jetElement, functionDescriptor, trace)
+            }
+            if (isConventionOperator && call != null) {
+                checkDeprecatedUnaryConventions(call, functionDescriptor, trace)
+            }
+        }
+    }
+
+    private fun checkDeprecatedUnaryConventions(call: Call, functionDescriptor: FunctionDescriptor, sink: DiagnosticSink) {
+        (call.callElement as? KtPrefixExpression)?.let { expr ->
+            val functionName = functionDescriptor.name
+            if (functionName == PLUS || functionName == MINUS) {
+                val newName = if (functionName == PLUS) UNARY_PLUS else UNARY_MINUS
+                sink.report(Errors.DEPRECATED_UNARY_PLUS_MINUS.on(expr, functionDescriptor, newName.asString()))
             }
         }
     }
 
     companion object {
-        fun report(element: JetElement, descriptor: FunctionDescriptor, sink: DiagnosticSink) {
+        fun report(element: PsiElement, descriptor: FunctionDescriptor, sink: DiagnosticSink) {
+            if (!checkNotErrorOrDynamic(descriptor)) return
+
             val containingDeclaration = descriptor.containingDeclaration
             val containingDeclarationName = containingDeclaration.fqNameUnsafe.asString()
             sink.report(Errors.OPERATOR_MODIFIER_REQUIRED.on(element, descriptor, containingDeclarationName))
+        }
+
+        private fun checkNotErrorOrDynamic(functionDescriptor: FunctionDescriptor): Boolean {
+            return (!functionDescriptor.isDynamic() && !ErrorUtils.isError(functionDescriptor))
         }
     }
 }

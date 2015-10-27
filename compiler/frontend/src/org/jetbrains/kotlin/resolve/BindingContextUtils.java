@@ -26,22 +26,21 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.diagnostics.Diagnostic;
 import org.jetbrains.kotlin.psi.*;
-import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilPackage;
+import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilKt;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
 import org.jetbrains.kotlin.resolve.calls.model.VariableAsFunctionResolvedCall;
 import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowInfo;
 import org.jetbrains.kotlin.resolve.diagnostics.MutableDiagnosticsWithSuppression;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.types.TypeUtils;
 import org.jetbrains.kotlin.types.expressions.JetTypeInfo;
-import org.jetbrains.kotlin.types.expressions.typeInfoFactory.TypeInfoFactoryPackage;
+import org.jetbrains.kotlin.types.expressions.typeInfoFactory.TypeInfoFactoryKt;
 import org.jetbrains.kotlin.util.slicedMap.MutableSlicedMap;
 import org.jetbrains.kotlin.util.slicedMap.ReadOnlySlice;
 import org.jetbrains.kotlin.util.slicedMap.WritableSlice;
 
 import java.util.Collection;
 
-import static org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.DECLARATION;
 import static org.jetbrains.kotlin.diagnostics.Errors.AMBIGUOUS_LABEL;
 import static org.jetbrains.kotlin.resolve.BindingContext.*;
 
@@ -50,16 +49,16 @@ public class BindingContextUtils {
     }
 
     @Nullable
-    public static VariableDescriptor extractVariableDescriptorIfAny(@NotNull BindingContext bindingContext, @Nullable JetElement element, boolean onlyReference) {
+    public static VariableDescriptor extractVariableDescriptorIfAny(@NotNull BindingContext bindingContext, @Nullable KtElement element, boolean onlyReference) {
         DeclarationDescriptor descriptor = null;
-        if (!onlyReference && (element instanceof JetVariableDeclaration || element instanceof JetParameter)) {
+        if (!onlyReference && (element instanceof KtVariableDeclaration || element instanceof KtParameter)) {
             descriptor = bindingContext.get(BindingContext.DECLARATION_TO_DESCRIPTOR, element);
         }
-        else if (element instanceof JetSimpleNameExpression) {
-            descriptor = bindingContext.get(BindingContext.REFERENCE_TARGET, (JetSimpleNameExpression) element);
+        else if (element instanceof KtSimpleNameExpression) {
+            descriptor = bindingContext.get(BindingContext.REFERENCE_TARGET, (KtSimpleNameExpression) element);
         }
-        else if (element instanceof JetQualifiedExpression) {
-            descriptor = extractVariableDescriptorIfAny(bindingContext, ((JetQualifiedExpression) element).getSelectorExpression(), onlyReference);
+        else if (element instanceof KtQualifiedExpression) {
+            descriptor = extractVariableDescriptorIfAny(bindingContext, ((KtQualifiedExpression) element).getSelectorExpression(), onlyReference);
         }
         if (descriptor instanceof VariableDescriptor) {
             return (VariableDescriptor) descriptor;
@@ -82,11 +81,11 @@ public class BindingContextUtils {
     }
 
     @NotNull
-    public static JetType getTypeNotNull(
+    public static KotlinType getTypeNotNull(
             @NotNull BindingContext bindingContext,
-            @NotNull JetExpression expression
+            @NotNull KtExpression expression
     ) {
-        JetType result = bindingContext.getType(expression);
+        KotlinType result = bindingContext.getType(expression);
         if (result == null) {
             throw new IllegalStateException("Type must be not null for " + expression);
         }
@@ -108,9 +107,9 @@ public class BindingContextUtils {
     }
 
     @NotNull
-    public static DeclarationDescriptor getEnclosingDescriptor(@NotNull BindingContext context, @NotNull JetElement element) {
-        JetNamedDeclaration declaration = PsiTreeUtil.getParentOfType(element, JetNamedDeclaration.class);
-        if (declaration instanceof JetFunctionLiteral) {
+    public static DeclarationDescriptor getEnclosingDescriptor(@NotNull BindingContext context, @NotNull KtElement element) {
+        KtNamedDeclaration declaration = PsiTreeUtil.getParentOfType(element, KtNamedDeclaration.class);
+        if (declaration instanceof KtFunctionLiteral) {
             return getEnclosingDescriptor(context, declaration);
         }
         DeclarationDescriptor descriptor = context.get(DECLARATION_TO_DESCRIPTOR, declaration);
@@ -118,14 +117,14 @@ public class BindingContextUtils {
         return descriptor;
     }
 
-    public static FunctionDescriptor getEnclosingFunctionDescriptor(@NotNull BindingContext context, @NotNull JetElement element) {
-        JetFunction function = PsiTreeUtil.getParentOfType(element, JetFunction.class);
+    public static FunctionDescriptor getEnclosingFunctionDescriptor(@NotNull BindingContext context, @NotNull KtElement element) {
+        KtFunction function = PsiTreeUtil.getParentOfType(element, KtFunction.class);
         return (FunctionDescriptor)context.get(DECLARATION_TO_DESCRIPTOR, function);
     }
 
     public static void reportAmbiguousLabel(
             @NotNull BindingTrace trace,
-            @NotNull JetSimpleNameExpression targetLabel,
+            @NotNull KtSimpleNameExpression targetLabel,
             @NotNull Collection<DeclarationDescriptor> declarationsByLabel
     ) {
         Collection<PsiElement> targets = Lists.newArrayList();
@@ -141,9 +140,9 @@ public class BindingContextUtils {
     }
 
     @Nullable
-    public static JetType updateRecordedType(
-            @Nullable JetType type,
-            @NotNull JetExpression expression,
+    public static KotlinType updateRecordedType(
+            @Nullable KotlinType type,
+            @NotNull KtExpression expression,
             @NotNull BindingTrace trace,
             boolean shouldBeMadeNullable
     ) {
@@ -156,23 +155,23 @@ public class BindingContextUtils {
     }
 
     @Nullable
-    public static JetTypeInfo getRecordedTypeInfo(@NotNull JetExpression expression, @NotNull BindingContext context) {
+    public static JetTypeInfo getRecordedTypeInfo(@NotNull KtExpression expression, @NotNull BindingContext context) {
         // noinspection ConstantConditions
         if (!context.get(BindingContext.PROCESSED, expression)) return null;
         // NB: should never return null if expression is already processed
         JetTypeInfo result = context.get(BindingContext.EXPRESSION_TYPE_INFO, expression);
-        return result != null ? result : TypeInfoFactoryPackage.noTypeInfo(DataFlowInfo.EMPTY);
+        return result != null ? result : TypeInfoFactoryKt.noTypeInfo(DataFlowInfo.EMPTY);
     }
 
     public static boolean isExpressionWithValidReference(
-            @NotNull JetExpression expression,
+            @NotNull KtExpression expression,
             @NotNull BindingContext context
     ) {
-        if (expression instanceof JetCallExpression) {
-            ResolvedCall<?> resolvedCall = CallUtilPackage.getResolvedCall(expression, context);
+        if (expression instanceof KtCallExpression) {
+            ResolvedCall<?> resolvedCall = CallUtilKt.getResolvedCall(expression, context);
             return resolvedCall instanceof VariableAsFunctionResolvedCall;
         }
-        return expression instanceof JetReferenceExpression;
+        return expression instanceof KtReferenceExpression;
     }
 
     public static boolean isVarCapturedInClosure(BindingContext bindingContext, DeclarationDescriptor descriptor) {
@@ -189,7 +188,7 @@ public class BindingContextUtils {
         FunctionDescriptor containingFunctionDescriptor = DescriptorUtils.getParentOfType(startDescriptor, FunctionDescriptor.class, strict);
         PsiElement containingFunction =
                 containingFunctionDescriptor != null ? DescriptorToSourceUtils.getSourceFromDescriptor(containingFunctionDescriptor) : null;
-        while (containingFunction instanceof JetFunctionLiteral) {
+        while (containingFunction instanceof KtFunctionLiteral) {
             containingFunctionDescriptor = DescriptorUtils.getParentOfType(containingFunctionDescriptor, FunctionDescriptor.class);
             containingFunction = containingFunctionDescriptor != null ? DescriptorToSourceUtils
                     .getSourceFromDescriptor(containingFunctionDescriptor) : null;

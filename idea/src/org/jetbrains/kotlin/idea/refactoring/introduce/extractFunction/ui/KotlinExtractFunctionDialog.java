@@ -29,13 +29,14 @@ import kotlin.jvm.functions.Function0;
 import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.kotlin.idea.JetFileType;
+import org.jetbrains.kotlin.idea.KotlinFileType;
 import org.jetbrains.kotlin.idea.core.KotlinNameSuggester;
-import org.jetbrains.kotlin.idea.core.refactoring.RefactoringPackage;
+import org.jetbrains.kotlin.idea.core.refactoring.JetRefactoringUtilKt;
 import org.jetbrains.kotlin.idea.refactoring.JetRefactoringBundle;
 import org.jetbrains.kotlin.idea.refactoring.introduce.extractionEngine.*;
 import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.lexer.KtTokens;
+import org.jetbrains.kotlin.types.KotlinType;
 
 import javax.swing.*;
 import java.awt.*;
@@ -87,7 +88,7 @@ public class KotlinExtractFunctionDialog extends DialogWrapper {
     }
 
     private boolean isVisibilitySectionAvailable() {
-        return ExtractionEnginePackage.isVisibilityApplicable(originalDescriptor.getDescriptor().getExtractionData());
+        return ExtractableAnalysisUtilKt.isVisibilityApplicable(originalDescriptor.getDescriptor().getExtractionData());
     }
 
     private String getFunctionName() {
@@ -98,7 +99,7 @@ public class KotlinExtractFunctionDialog extends DialogWrapper {
         if (!isVisibilitySectionAvailable()) return "";
 
         String value = (String) visibilityBox.getSelectedItem();
-        return "internal".equals(value) ? "" : value;
+        return KtTokens.PUBLIC_KEYWORD.getValue().equals(value) ? "" : value;
     }
 
     private boolean checkNames() {
@@ -114,9 +115,9 @@ public class KotlinExtractFunctionDialog extends DialogWrapper {
 
         setOKActionEnabled(checkNames());
         signaturePreviewField.setText(
-                ExtractionEnginePackage.getDeclarationText(getCurrentConfiguration(),
-                                                           false,
-                                                           IdeDescriptorRenderers.SOURCE_CODE_SHORT_NAMES_IN_TYPES)
+                ExtractorUtilKt.getDeclarationText(getCurrentConfiguration(),
+                                                   false,
+                                                   IdeDescriptorRenderers.SOURCE_CODE_SHORT_NAMES_IN_TYPES)
         );
     }
 
@@ -129,7 +130,7 @@ public class KotlinExtractFunctionDialog extends DialogWrapper {
         functionNameField = new NameSuggestionsField(
                 ArrayUtil.toStringArray(extractableCodeDescriptor.getSuggestedNames()),
                 project,
-                JetFileType.INSTANCE
+                KotlinFileType.INSTANCE
         );
         functionNameField.addDataChangedListener(
                 new NameSuggestionsField.DataChanged() {
@@ -142,7 +143,7 @@ public class KotlinExtractFunctionDialog extends DialogWrapper {
         functionNamePanel.add(functionNameField, BorderLayout.CENTER);
         functionNameLabel.setLabelFor(functionNameField);
 
-        List<JetType> possibleReturnTypes = ExtractionEnginePackage.getPossibleReturnTypes(extractableCodeDescriptor.getControlFlow());
+        List<KotlinType> possibleReturnTypes = ExtractableCodeDescriptorKt.getPossibleReturnTypes(extractableCodeDescriptor.getControlFlow());
         if (possibleReturnTypes.size() > 1) {
             DefaultComboBoxModel returnTypeBoxModel = new DefaultComboBoxModel(possibleReturnTypes.toArray());
             returnTypeBox.setModel(returnTypeBoxModel);
@@ -158,7 +159,7 @@ public class KotlinExtractFunctionDialog extends DialogWrapper {
                                 boolean cellHasFocus
                         ) {
                             super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-                            setText(IdeDescriptorRenderers.SOURCE_CODE_SHORT_NAMES_IN_TYPES.renderType((JetType) value));
+                            setText(IdeDescriptorRenderers.SOURCE_CODE_SHORT_NAMES_IN_TYPES.renderType((KotlinType) value));
                             return this;
                         }
                     }
@@ -179,7 +180,11 @@ public class KotlinExtractFunctionDialog extends DialogWrapper {
         boolean enableVisibility = isVisibilitySectionAvailable();
         visibilityBox.setEnabled(enableVisibility);
         if (enableVisibility) {
-            visibilityBox.setSelectedItem(extractableCodeDescriptor.getVisibility());
+            String defaultVisibility = extractableCodeDescriptor.getVisibility();
+            if (defaultVisibility.isEmpty()) {
+                defaultVisibility = KtTokens.PUBLIC_KEYWORD.getValue();
+            }
+            visibilityBox.setSelectedItem(defaultVisibility);
         }
         visibilityBox.addItemListener(
                 new ItemListener() {
@@ -216,10 +221,10 @@ public class KotlinExtractFunctionDialog extends DialogWrapper {
     @SuppressWarnings("SuspiciousMethodCalls")
     @Override
     protected void doOKAction() {
-        MultiMap<PsiElement, String> conflicts = ExtractionEnginePackage.validate(currentDescriptor).getConflicts();
+        MultiMap<PsiElement, String> conflicts = ExtractableAnalysisUtilKt.validate(currentDescriptor).getConflicts();
         conflicts.values().removeAll(originalDescriptor.getConflicts().values());
 
-        RefactoringPackage.checkConflictsInteractively(
+        JetRefactoringUtilKt.checkConflictsInteractively(
                 project,
                 conflicts,
                 new Function0<Unit>() {
@@ -262,7 +267,7 @@ public class KotlinExtractFunctionDialog extends DialogWrapper {
                                    getVisibility(),
                                    parameterTablePanel.getReceiverInfo(),
                                    parameterTablePanel.getParameterInfos(),
-                                   (JetType) returnTypeBox.getSelectedItem());
+                                   (KotlinType) returnTypeBox.getSelectedItem());
     }
 
     @NotNull
@@ -276,7 +281,7 @@ public class KotlinExtractFunctionDialog extends DialogWrapper {
             @NotNull String newVisibility,
             @Nullable KotlinParameterTablePanel.ParameterInfo newReceiverInfo,
             @NotNull List<KotlinParameterTablePanel.ParameterInfo> newParameterInfos,
-            @Nullable JetType returnType
+            @Nullable KotlinType returnType
     ) {
         Map<Parameter, Parameter> oldToNewParameters = ContainerUtil.newLinkedHashMap();
         for (KotlinParameterTablePanel.ParameterInfo parameterInfo : newParameterInfos) {

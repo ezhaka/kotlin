@@ -53,10 +53,10 @@ abstract class KotlinSourceSetProcessor<T : AbstractCompile>(
     protected val sourceSetName: String = sourceSet.getName()
     protected val sourceRootDir: String = "src/${sourceSetName}/kotlin"
     protected val absoluteSourceRootDir: String = project.getProjectDir().getPath() + "/" + sourceRootDir
-    protected val kotlinSourceSet: KotlinSourceSet? by Delegates.lazy { createKotlinSourceSet() }
-    protected val kotlinDirSet: SourceDirectorySet? by Delegates.lazy { createKotlinDirSet() }
-    protected val kotlinTask: T by Delegates.lazy { createKotlinCompileTask() }
-    protected val kotlinTaskName: String by Delegates.lazy { kotlinTask.getName() }
+    protected val kotlinSourceSet: KotlinSourceSet? by lazy { createKotlinSourceSet() }
+    protected val kotlinDirSet: SourceDirectorySet? by lazy { createKotlinDirSet() }
+    protected val kotlinTask: T by lazy { createKotlinCompileTask() }
+    protected val kotlinTaskName: String by lazy { kotlinTask.getName() }
 
     public fun run() {
         if (kotlinSourceSet == null || kotlinDirSet == null) {
@@ -374,18 +374,6 @@ open class KotlinAndroidPlugin @Inject constructor(val scriptHandler: ScriptHand
                 }
             }
 
-            fun configureDefaultSourceSet() {
-                val defaultSourceSet = variantData.getVariantConfiguration().getDefaultSourceSet()
-                val kotlinSourceDirectorySet = getExtension<KotlinSourceSet>(defaultSourceSet, "kotlin").getKotlin()
-                // getJavaSources should return the Java sources used for compilation
-                // We want to collect only generated files, like R-class output dir
-                // Actual java sources will be collected later
-                val additionalSourceFiles = variantData.getJavaSources().filterIsInstance(javaClass<File>())
-                kotlinSourceDirectorySet.addSourceDirectories(additionalSourceFiles)
-            }
-
-            configureDefaultSourceSet()
-
             val aptFiles = arrayListOf<File>()
 
             // getSortedSourceProviders should return only actual java sources, generated sources should be collected earlier
@@ -403,6 +391,15 @@ open class KotlinAndroidPlugin @Inject constructor(val scriptHandler: ScriptHand
                 if (aptConfiguration != null && aptConfiguration.getDependencies().size() > 1) {
                     aptFiles.addAll(aptConfiguration.resolve())
                 }
+            }
+
+            // getJavaSources should return the Java sources used for compilation
+            // We want to collect only generated files, like R-class output dir
+            // Actual java sources will be collected later
+            val additionalSourceFiles = variantData.getJavaSources().filterIsInstance(javaClass<File>())
+            for (file in additionalSourceFiles) {
+                kotlinTask.source(file)
+                logger.kotlinDebug("Source directory with generated files ${file.getAbsolutePath()} was added to kotlin source for $kotlinTaskName")
             }
 
             subpluginEnvironment.addSubpluginArguments(project, kotlinTask)

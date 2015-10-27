@@ -27,16 +27,15 @@ import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.descriptors.annotations.Annotations;
 import org.jetbrains.kotlin.descriptors.impl.ConstructorDescriptorImpl;
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation;
+import org.jetbrains.kotlin.js.descriptorUtils.DescriptorUtilsKt;
 import org.jetbrains.kotlin.name.FqNameUnsafe;
 import org.jetbrains.kotlin.name.Name;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter;
-import org.jetbrains.kotlin.resolve.scopes.JetScope;
+import org.jetbrains.kotlin.resolve.scopes.KtScope;
 
 import java.util.*;
 
-import static org.jetbrains.kotlin.js.descriptorUtils.DescriptorUtilsPackage.getJetTypeFqName;
-import static org.jetbrains.kotlin.js.descriptorUtils.DescriptorUtilsPackage.hasPrimaryConstructor;
 import static org.jetbrains.kotlin.resolve.DescriptorUtils.getFqName;
 
 public class ManglingUtils {
@@ -155,7 +154,7 @@ public class ManglingUtils {
     private static String getSimpleMangledName(@NotNull CallableMemberDescriptor descriptor) {
         DeclarationDescriptor containingDeclaration = descriptor.getContainingDeclaration();
 
-        JetScope jetScope = null;
+        KtScope jetScope = null;
 
         String nameToCompare = descriptor.getName().asString();
 
@@ -176,7 +175,7 @@ public class ManglingUtils {
         if (jetScope != null) {
             final String finalNameToCompare = nameToCompare;
 
-            Collection<DeclarationDescriptor> declarations = jetScope.getDescriptors(DescriptorKindFilter.CALLABLES, JetScope.Companion.getALL_NAME_FILTER());
+            Collection<DeclarationDescriptor> declarations = jetScope.getDescriptors(DescriptorKindFilter.CALLABLES, KtScope.Companion.getALL_NAME_FILTER());
             List<CallableDescriptor> overloadedFunctions =
                     CollectionsKt.flatMap(declarations, new Function1<DeclarationDescriptor, Iterable<? extends CallableDescriptor>>() {
                 @Override
@@ -185,7 +184,7 @@ public class ManglingUtils {
                         ClassDescriptor classDescriptor = (ClassDescriptor) declarationDescriptor;
                         Collection<ConstructorDescriptor> constructors = classDescriptor.getConstructors();
 
-                        if (!hasPrimaryConstructor(classDescriptor)) {
+                        if (!DescriptorUtilsKt.hasPrimaryConstructor(classDescriptor)) {
                             ConstructorDescriptorImpl fakePrimaryConstructor =
                                     ConstructorDescriptorImpl.create(classDescriptor, Annotations.Companion.getEMPTY(), true, SourceElement.NO_SOURCE);
                             return CollectionsKt.plus(constructors, fakePrimaryConstructor);
@@ -231,13 +230,13 @@ public class ManglingUtils {
 
         ReceiverParameterDescriptor receiverParameter = descriptor.getExtensionReceiverParameter();
         if (receiverParameter != null) {
-            argTypes.append(getJetTypeFqName(receiverParameter.getType(), true)).append(".");
+            argTypes.append(DescriptorUtilsKt.getJetTypeFqName(receiverParameter.getType(), true)).append(".");
         }
 
         argTypes.append(StringUtil.join(descriptor.getValueParameters(), new Function<ValueParameterDescriptor, String>() {
             @Override
             public String fun(ValueParameterDescriptor descriptor) {
-                return getJetTypeFqName(descriptor.getType(), true);
+                return DescriptorUtilsKt.getJetTypeFqName(descriptor.getType(), true);
             }
         }, ","));
 

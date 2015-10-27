@@ -25,20 +25,17 @@ import org.jetbrains.kotlin.descriptors.annotations.Annotations
 import org.jetbrains.kotlin.descriptors.impl.SimpleFunctionDescriptorImpl
 import org.jetbrains.kotlin.load.java.JvmAbi
 import org.jetbrains.kotlin.name.Name
-import org.jetbrains.kotlin.psi.JetCallableReferenceExpression
+import org.jetbrains.kotlin.psi.KtElement
 import org.jetbrains.kotlin.resolve.DescriptorFactory
 import org.jetbrains.kotlin.resolve.PropertyImportedFromObject
-import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall
 import org.jetbrains.kotlin.resolve.descriptorUtil.builtIns
 import org.jetbrains.kotlin.resolve.descriptorUtil.getSuperClassNotAny
 import org.jetbrains.kotlin.resolve.jvm.AsmTypes.*
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOrigin
+import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue
 import org.jetbrains.kotlin.resolve.scopes.receivers.ScriptReceiver
 import org.jetbrains.kotlin.utils.sure
-import org.jetbrains.org.objectweb.asm.Opcodes.ACC_FINAL
-import org.jetbrains.org.objectweb.asm.Opcodes.ACC_PUBLIC
-import org.jetbrains.org.objectweb.asm.Opcodes.ACC_SUPER
-import org.jetbrains.org.objectweb.asm.Opcodes.V1_6
+import org.jetbrains.org.objectweb.asm.Opcodes.*
 import org.jetbrains.org.objectweb.asm.Type
 import org.jetbrains.org.objectweb.asm.commons.InstructionAdapter
 import org.jetbrains.org.objectweb.asm.commons.Method
@@ -47,35 +44,34 @@ public class PropertyReferenceCodegen(
         state: GenerationState,
         parentCodegen: MemberCodegen<*>,
         context: ClassContext,
-        expression: JetCallableReferenceExpression,
+        expression: KtElement,
         classBuilder: ClassBuilder,
         private val classDescriptor: ClassDescriptor,
-        private val resolvedCall: ResolvedCall<VariableDescriptor>
-) : MemberCodegen<JetCallableReferenceExpression>(state, parentCodegen, context, expression, classBuilder) {
-    private val target = resolvedCall.getResultingDescriptor()
+        private val target: VariableDescriptor,
+        dispatchReceiver: ReceiverValue
+) : MemberCodegen<KtElement>(state, parentCodegen, context, expression, classBuilder) {
     private val asmType = typeMapper.mapClass(classDescriptor)
+
+    private val dispatchReceiverType =
+            when {
+                dispatchReceiver is ScriptReceiver -> {
+                    // TODO: fix receiver for scripts, see ScriptReceiver#getType
+                    dispatchReceiver.declarationDescriptor.classDescriptor.defaultType
+                }
+                dispatchReceiver.exists() -> dispatchReceiver.type
+                else -> null
+            }
+
+    private val extensionReceiverType = target.extensionReceiverParameter?.type
+
+    private val receiverCount =
+            (if (dispatchReceiverType != null) 1 else 0) + (if (extensionReceiverType != null) 1 else 0)
 
     // e.g. MutablePropertyReference0
     private val superAsmType = typeMapper.mapClass(classDescriptor.getSuperClassNotAny().sure { "No super class for $classDescriptor" })
 
     // e.g. mutableProperty0(Lkotlin/jvm/internal/MutablePropertyReference0;)Lkotlin/reflect/KMutableProperty0;
-    private val wrapperMethod: Method
-
-    init {
-        val hasReceiver = target.getDispatchReceiverParameter() != null || target.getExtensionReceiverParameter() != null
-        val isMutable = target.isVar()
-
-        wrapperMethod = when {
-            hasReceiver -> when {
-                isMutable -> method("mutableProperty1", K_MUTABLE_PROPERTY1_TYPE, MUTABLE_PROPERTY_REFERENCE1)
-                else -> method("property1", K_PROPERTY1_TYPE, PROPERTY_REFERENCE1)
-            }
-            else -> when {
-                isMutable -> method("mutableProperty0", K_MUTABLE_PROPERTY0_TYPE, MUTABLE_PROPERTY_REFERENCE0)
-                else -> method("property0", K_PROPERTY0_TYPE, PROPERTY_REFERENCE0)
-            }
-        }
-    }
+    private val wrapperMethod = getWrapperMethodForPropertyReference(target, receiverCount)
 
     override fun generateDeclaration() {
         v.defineClass(
@@ -111,35 +107,13 @@ public class PropertyReferenceCodegen(
         }
 
         generateMethod("property reference getSignature", ACC_PUBLIC, method("getSignature", JAVA_STRING_TYPE)) {
-            target as PropertyDescriptor
-
-            val getter = target.getGetter() ?: run {
-                val defaultGetter = DescriptorFactory.createDefaultGetter(target, Annotations.EMPTY)
-                defaultGetter.initialize(target.getType())
-                defaultGetter
-            }
-
-            val method = typeMapper.mapSignature(getter).getAsmMethod()
-            aconst(method.getName() + method.getDescriptor())
+            aconst(getPropertyReferenceSignature(target as PropertyDescriptor, state))
         }
 
         generateAccessors()
     }
 
     private fun generateAccessors() {
-        val dispatchReceiver = resolvedCall.getDispatchReceiver()
-        val extensionReceiver = resolvedCall.getExtensionReceiver()
-        val receiverType =
-                when {
-                    dispatchReceiver is ScriptReceiver -> {
-                        // TODO: fix receiver for scripts, see ScriptReceiver#getType
-                        dispatchReceiver.getDeclarationDescriptor().getClassDescriptor().getDefaultType()
-                    }
-                    dispatchReceiver.exists() -> dispatchReceiver.getType()
-                    extensionReceiver.exists() -> extensionReceiver.getType()
-                    else -> null
-                }
-
         fun generateAccessor(method: Method, accessorBody: InstructionAdapter.(StackValue) -> Unit) {
             generateMethod("property reference $method", ACC_PUBLIC, method) {
                 // Note: this descriptor is an inaccurate representation of the get/set method. In particular, it has incorrect
@@ -160,26 +134,27 @@ public class PropertyReferenceCodegen(
                     StackValue.singleton(containingObject, typeMapper).put(typeMapper.mapClass(containingObject), this)
                 }
 
-                val receiver =
-                        if (receiverType != null) StackValue.coercion(StackValue.local(1, OBJECT_TYPE), typeMapper.mapType(receiverType))
-                        else StackValue.none()
-                val value = fakeCodegen.intermediateValueForProperty(target as PropertyDescriptor, false, null, receiver)
+                for ((index, type) in listOf(dispatchReceiverType, extensionReceiverType).filterNotNull().withIndex()) {
+                    StackValue.local(index + 1, OBJECT_TYPE).put(typeMapper.mapType(type), this)
+                }
+
+                val value = fakeCodegen.intermediateValueForProperty(target as PropertyDescriptor, false, null, StackValue.none())
 
                 accessorBody(value)
             }
         }
 
-        val getterParameters = if (receiverType != null) arrayOf(OBJECT_TYPE) else emptyArray()
+        val getterParameters = (1..receiverCount).map { OBJECT_TYPE }.toTypedArray()
         generateAccessor(method("get", OBJECT_TYPE, *getterParameters)) { value ->
             value.put(OBJECT_TYPE, this)
         }
 
-        if (!target.isVar()) return
+        if (!target.isVar) return
 
         val setterParameters = (getterParameters + arrayOf(OBJECT_TYPE))
         generateAccessor(method("set", Type.VOID_TYPE, *setterParameters)) { value ->
-            // Hard-coded 1 or 2 is safe here because there's only java/lang/Object in the signature, no double/long parameters
-            value.store(StackValue.local(if (receiverType != null) 2 else 1, OBJECT_TYPE), this)
+            // Number of receivers (not size) is safe here because there's only java/lang/Object in the signature, no double/long parameters
+            value.store(StackValue.local(receiverCount + 1, OBJECT_TYPE), this)
         }
     }
 
@@ -203,4 +178,35 @@ public class PropertyReferenceCodegen(
             StackValue.operation(wrapperMethod.getReturnType()) { iv ->
                 iv.getstatic(asmType.getInternalName(), JvmAbi.INSTANCE_FIELD, wrapperMethod.getReturnType().getDescriptor())
             }
+
+    companion object {
+        @JvmStatic
+        fun getPropertyReferenceSignature(property: PropertyDescriptor, state: GenerationState): String {
+            val getter =
+                    property.getter ?: DescriptorFactory.createDefaultGetter(property, Annotations.EMPTY).apply {
+                        initialize(property.type)
+                    }
+
+            val method = state.typeMapper.mapSignature(getter).asmMethod
+            return method.name + method.descriptor
+        }
+
+        @JvmStatic
+        fun getWrapperMethodForPropertyReference(property: VariableDescriptor, receiverCount: Int): Method {
+            return when (receiverCount) {
+                2 -> when {
+                    property.isVar -> method("mutableProperty2", K_MUTABLE_PROPERTY2_TYPE, MUTABLE_PROPERTY_REFERENCE2)
+                    else -> method("property2", K_PROPERTY2_TYPE, PROPERTY_REFERENCE2)
+                }
+                1 -> when {
+                    property.isVar -> method("mutableProperty1", K_MUTABLE_PROPERTY1_TYPE, MUTABLE_PROPERTY_REFERENCE1)
+                    else -> method("property1", K_PROPERTY1_TYPE, PROPERTY_REFERENCE1)
+                }
+                else -> when {
+                    property.isVar -> method("mutableProperty0", K_MUTABLE_PROPERTY0_TYPE, MUTABLE_PROPERTY_REFERENCE0)
+                    else -> method("property0", K_PROPERTY0_TYPE, PROPERTY_REFERENCE0)
+                }
+            }
+        }
+    }
 }

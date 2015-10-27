@@ -18,15 +18,15 @@ package org.jetbrains.kotlin.resolve.calls.smartcasts
 
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns
 import org.jetbrains.kotlin.types.ErrorUtils
-import org.jetbrains.kotlin.types.JetType
+import org.jetbrains.kotlin.types.KotlinType
 
 /**
  * This class describes an arbitrary object which has some value in data flow analysis.
  * In general case it's some r-value.
  */
-class DataFlowValue(val id: Any?, val type: JetType, val kind: DataFlowValue.Kind, val immanentNullability: Nullability) {
+class DataFlowValue(val id: Any?, val type: KotlinType, val kind: DataFlowValue.Kind, val immanentNullability: Nullability) {
 
-    enum class Kind(private val name: String) {
+    enum class Kind(private val str: String) {
         // Smart casts are completely safe
         STABLE_VALUE("stable"),
         // Smart casts are safe but possible changes in loops / closures ahead must be taken into account
@@ -35,7 +35,7 @@ class DataFlowValue(val id: Any?, val type: JetType, val kind: DataFlowValue.Kin
         UNPREDICTABLE_VARIABLE("unpredictable"),
         OTHER("other");
 
-        override fun toString() = name
+        override fun toString() = str
 
         fun isStable() = this == STABLE_VALUE
     }

@@ -33,7 +33,7 @@ import org.jetbrains.kotlin.codegen.when.SwitchCodegenUtil;
 import org.jetbrains.kotlin.codegen.when.WhenByEnumsMapping;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.descriptors.impl.ClassDescriptorImpl;
-import org.jetbrains.kotlin.fileClasses.FileClassesPackage;
+import org.jetbrains.kotlin.fileClasses.FileClasses;
 import org.jetbrains.kotlin.fileClasses.JvmFileClassesProvider;
 import org.jetbrains.kotlin.load.java.descriptors.SamConstructorDescriptor;
 import org.jetbrains.kotlin.name.Name;
@@ -42,26 +42,26 @@ import org.jetbrains.kotlin.resolve.BindingContext;
 import org.jetbrains.kotlin.resolve.BindingTrace;
 import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
-import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilPackage;
+import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilKt;
 import org.jetbrains.kotlin.resolve.calls.model.ExpressionValueArgument;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedValueArgument;
 import org.jetbrains.kotlin.resolve.constants.ConstantValue;
 import org.jetbrains.kotlin.resolve.constants.EnumValue;
 import org.jetbrains.kotlin.resolve.constants.NullValue;
-import org.jetbrains.kotlin.resolve.scopes.JetScope;
-import org.jetbrains.kotlin.resolve.source.SourcePackage;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.resolve.scopes.KtScope;
+import org.jetbrains.kotlin.resolve.source.KotlinSourceElementKt;
+import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.org.objectweb.asm.Type;
 
 import java.util.*;
 
 import static org.jetbrains.kotlin.codegen.binding.CodegenBinding.*;
-import static org.jetbrains.kotlin.lexer.JetTokens.*;
+import static org.jetbrains.kotlin.lexer.KtTokens.*;
 import static org.jetbrains.kotlin.name.SpecialNames.safeIdentifier;
 import static org.jetbrains.kotlin.resolve.BindingContext.*;
 
-class CodegenAnnotatingVisitor extends JetVisitorVoid {
+class CodegenAnnotatingVisitor extends KtVisitorVoid {
     private static final TokenSet BINARY_OPERATIONS = TokenSet.orSet(
             AUGMENTED_ASSIGNMENTS,
             TokenSet.create(PLUS, MINUS, MUL, DIV, PERC, RANGE, LT, GT, LTEQ, GTEQ, IDENTIFIER)
@@ -88,9 +88,9 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
 
     @NotNull
     private ClassDescriptor recordClassForCallable(
-            @NotNull JetElement element,
+            @NotNull KtElement element,
             @NotNull CallableDescriptor callableDescriptor,
-            @NotNull Collection<JetType> supertypes,
+            @NotNull Collection<KotlinType> supertypes,
             @NotNull String name
     ) {
         String simpleName = name.substring(name.lastIndexOf('/') + 1);
@@ -99,9 +99,9 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
                 Name.special("<closure-" + simpleName + ">"),
                 Modality.FINAL,
                 supertypes,
-                SourcePackage.toSourceElement(element)
+                KotlinSourceElementKt.toSourceElement(element)
         );
-        classDescriptor.initialize(JetScope.Empty.INSTANCE$, Collections.<ConstructorDescriptor>emptySet(), null);
+        classDescriptor.initialize(KtScope.Empty.INSTANCE$, Collections.<ConstructorDescriptor>emptySet(), null);
 
         bindingTrace.record(CLASS_FOR_CALLABLE, callableDescriptor, classDescriptor);
         return classDescriptor;
@@ -109,7 +109,7 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
 
     @NotNull
     @SuppressWarnings("ConstantConditions")
-    private DeclarationDescriptor correctContainerForLambda(@NotNull CallableDescriptor descriptor, @NotNull JetElement function) {
+    private DeclarationDescriptor correctContainerForLambda(@NotNull CallableDescriptor descriptor, @NotNull KtElement function) {
         DeclarationDescriptor container = descriptor.getContainingDeclaration();
 
         // In almost all cases the function's direct container is the correct container to consider in JVM back-end
@@ -126,9 +126,9 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
 
                 if (bindingContext.get(DECLARATION_TO_DESCRIPTOR, element) == container) return container;
 
-                if (element instanceof JetObjectDeclaration &&
-                    element.getParent() instanceof JetObjectLiteralExpression &&
-                    child instanceof JetDelegationSpecifierList) {
+                if (element instanceof KtObjectDeclaration &&
+                    element.getParent() instanceof KtObjectLiteralExpression &&
+                    child instanceof KtDelegationSpecifierList) {
                     // If we're passing an anonymous object's super call, it means "container" is ConstructorDescriptor of that object.
                     // To reach outer context, we should call getContainingDeclaration() twice
                     // TODO: this is probably not entirely correct, mostly because DECLARATION_TO_DESCRIPTOR can return null
@@ -140,39 +140,26 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
         return container;
     }
 
-    private String inventAnonymousClassName(JetElement declaration) {
+    @NotNull
+    private String inventAnonymousClassName() {
         String top = peekFromStack(nameStack);
         Integer cnt = anonymousSubclassesCount.get(top);
         if (cnt == null) {
             cnt = 0;
         }
-        String name = top + "$" + (cnt + 1);
-        ClassDescriptor descriptor = bindingContext.get(CLASS, declaration);
-        if (descriptor == null) {
-            if (declaration instanceof JetFunctionLiteralExpression ||
-                declaration instanceof JetNamedFunction ||
-                declaration instanceof JetObjectLiteralExpression ||
-                declaration instanceof JetCallableReferenceExpression) {
-            }
-            else {
-                throw new IllegalStateException(
-                        "Class-less declaration which is not JetFunctionLiteralExpression|JetNamedFunction|JetObjectLiteralExpression|JetCallableReferenceExpression : " +
-                        declaration.getClass().getName());
-            }
-        }
         anonymousSubclassesCount.put(top, cnt + 1);
 
-        return name;
+        return top + "$" + (cnt + 1);
     }
 
     @Override
-    public void visitJetElement(@NotNull JetElement element) {
+    public void visitJetElement(@NotNull KtElement element) {
         super.visitJetElement(element);
         element.acceptChildren(this);
     }
 
     @Override
-    public void visitJetFile(@NotNull JetFile file) {
+    public void visitJetFile(@NotNull KtFile file) {
         if (file.isScript()) {
             // SCRIPT: should be replaced with VisitScript override
             //noinspection ConstantConditions
@@ -192,9 +179,9 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
     }
 
     @Override
-    public void visitEnumEntry(@NotNull JetEnumEntry enumEntry) {
+    public void visitEnumEntry(@NotNull KtEnumEntry enumEntry) {
         if (enumEntry.getDeclarations().isEmpty()) {
-            for (JetDelegationSpecifier specifier : enumEntry.getDelegationSpecifiers()) {
+            for (KtDelegationSpecifier specifier : enumEntry.getDelegationSpecifiers()) {
                 specifier.accept(this);
             }
             return;
@@ -209,7 +196,7 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
     }
 
     @Override
-    public void visitObjectDeclaration(@NotNull JetObjectDeclaration declaration) {
+    public void visitObjectDeclaration(@NotNull KtObjectDeclaration declaration) {
         if (!filter.shouldAnnotateClass(declaration)) return;
 
         ClassDescriptor classDescriptor = bindingContext.get(CLASS, declaration);
@@ -227,7 +214,7 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
     }
 
     @Override
-    public void visitClass(@NotNull JetClass klass) {
+    public void visitClass(@NotNull KtClass klass) {
         if (!filter.shouldAnnotateClass(klass)) return;
 
         ClassDescriptor classDescriptor = bindingContext.get(CLASS, klass);
@@ -252,8 +239,8 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
     }
 
     @Override
-    public void visitObjectLiteralExpression(@NotNull JetObjectLiteralExpression expression) {
-        JetObjectDeclaration object = expression.getObjectDeclaration();
+    public void visitObjectLiteralExpression(@NotNull KtObjectLiteralExpression expression) {
+        KtObjectDeclaration object = expression.getObjectDeclaration();
         ClassDescriptor classDescriptor = bindingContext.get(CLASS, object);
         if (classDescriptor == null) {
             // working around a problem with shallow analysis
@@ -261,17 +248,17 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
             return;
         }
 
-        String name = inventAnonymousClassName(object);
+        String name = inventAnonymousClassName();
         recordClosure(classDescriptor, name);
 
-        JetDelegationSpecifierList delegationSpecifierList = object.getDelegationSpecifierList();
+        KtDelegationSpecifierList delegationSpecifierList = object.getDelegationSpecifierList();
         if (delegationSpecifierList != null) {
             delegationSpecifierList.accept(this);
         }
 
         classStack.push(classDescriptor);
         nameStack.push(CodegenBinding.getAsmType(bindingContext, classDescriptor).getInternalName());
-        JetClassBody body = object.getBody();
+        KtClassBody body = object.getBody();
         if (body != null) {
             super.visitClassBody(body);
         }
@@ -280,15 +267,15 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
     }
 
     @Override
-    public void visitFunctionLiteralExpression(@NotNull JetFunctionLiteralExpression expression) {
-        JetFunctionLiteral functionLiteral = expression.getFunctionLiteral();
+    public void visitFunctionLiteralExpression(@NotNull KtFunctionLiteralExpression expression) {
+        KtFunctionLiteral functionLiteral = expression.getFunctionLiteral();
         FunctionDescriptor functionDescriptor =
                 (FunctionDescriptor) bindingContext.get(DECLARATION_TO_DESCRIPTOR, functionLiteral);
         // working around a problem with shallow analysis
         if (functionDescriptor == null) return;
 
-        String name = inventAnonymousClassName(expression);
-        Collection<JetType> supertypes = runtimeTypes.getSupertypesForClosure(functionDescriptor);
+        String name = inventAnonymousClassName();
+        Collection<KotlinType> supertypes = runtimeTypes.getSupertypesForClosure(functionDescriptor);
         ClassDescriptor classDescriptor = recordClassForCallable(functionLiteral, functionDescriptor, supertypes, name);
         recordClosure(classDescriptor, name);
 
@@ -300,13 +287,13 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
     }
 
     @Override
-    public void visitCallableReferenceExpression(@NotNull JetCallableReferenceExpression expression) {
-        ResolvedCall<?> referencedFunction = CallUtilPackage.getResolvedCall(expression.getCallableReference(), bindingContext);
+    public void visitCallableReferenceExpression(@NotNull KtCallableReferenceExpression expression) {
+        ResolvedCall<?> referencedFunction = CallUtilKt.getResolvedCall(expression.getCallableReference(), bindingContext);
         if (referencedFunction == null) return;
         CallableDescriptor target = referencedFunction.getResultingDescriptor();
 
         CallableDescriptor callableDescriptor;
-        Collection<JetType> supertypes;
+        Collection<KotlinType> supertypes;
 
         if (target instanceof FunctionDescriptor) {
             callableDescriptor = bindingContext.get(FUNCTION, expression);
@@ -324,7 +311,7 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
             return;
         }
 
-        String name = inventAnonymousClassName(expression);
+        String name = inventAnonymousClassName();
         ClassDescriptor classDescriptor = recordClassForCallable(expression, callableDescriptor, supertypes, name);
         recordClosure(classDescriptor, name);
 
@@ -341,24 +328,34 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
     }
 
     @Override
-    public void visitProperty(@NotNull JetProperty property) {
-        DeclarationDescriptor propertyDescriptor = bindingContext.get(DECLARATION_TO_DESCRIPTOR, property);
+    public void visitProperty(@NotNull KtProperty property) {
+        DeclarationDescriptor descriptor = bindingContext.get(DECLARATION_TO_DESCRIPTOR, property);
         // working around a problem with shallow analysis
-        if (propertyDescriptor == null) return;
+        if (descriptor == null) return;
 
-        String nameForClassOrPackageMember = getNameForClassOrPackageMember(propertyDescriptor);
+        String nameForClassOrPackageMember = getNameForClassOrPackageMember(descriptor);
         if (nameForClassOrPackageMember != null) {
             nameStack.push(nameForClassOrPackageMember);
         }
         else {
             nameStack.push(peekFromStack(nameStack) + '$' + safeIdentifier(property.getNameAsSafeName()).asString());
         }
+
+        KtPropertyDelegate delegate = property.getDelegate();
+        if (delegate != null && descriptor instanceof PropertyDescriptor) {
+            PropertyDescriptor propertyDescriptor = (PropertyDescriptor) descriptor;
+            String name = inventAnonymousClassName();
+            KotlinType supertype = runtimeTypes.getSupertypeForPropertyReference(propertyDescriptor);
+            ClassDescriptor classDescriptor = recordClassForCallable(delegate, propertyDescriptor, Collections.singleton(supertype), name);
+            recordClosure(classDescriptor, name);
+        }
+
         super.visitProperty(property);
         nameStack.pop();
     }
 
     @Override
-    public void visitNamedFunction(@NotNull JetNamedFunction function) {
+    public void visitNamedFunction(@NotNull KtNamedFunction function) {
         FunctionDescriptor functionDescriptor = (FunctionDescriptor) bindingContext.get(DECLARATION_TO_DESCRIPTOR, function);
         // working around a problem with shallow analysis
         if (functionDescriptor == null) return;
@@ -370,8 +367,8 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
             nameStack.pop();
         }
         else {
-            String name = inventAnonymousClassName(function);
-            Collection<JetType> supertypes = runtimeTypes.getSupertypesForClosure(functionDescriptor);
+            String name = inventAnonymousClassName();
+            Collection<KotlinType> supertypes = runtimeTypes.getSupertypesForClosure(functionDescriptor);
             ClassDescriptor classDescriptor = recordClassForCallable(function, functionDescriptor, supertypes, name);
             recordClosure(classDescriptor, name);
 
@@ -393,22 +390,22 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
             return peek + '$' + name;
         }
         else if (containingDeclaration instanceof PackageFragmentDescriptor) {
-            JetFile containingFile = DescriptorToSourceUtils.getContainingFile(descriptor);
+            KtFile containingFile = DescriptorToSourceUtils.getContainingFile(descriptor);
             assert containingFile != null : "File not found for " + descriptor;
-            return FileClassesPackage.getFileClassInternalName(fileClassesProvider, containingFile) + '$' + name;
+            return FileClasses.getFileClassInternalName(fileClassesProvider, containingFile) + '$' + name;
         }
 
         return null;
     }
 
     @Override
-    public void visitCallExpression(@NotNull JetCallExpression expression) {
+    public void visitCallExpression(@NotNull KtCallExpression expression) {
         super.visitCallExpression(expression);
         checkSamCall(expression);
     }
 
-    private void checkSamCall(@NotNull JetCallElement expression) {
-        ResolvedCall<?> call = CallUtilPackage.getResolvedCall(expression, bindingContext);
+    private void checkSamCall(@NotNull KtCallElement expression) {
+        ResolvedCall<?> call = CallUtilKt.getResolvedCall(expression, bindingContext);
         if (call == null) return;
 
         CallableDescriptor descriptor = call.getResultingDescriptor();
@@ -430,7 +427,7 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
             assert resolvedValueArgument instanceof ExpressionValueArgument : resolvedValueArgument;
             ValueArgument valueArgument = ((ExpressionValueArgument) resolvedValueArgument).getValueArgument();
             assert valueArgument != null;
-            JetExpression argumentExpression = valueArgument.getArgumentExpression();
+            KtExpression argumentExpression = valueArgument.getArgumentExpression();
             assert argumentExpression != null : valueArgument.asElement().getText();
 
             bindingTrace.record(CodegenBinding.SAM_VALUE, argumentExpression, samType);
@@ -438,12 +435,12 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
     }
 
     @Override
-    public void visitDelegationToSuperCallSpecifier(@NotNull JetDelegatorToSuperCall call) {
+    public void visitDelegationToSuperCallSpecifier(@NotNull KtDelegatorToSuperCall call) {
         super.visitDelegationToSuperCallSpecifier(call);
         checkSamCall(call);
     }
 
-    private void recordSamConstructorIfNeeded(@NotNull JetCallElement expression, @NotNull ResolvedCall<?> call) {
+    private void recordSamConstructorIfNeeded(@NotNull KtCallElement expression, @NotNull ResolvedCall<?> call) {
         CallableDescriptor callableDescriptor = call.getResultingDescriptor();
         if (!(callableDescriptor.getOriginal() instanceof SamConstructorDescriptor)) return;
 
@@ -455,7 +452,7 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
         ValueArgument argument = ((ExpressionValueArgument) valueArgument).getValueArgument();
         if (argument == null) return;
 
-        JetExpression argumentExpression = argument.getArgumentExpression();
+        KtExpression argumentExpression = argument.getArgumentExpression();
         bindingTrace.record(SAM_CONSTRUCTOR_TO_ARGUMENT, expression, argumentExpression);
 
         //noinspection ConstantConditions
@@ -464,7 +461,7 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
     }
 
     @Override
-    public void visitBinaryExpression(@NotNull JetBinaryExpression expression) {
+    public void visitBinaryExpression(@NotNull KtBinaryExpression expression) {
         super.visitBinaryExpression(expression);
 
         DeclarationDescriptor operationDescriptor = bindingContext.get(BindingContext.REFERENCE_TARGET, expression.getOperationReference());
@@ -486,7 +483,7 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
     }
 
     @Override
-    public void visitArrayAccessExpression(@NotNull JetArrayAccessExpression expression) {
+    public void visitArrayAccessExpression(@NotNull KtArrayAccessExpression expression) {
         super.visitArrayAccessExpression(expression);
 
         DeclarationDescriptor operationDescriptor = bindingContext.get(BindingContext.REFERENCE_TARGET, expression);
@@ -496,7 +493,7 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
         FunctionDescriptor original = SamCodegenUtil.getOriginalIfSamAdapter((FunctionDescriptor) operationDescriptor);
         if (original == null) return;
 
-        List<JetExpression> indexExpressions = expression.getIndexExpressions();
+        List<KtExpression> indexExpressions = expression.getIndexExpressions();
         List<ValueParameterDescriptor> parameters = original.getValueParameters();
         for (ValueParameterDescriptor valueParameter : parameters) {
             SamType samType = SamType.create(valueParameter.getType());
@@ -504,20 +501,20 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
 
             if (isSetter && valueParameter.getIndex() == parameters.size() - 1) {
                 PsiElement parent = expression.getParent();
-                if (parent instanceof JetBinaryExpression && ((JetBinaryExpression) parent).getOperationToken() == EQ) {
-                    JetExpression right = ((JetBinaryExpression) parent).getRight();
+                if (parent instanceof KtBinaryExpression && ((KtBinaryExpression) parent).getOperationToken() == EQ) {
+                    KtExpression right = ((KtBinaryExpression) parent).getRight();
                     bindingTrace.record(CodegenBinding.SAM_VALUE, right, samType);
                 }
             }
             else {
-                JetExpression indexExpression = indexExpressions.get(valueParameter.getIndex());
+                KtExpression indexExpression = indexExpressions.get(valueParameter.getIndex());
                 bindingTrace.record(CodegenBinding.SAM_VALUE, indexExpression, samType);
             }
         }
     }
 
     @Override
-    public void visitWhenExpression(@NotNull JetWhenExpression expression) {
+    public void visitWhenExpression(@NotNull KtWhenExpression expression) {
         super.visitWhenExpression(expression);
         if (!isWhenWithEnums(expression)) return;
 
@@ -533,7 +530,7 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
         int fieldNumber = mappings.size();
 
         assert expression.getSubjectExpression() != null : "subject expression should be not null in a valid when by enums";
-        JetType type = bindingContext.getType(expression.getSubjectExpression());
+        KotlinType type = bindingContext.getType(expression.getSubjectExpression());
         assert type != null : "should not be null in a valid when by enums";
         ClassDescriptor classDescriptor = (ClassDescriptor) type.getConstructor().getDeclarationDescriptor();
         assert classDescriptor != null : "because it's enum";
@@ -552,7 +549,7 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
         bindingTrace.record(MAPPING_FOR_WHEN_BY_ENUM, expression, mapping);
     }
 
-    private boolean isWhenWithEnums(@NotNull JetWhenExpression expression) {
+    private boolean isWhenWithEnums(@NotNull KtWhenExpression expression) {
         return WhenChecker.isWhenByEnum(expression, bindingContext) &&
                SwitchCodegenUtil.checkAllItemsAreConstantsSatisfying(
                        expression,
@@ -567,7 +564,7 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
     }
 
     @NotNull
-    private String getCurrentTopLevelClassOrPackagePartInternalName(@NotNull JetFile file) {
+    private String getCurrentTopLevelClassOrPackagePartInternalName(@NotNull KtFile file) {
         ListIterator<ClassDescriptor> iterator = classStack.listIterator(classStack.size());
         while (iterator.hasPrevious()) {
             ClassDescriptor previous = iterator.previous();
@@ -576,7 +573,7 @@ class CodegenAnnotatingVisitor extends JetVisitorVoid {
             }
         }
 
-        return FileClassesPackage.getFacadeClassInternalName(fileClassesProvider, file);
+        return FileClasses.getFacadeClassInternalName(fileClassesProvider, file);
     }
 
     private static <T> T peekFromStack(@NotNull Stack<T> stack) {

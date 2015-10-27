@@ -29,16 +29,16 @@ import org.jetbrains.kotlin.diagnostics.DiagnosticWithParameters2;
 import org.jetbrains.kotlin.diagnostics.Errors;
 import org.jetbrains.kotlin.diagnostics.rendering.DefaultErrorMessages;
 import org.jetbrains.kotlin.idea.caches.resolve.ResolutionUtils;
-import org.jetbrains.kotlin.idea.core.CorePackage;
 import org.jetbrains.kotlin.idea.core.quickfix.QuickFixUtil;
+import org.jetbrains.kotlin.idea.util.ScopeUtils;
 import org.jetbrains.kotlin.idea.util.TypeUtils;
 import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.resolve.BindingContext;
-import org.jetbrains.kotlin.resolve.bindingContextUtil.BindingContextUtilPackage;
-import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilPackage;
+import org.jetbrains.kotlin.resolve.bindingContextUtil.BindingContextUtilsKt;
+import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilKt;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
 import org.jetbrains.kotlin.resolve.scopes.LexicalScope;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.types.typeUtil.TypeUtilsKt;
 
 import java.util.Collections;
@@ -54,31 +54,31 @@ public class QuickFixFactoryForTypeMismatchError extends JetIntentionActionsFact
     protected List<IntentionAction> doCreateActions(@NotNull Diagnostic diagnostic) {
         List<IntentionAction> actions = new LinkedList<IntentionAction>();
 
-        BindingContext context = ResolutionUtils.analyzeFully((JetFile) diagnostic.getPsiFile());
+        BindingContext context = ResolutionUtils.analyzeFully((KtFile) diagnostic.getPsiFile());
 
         PsiElement diagnosticElement = diagnostic.getPsiElement();
-        if (!(diagnosticElement instanceof JetExpression)) {
+        if (!(diagnosticElement instanceof KtExpression)) {
             LOG.error("Unexpected element: " + diagnosticElement.getText());
             return Collections.emptyList();
         }
 
-        JetExpression expression = (JetExpression) diagnosticElement;
+        KtExpression expression = (KtExpression) diagnosticElement;
 
-        JetType expectedType;
-        JetType expressionType;
+        KotlinType expectedType;
+        KotlinType expressionType;
         if (diagnostic.getFactory() == Errors.TYPE_MISMATCH) {
-            DiagnosticWithParameters2<JetExpression, JetType, JetType> diagnosticWithParameters = Errors.TYPE_MISMATCH.cast(diagnostic);
+            DiagnosticWithParameters2<KtExpression, KotlinType, KotlinType> diagnosticWithParameters = Errors.TYPE_MISMATCH.cast(diagnostic);
             expectedType = diagnosticWithParameters.getA();
             expressionType = diagnosticWithParameters.getB();
         }
         else if (diagnostic.getFactory() == Errors.NULL_FOR_NONNULL_TYPE) {
-            DiagnosticWithParameters1<JetConstantExpression, JetType> diagnosticWithParameters =
+            DiagnosticWithParameters1<KtConstantExpression, KotlinType> diagnosticWithParameters =
                     Errors.NULL_FOR_NONNULL_TYPE.cast(diagnostic);
             expectedType = diagnosticWithParameters.getA();
             expressionType = TypeUtilsKt.makeNullable(expectedType);
         }
         else if (diagnostic.getFactory() == Errors.CONSTANT_EXPECTED_TYPE_MISMATCH) {
-            DiagnosticWithParameters2<JetConstantExpression, String, JetType> diagnosticWithParameters =
+            DiagnosticWithParameters2<KtConstantExpression, String, KotlinType> diagnosticWithParameters =
                     Errors.CONSTANT_EXPECTED_TYPE_MISMATCH.cast(diagnostic);
             expectedType = diagnosticWithParameters.getB();
             expressionType = context.getType(expression);
@@ -93,19 +93,19 @@ public class QuickFixFactoryForTypeMismatchError extends JetIntentionActionsFact
         }
 
         // We don't want to cast a cast or type-asserted expression:
-        if (!(expression instanceof JetBinaryExpressionWithTypeRHS) && !(expression.getParent() instanceof  JetBinaryExpressionWithTypeRHS)) {
+        if (!(expression instanceof KtBinaryExpressionWithTypeRHS) && !(expression.getParent() instanceof KtBinaryExpressionWithTypeRHS)) {
             actions.add(new CastExpressionFix(expression, expectedType));
         }
 
         // Property initializer type mismatch property type:
-        JetProperty property = PsiTreeUtil.getParentOfType(expression, JetProperty.class);
+        KtProperty property = PsiTreeUtil.getParentOfType(expression, KtProperty.class);
         if (property != null) {
-            JetPropertyAccessor getter = property.getGetter();
-            JetExpression initializer = property.getInitializer();
+            KtPropertyAccessor getter = property.getGetter();
+            KtExpression initializer = property.getInitializer();
             if (QuickFixUtil.canEvaluateTo(initializer, expression) ||
                 (getter != null && QuickFixUtil.canFunctionOrGetterReturnExpression(property.getGetter(), expression))) {
-                LexicalScope scope = CorePackage.getResolutionScope(property, context, ResolutionUtils.getResolutionFacade(property));
-                JetType typeToInsert = TypeUtils.approximateWithResolvableType(expressionType, scope, false);
+                LexicalScope scope = ScopeUtils.getResolutionScope(property, context, ResolutionUtils.getResolutionFacade(property));
+                KotlinType typeToInsert = TypeUtils.approximateWithResolvableType(expressionType, scope, false);
                 actions.add(new ChangeVariableTypeFix(property, typeToInsert));
             }
         }
@@ -114,20 +114,20 @@ public class QuickFixFactoryForTypeMismatchError extends JetIntentionActionsFact
 
         // Mismatch in returned expression:
 
-        JetCallableDeclaration function = expressionParent instanceof JetReturnExpression
-                               ? BindingContextUtilPackage.getTargetFunction((JetReturnExpression) expressionParent, context)
-                               : PsiTreeUtil.getParentOfType(expression, JetFunction.class, true);
-        if (function instanceof JetFunction && QuickFixUtil.canFunctionOrGetterReturnExpression(function, expression)) {
-            LexicalScope scope = CorePackage.getResolutionScope(function, context, ResolutionUtils.getResolutionFacade(function));
-            JetType typeToInsert = TypeUtils.approximateWithResolvableType(expressionType, scope, false);
-            actions.add(new ChangeFunctionReturnTypeFix((JetFunction) function, typeToInsert));
+        KtCallableDeclaration function = expressionParent instanceof KtReturnExpression
+                               ? BindingContextUtilsKt.getTargetFunction((KtReturnExpression) expressionParent, context)
+                               : PsiTreeUtil.getParentOfType(expression, KtFunction.class, true);
+        if (function instanceof KtFunction && QuickFixUtil.canFunctionOrGetterReturnExpression(function, expression)) {
+            LexicalScope scope = ScopeUtils.getResolutionScope(function, context, ResolutionUtils.getResolutionFacade(function));
+            KotlinType typeToInsert = TypeUtils.approximateWithResolvableType(expressionType, scope, false);
+            actions.add(new ChangeFunctionReturnTypeFix((KtFunction) function, typeToInsert));
         }
 
         // Fixing overloaded operators:
-        if (expression instanceof JetOperationExpression) {
-            ResolvedCall<?> resolvedCall = CallUtilPackage.getResolvedCall(expression, context);
+        if (expression instanceof KtOperationExpression) {
+            ResolvedCall<?> resolvedCall = CallUtilKt.getResolvedCall(expression, context);
             if (resolvedCall != null) {
-                JetFunction declaration = getFunctionDeclaration(resolvedCall);
+                KtFunction declaration = getFunctionDeclaration(resolvedCall);
                 if (declaration != null) {
                     actions.add(new ChangeFunctionReturnTypeFix(declaration, expectedType));
                 }
@@ -135,33 +135,33 @@ public class QuickFixFactoryForTypeMismatchError extends JetIntentionActionsFact
         }
 
         // Change function return type when TYPE_MISMATCH is reported on call expression:
-        if (expression instanceof JetCallExpression) {
-            ResolvedCall<?> resolvedCall = CallUtilPackage.getResolvedCall(expression, context);
+        if (expression instanceof KtCallExpression) {
+            ResolvedCall<?> resolvedCall = CallUtilKt.getResolvedCall(expression, context);
             if (resolvedCall != null) {
-                JetFunction declaration = getFunctionDeclaration(resolvedCall);
+                KtFunction declaration = getFunctionDeclaration(resolvedCall);
                 if (declaration != null) {
                     actions.add(new ChangeFunctionReturnTypeFix(declaration, expectedType));
                 }
             }
         }
 
-        ResolvedCall<? extends CallableDescriptor> resolvedCall = CallUtilPackage.getParentResolvedCall(expression, context, true);
+        ResolvedCall<? extends CallableDescriptor> resolvedCall = CallUtilKt.getParentResolvedCall(expression, context, true);
         if (resolvedCall != null) {
             // to fix 'type mismatch' on 'if' branches
             // todo: the same with 'when'
-            JetExpression parentIf = QuickFixUtil.getParentIfForBranch(expression);
-            JetExpression argumentExpression = (parentIf != null) ? parentIf : expression;
-            ValueArgument valueArgument = CallUtilPackage.getValueArgumentForExpression(resolvedCall.getCall(), argumentExpression);
+            KtExpression parentIf = QuickFixUtil.getParentIfForBranch(expression);
+            KtExpression argumentExpression = (parentIf != null) ? parentIf : expression;
+            ValueArgument valueArgument = CallUtilKt.getValueArgumentForExpression(resolvedCall.getCall(), argumentExpression);
             if (valueArgument != null) {
-                JetParameter correspondingParameter = QuickFixUtil.getParameterDeclarationForValueArgument(resolvedCall, valueArgument);
-                JetType valueArgumentType = diagnostic.getFactory() == Errors.NULL_FOR_NONNULL_TYPE
+                KtParameter correspondingParameter = QuickFixUtil.getParameterDeclarationForValueArgument(resolvedCall, valueArgument);
+                KotlinType valueArgumentType = diagnostic.getFactory() == Errors.NULL_FOR_NONNULL_TYPE
                                             ? expressionType
                                             : context.getType(valueArgument.getArgumentExpression());
                 if (correspondingParameter != null && valueArgumentType != null) {
-                    JetCallableDeclaration callable = PsiTreeUtil.getParentOfType(correspondingParameter, JetCallableDeclaration.class, true);
-                    LexicalScope scope = callable != null ? CorePackage.getResolutionScope(callable, context, ResolutionUtils
+                    KtCallableDeclaration callable = PsiTreeUtil.getParentOfType(correspondingParameter, KtCallableDeclaration.class, true);
+                    LexicalScope scope = callable != null ? ScopeUtils.getResolutionScope(callable, context, ResolutionUtils
                             .getResolutionFacade(callable)) : null;
-                    JetType typeToInsert = TypeUtils.approximateWithResolvableType(valueArgumentType, scope, true);
+                    KotlinType typeToInsert = TypeUtils.approximateWithResolvableType(valueArgumentType, scope, true);
                     actions.add(new ChangeParameterTypeFix(correspondingParameter, typeToInsert));
                 }
             }
@@ -170,10 +170,10 @@ public class QuickFixFactoryForTypeMismatchError extends JetIntentionActionsFact
     }
 
     @Nullable
-    private static JetFunction getFunctionDeclaration(@NotNull ResolvedCall<?> resolvedCall) {
+    private static KtFunction getFunctionDeclaration(@NotNull ResolvedCall<?> resolvedCall) {
         PsiElement result = QuickFixUtil.safeGetDeclaration(resolvedCall.getResultingDescriptor());
-        if (result instanceof JetFunction) {
-            return (JetFunction) result;
+        if (result instanceof KtFunction) {
+            return (KtFunction) result;
         }
         return null;
     }

@@ -22,9 +22,9 @@ import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.descriptors.annotations.Annotations;
 import org.jetbrains.kotlin.descriptors.impl.SimpleFunctionDescriptorImpl;
 import org.jetbrains.kotlin.name.Name;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.types.TypeSubstitutor;
-import org.jetbrains.kotlin.util.OperatorNameConventions;
+import org.jetbrains.kotlin.util.OperatorChecks;
 
 import java.util.List;
 
@@ -77,18 +77,18 @@ public class JavaMethodDescriptor extends SimpleFunctionDescriptorImpl implement
     @NotNull
     @Override
     public SimpleFunctionDescriptorImpl initialize(
-            @Nullable JetType receiverParameterType,
+            @Nullable KotlinType receiverParameterType,
             @Nullable ReceiverParameterDescriptor dispatchReceiverParameter,
             @NotNull List<? extends TypeParameterDescriptor> typeParameters,
             @NotNull List<ValueParameterDescriptor> unsubstitutedValueParameters,
-            @Nullable JetType unsubstitutedReturnType,
+            @Nullable KotlinType unsubstitutedReturnType,
             @Nullable Modality modality,
             @NotNull Visibility visibility
     ) {
         SimpleFunctionDescriptorImpl descriptor = super.initialize(
                 receiverParameterType, dispatchReceiverParameter, typeParameters, unsubstitutedValueParameters,
                 unsubstitutedReturnType, modality, visibility);
-        setOperator(OperatorNameConventions.INSTANCE$.canBeOperator(descriptor));
+        setOperator(OperatorChecks.INSTANCE$.canBeOperator(descriptor));
         return descriptor;
     }
 
@@ -130,18 +130,19 @@ public class JavaMethodDescriptor extends SimpleFunctionDescriptorImpl implement
     @Override
     @NotNull
     public JavaMethodDescriptor enhance(
-            @Nullable JetType enhancedReceiverType,
-            @NotNull List<JetType> enhancedValueParametersTypes,
-            @NotNull JetType enhancedReturnType
+            @Nullable KotlinType enhancedReceiverType,
+            @NotNull List<KotlinType> enhancedValueParametersTypes,
+            @NotNull KotlinType enhancedReturnType
     ) {
         List<ValueParameterDescriptor> enhancedValueParameters =
-                DescriptorsPackage.createEnhancedValueParameters(enhancedValueParametersTypes, getValueParameters(), this);
+                UtilKt.copyValueParameters(enhancedValueParametersTypes, getValueParameters(), this);
 
         // We use `doSubstitute` here because it does exactly what we need:
         // 1. creates full copy of descriptor
         // 2. copies method's type parameters (with new containing declaration) and properly substitute to them in value parameters, return type and etc.
         JavaMethodDescriptor enhancedMethod = (JavaMethodDescriptor) doSubstitute(
-                TypeSubstitutor.EMPTY, getContainingDeclaration(), getModality(), getVisibility(), isOperator(), isInfix(), getOriginal(),
+                TypeSubstitutor.EMPTY, getContainingDeclaration(), getModality(), getVisibility(),
+                isOperator(), isInfix(), isExternal(), isInline(), isTailrec(), getOriginal(),
                 /* copyOverrides = */ true, getKind(),
                 enhancedValueParameters, enhancedReceiverType, enhancedReturnType
         );

@@ -28,23 +28,21 @@ import org.jetbrains.kotlin.descriptors.annotations.Annotations;
 import org.jetbrains.kotlin.descriptors.impl.ModuleDescriptorImpl;
 import org.jetbrains.kotlin.descriptors.impl.TypeParameterDescriptorImpl;
 import org.jetbrains.kotlin.name.Name;
-import org.jetbrains.kotlin.psi.JetTypeProjection;
-import org.jetbrains.kotlin.psi.JetTypeReference;
+import org.jetbrains.kotlin.psi.KtPsiFactoryKt;
+import org.jetbrains.kotlin.psi.KtTypeProjection;
+import org.jetbrains.kotlin.psi.KtTypeReference;
 import org.jetbrains.kotlin.resolve.TypeResolver;
-import org.jetbrains.kotlin.resolve.scopes.JetScope;
+import org.jetbrains.kotlin.resolve.scopes.KtScope;
 import org.jetbrains.kotlin.resolve.scopes.RedeclarationHandler;
 import org.jetbrains.kotlin.resolve.scopes.WritableScope;
 import org.jetbrains.kotlin.resolve.scopes.WritableScopeImpl;
-import org.jetbrains.kotlin.resolve.scopes.utils.UtilsPackage;
 import org.jetbrains.kotlin.test.ConfigurationKind;
 import org.jetbrains.kotlin.test.JetLiteFixture;
 import org.jetbrains.kotlin.test.JetTestUtils;
-import org.jetbrains.kotlin.tests.di.DiPackage;
+import org.jetbrains.kotlin.tests.di.InjectionKt;
 
 import java.util.Map;
 import java.util.Set;
-
-import static org.jetbrains.kotlin.psi.PsiPackage.JetPsiFactory;
 
 public class TypeUnifierTest extends JetLiteFixture {
     private Set<TypeConstructor> variables;
@@ -66,7 +64,7 @@ public class TypeUnifierTest extends JetLiteFixture {
 
         ModuleDescriptorImpl module = JetTestUtils.createEmptyModule();
         builtIns = module.getBuiltIns();
-        typeResolver = DiPackage.createContainerForTests(getProject(), module).getTypeResolver();
+        typeResolver = InjectionKt.createContainerForTests(getProject(), module).getTypeResolver();
         x = createTypeVariable("X");
         y = createTypeVariable("Y");
         variables = Sets.newHashSet(x.getTypeConstructor(), y.getTypeConstructor());
@@ -202,23 +200,24 @@ public class TypeUnifierTest extends JetLiteFixture {
         return makeTypeProjection(builtIns.getBuiltInsPackageScope(), typeStr);
     }
 
-    private TypeProjection makeTypeProjection(JetScope scope, String typeStr) {
+    private TypeProjection makeTypeProjection(KtScope scope, String typeStr) {
         WritableScopeImpl withX =
                 new WritableScopeImpl(scope, scope.getContainingDeclaration(), RedeclarationHandler.DO_NOTHING, "With X");
         withX.addClassifierDescriptor(x);
         withX.addClassifierDescriptor(y);
         withX.changeLockLevel(WritableScope.LockLevel.READING);
 
-        JetTypeProjection projection = JetPsiFactory(getProject()).createTypeArguments("<" + typeStr + ">").getArguments().get(0);
+        KtTypeProjection projection = KtPsiFactoryKt
+                .KtPsiFactory(getProject()).createTypeArguments("<" + typeStr + ">").getArguments().get(0);
 
-        JetTypeReference typeReference = projection.getTypeReference();
+        KtTypeReference typeReference = projection.getTypeReference();
         assert typeReference != null;
-        JetType type = typeResolver.resolveType(UtilsPackage.asLexicalScope(withX), typeReference, JetTestUtils.DUMMY_TRACE, true);
+        KotlinType type = typeResolver.resolveType(TypeTestUtilsKt.asLexicalScope(withX), typeReference, JetTestUtils.DUMMY_TRACE, true);
 
         return new TypeProjectionImpl(getProjectionKind(typeStr, projection), type);
     }
 
-    private static Variance getProjectionKind(String typeStr, JetTypeProjection projection) {
+    private static Variance getProjectionKind(String typeStr, KtTypeProjection projection) {
         Variance variance;
         switch (projection.getProjectionKind()) {
             case IN:

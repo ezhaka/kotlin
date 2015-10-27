@@ -24,15 +24,20 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.builtins.PrimitiveType;
 import org.jetbrains.kotlin.codegen.intrinsics.IntrinsicMethods;
+import org.jetbrains.kotlin.codegen.intrinsics.JavaClassProperty;
 import org.jetbrains.kotlin.codegen.state.GenerationState;
 import org.jetbrains.kotlin.codegen.state.JetTypeMapper;
 import org.jetbrains.kotlin.descriptors.*;
+import org.jetbrains.kotlin.descriptors.impl.SyntheticFieldDescriptor;
 import org.jetbrains.kotlin.load.java.JvmAbi;
-import org.jetbrains.kotlin.psi.JetExpression;
+import org.jetbrains.kotlin.load.java.descriptors.JavaPropertyDescriptor;
+import org.jetbrains.kotlin.psi.KtExpression;
+import org.jetbrains.kotlin.resolve.DescriptorUtils;
 import org.jetbrains.kotlin.resolve.ImportedFromObjectCallableDescriptor;
-import org.jetbrains.kotlin.resolve.annotations.AnnotationsPackage;
+import org.jetbrains.kotlin.resolve.annotations.AnnotationUtilKt;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedValueArgument;
+import org.jetbrains.kotlin.resolve.constants.ConstantValue;
 import org.jetbrains.kotlin.resolve.jvm.AsmTypes;
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodParameterKind;
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodParameterSignature;
@@ -264,7 +269,7 @@ public abstract class StackValue {
     }
 
     @NotNull
-    public static StackValue expression(Type type, JetExpression expression, ExpressionCodegen generator) {
+    public static StackValue expression(Type type, KtExpression expression, ExpressionCodegen generator) {
         return new Expression(type, expression, generator);
     }
 
@@ -489,10 +494,14 @@ public abstract class StackValue {
             @Nullable Callable callableMethod
     ) {
         ReceiverValue callDispatchReceiver = resolvedCall.getDispatchReceiver();
+        CallableDescriptor descriptor = resolvedCall.getResultingDescriptor();
+        if (descriptor instanceof SyntheticFieldDescriptor) {
+            callDispatchReceiver = ((SyntheticFieldDescriptor) descriptor).getDispatchReceiverForBackend();
+        }
+
         ReceiverValue callExtensionReceiver = resolvedCall.getExtensionReceiver();
         if (callDispatchReceiver.exists() || callExtensionReceiver.exists()
             || isLocalFunCall(callableMethod) || isCallToMemberObjectImportedByName(resolvedCall)) {
-            CallableDescriptor descriptor = resolvedCall.getResultingDescriptor();
             ReceiverParameterDescriptor dispatchReceiverParameter = descriptor.getDispatchReceiverParameter();
             ReceiverParameterDescriptor extensionReceiverParameter = descriptor.getExtensionReceiverParameter();
 
@@ -509,7 +518,7 @@ public abstract class StackValue {
                     descriptor
             );
             StackValue extensionReceiver = genReceiver(receiver, codegen, resolvedCall, callableMethod, callExtensionReceiver, true);
-            Type type = CallReceiver.calcType(resolvedCall, dispatchReceiverParameter, extensionReceiverParameter, codegen.typeMapper, callableMethod);
+            Type type = CallReceiver.calcType(resolvedCall, dispatchReceiverParameter, extensionReceiverParameter, codegen.typeMapper, callableMethod, codegen.getState());
             assert type != null : "Could not map receiver type for " + resolvedCall;
             return new CallReceiver(dispatchReceiver, extensionReceiver, type);
         }
@@ -548,7 +557,7 @@ public abstract class StackValue {
     }
 
     private static StackValue platformStaticCallIfPresent(@NotNull StackValue resultReceiver, @NotNull CallableDescriptor descriptor) {
-        if (AnnotationsPackage.isPlatformStaticInObjectOrClass(descriptor)) {
+        if (AnnotationUtilKt.isPlatformStaticInObjectOrClass(descriptor)) {
             if (resultReceiver.canHaveSideEffects()) {
                 return coercion(resultReceiver, Type.VOID_TYPE);
             }
@@ -572,12 +581,21 @@ public abstract class StackValue {
         return receiverWithParameter;
     }
 
-    public static Field singleton(ClassDescriptor classDescriptor, JetTypeMapper typeMapper) {
+    @NotNull
+    public static Field enumEntry(@NotNull ClassDescriptor descriptor, @NotNull JetTypeMapper typeMapper) {
+        DeclarationDescriptor enumClass = descriptor.getContainingDeclaration();
+        assert DescriptorUtils.isEnumClass(enumClass) : "Enum entry should be declared in enum class: " + descriptor;
+        Type type = typeMapper.mapType((ClassDescriptor) enumClass);
+        return field(type, type, descriptor.getName().asString(), true, none(), descriptor);
+    }
+
+    @NotNull
+    public static Field singleton(@NotNull ClassDescriptor classDescriptor, @NotNull JetTypeMapper typeMapper) {
         return field(FieldInfo.createForSingleton(classDescriptor, typeMapper));
     }
 
-    public static Field singletonForCompanion(ClassDescriptor companionObject, JetTypeMapper typeMapper) {
-        return field(FieldInfo.createForCompanionSingleton(companionObject, typeMapper));
+    public static Field singletonViaInstance(ClassDescriptor classDescriptor, JetTypeMapper typeMapper) {
+        return field(FieldInfo.createSingletonViaInstance(classDescriptor, typeMapper, false));
     }
 
     public static Field oldSingleton(ClassDescriptor classDescriptor, JetTypeMapper typeMapper) {
@@ -1040,7 +1058,10 @@ public abstract class StackValue {
             if (getter == null) {
                 assert fieldName != null : "Property should have either a getter or a field name: " + descriptor;
                 assert backingFieldOwner != null : "Property should have either a getter or a backingFieldOwner: " + descriptor;
-                v.visitFieldInsn(isStaticPut ? GETSTATIC : GETFIELD, backingFieldOwner.getInternalName(), fieldName, this.type.getDescriptor());
+                if (inlineJavaConstantIfNeeded(type, v)) return;
+
+                v.visitFieldInsn(isStaticPut ? GETSTATIC : GETFIELD,
+                                 backingFieldOwner.getInternalName(), fieldName, this.type.getDescriptor());
                 if (!genNotNullAssertionForField(v, state, descriptor)) {
                     genNotNullAssertionForLateInitIfNeeded(v);
                 }
@@ -1050,6 +1071,25 @@ public abstract class StackValue {
                 getter.genInvokeInstruction(v);
                 coerce(getter.getReturnType(), type, v);
             }
+        }
+
+        private boolean inlineJavaConstantIfNeeded(@NotNull Type type, @NotNull InstructionAdapter v) {
+            if (!isStaticPut) return false;
+            if (!(descriptor instanceof JavaPropertyDescriptor)) return false;
+            if (!AsmUtil.isPrimitive(this.type) && !this.type.equals(Type.getObjectType("java/lang/String"))) return false;
+
+            JavaPropertyDescriptor javaPropertyDescriptor = (JavaPropertyDescriptor) descriptor;
+            ConstantValue<?> constantValue = javaPropertyDescriptor.getCompileTimeInitializer();
+            if (constantValue == null) return false;
+
+            Object value = constantValue.getValue();
+            if (this.type == Type.FLOAT_TYPE && value instanceof Double) {
+                value = ((Double) value).floatValue();
+            }
+
+            new Constant(value, this.type).putSelector(type, v);
+
+            return true;
         }
 
         private void genNotNullAssertionForLateInitIfNeeded(@NotNull InstructionAdapter v) {
@@ -1100,10 +1140,10 @@ public abstract class StackValue {
     }
 
     private static class Expression extends StackValue {
-        private final JetExpression expression;
+        private final KtExpression expression;
         private final ExpressionCodegen generator;
 
-        public Expression(Type type, JetExpression expression, ExpressionCodegen generator) {
+        public Expression(Type type, KtExpression expression, ExpressionCodegen generator) {
             super(type);
             this.expression = expression;
             this.generator = generator;
@@ -1304,15 +1344,27 @@ public abstract class StackValue {
                 @Nullable ReceiverParameterDescriptor dispatchReceiver,
                 @Nullable ReceiverParameterDescriptor extensionReceiver,
                 @NotNull JetTypeMapper typeMapper,
-                @Nullable Callable callableMethod
+                @Nullable Callable callableMethod,
+                @NotNull GenerationState state
         ) {
             if (extensionReceiver != null) {
+                CallableDescriptor descriptor = resolvedCall.getCandidateDescriptor();
+
+                if (descriptor instanceof PropertyDescriptor &&
+                    // hackaround: boxing changes behaviour of T.javaClass intrinsic
+                    !(state.getIntrinsics().getIntrinsic((PropertyDescriptor) descriptor) instanceof JavaClassProperty)
+                ) {
+                    ReceiverParameterDescriptor receiverCandidate = descriptor.getExtensionReceiverParameter();
+                    assert receiverCandidate != null;
+                    return typeMapper.mapType(receiverCandidate.getType());
+                }
+
                 return callableMethod != null ? callableMethod.getExtensionReceiverType() : typeMapper.mapType(extensionReceiver.getType());
             }
             else if (dispatchReceiver != null) {
                 CallableDescriptor descriptor = resolvedCall.getResultingDescriptor();
 
-                if (AnnotationsPackage.isPlatformStaticInObjectOrClass(descriptor)) {
+                if (AnnotationUtilKt.isPlatformStaticInObjectOrClass(descriptor)) {
                     return Type.VOID_TYPE;
                 }
 

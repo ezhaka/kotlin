@@ -23,10 +23,12 @@ import com.intellij.psi.PsiNameIdentifierOwner
 import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
 import org.jetbrains.kotlin.descriptors.ValueParameterDescriptor
+import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
 import org.jetbrains.kotlin.idea.codeInsight.DescriptorToSourceUtilsIde
 import org.jetbrains.kotlin.idea.codeInsight.JetFileReferencesResolver
 import org.jetbrains.kotlin.idea.core.compareDescriptors
 import org.jetbrains.kotlin.idea.core.refactoring.getContextForContainingDeclarationBody
+import org.jetbrains.kotlin.idea.util.getResolutionScope
 import org.jetbrains.kotlin.idea.util.psi.patternMatching.JetPsiRange
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.getQualifiedExpressionForSelector
@@ -43,9 +45,8 @@ import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowValueFactory
 import org.jetbrains.kotlin.resolve.calls.tasks.isSynthesizedInvoke
 import org.jetbrains.kotlin.resolve.descriptorUtil.isExtension
 import org.jetbrains.kotlin.resolve.scopes.receivers.ThisReceiver
-import org.jetbrains.kotlin.resolve.source.getPsi
 import org.jetbrains.kotlin.synthetic.SyntheticJavaPropertyDescriptor
-import org.jetbrains.kotlin.types.JetType
+import org.jetbrains.kotlin.types.KotlinType
 import java.util.*
 
 data class ExtractionOptions(
@@ -61,22 +62,22 @@ data class ExtractionOptions(
 }
 
 data class ResolveResult(
-        val originalRefExpr: JetSimpleNameExpression,
+        val originalRefExpr: KtSimpleNameExpression,
         val declaration: PsiNameIdentifierOwner,
         val descriptor: DeclarationDescriptor,
         val resolvedCall: ResolvedCall<*>?
 )
 
 data class ResolvedReferenceInfo(
-        val refExpr: JetSimpleNameExpression,
+        val refExpr: KtSimpleNameExpression,
         val offsetInBody: Int,
         val resolveResult: ResolveResult,
-        val smartCast: JetType?,
-        val possibleTypes: Set<JetType>
+        val smartCast: KotlinType?,
+        val possibleTypes: Set<KotlinType>
 )
 
 data class ExtractionData(
-        val originalFile: JetFile,
+        val originalFile: KtFile,
         val originalRange: JetPsiRange,
         val targetSibling: PsiElement,
         val duplicateContainer: PsiElement? = null,
@@ -86,11 +87,11 @@ data class ExtractionData(
     val originalElements: List<PsiElement> = originalRange.elements
 
     val insertBefore: Boolean = options.extractAsProperty
-                                || targetSibling.getStrictParentOfType<JetDeclaration>()?.let {
-                                    it is JetDeclarationWithBody || it is JetClassInitializer
+                                || targetSibling.getStrictParentOfType<KtDeclaration>()?.let {
+                                    it is KtDeclarationWithBody || it is KtClassInitializer
                                 } ?: false
 
-    fun getExpressions(): List<JetExpression> = originalElements.filterIsInstance<JetExpression>()
+    fun getExpressions(): List<KtExpression> = originalElements.filterIsInstance<KtExpression>()
 
     private fun getCodeFragmentTextRange(): TextRange? {
         val originalElements = originalElements
@@ -112,31 +113,28 @@ data class ExtractionData(
     val originalStartOffset: Int?
         get() = originalElements.firstOrNull()?.let { e -> e.getTextRange()!!.getStartOffset() }
 
-    val commonParent = PsiTreeUtil.findCommonParent(originalElements) as JetElement
+    val commonParent = PsiTreeUtil.findCommonParent(originalElements) as KtElement
 
     val bindingContext: BindingContext? by lazy { commonParent.getContextForContainingDeclarationBody() }
 
-    private val itFakeDeclaration by lazy { JetPsiFactory(originalFile).createParameter("it: Any?") }
-    private val synthesizedInvokeDeclaration by lazy { JetPsiFactory(originalFile).createFunction("fun invoke() {}") }
+    private val itFakeDeclaration by lazy { KtPsiFactory(originalFile).createParameter("it: Any?") }
+    private val synthesizedInvokeDeclaration by lazy { KtPsiFactory(originalFile).createFunction("fun invoke() {}") }
 
     val refOffsetToDeclaration by lazy {
         fun isExtractableIt(descriptor: DeclarationDescriptor, context: BindingContext): Boolean {
             if (!(descriptor is ValueParameterDescriptor && (context[BindingContext.AUTO_CREATED_IT, descriptor] ?: false))) return false
-            val function = DescriptorToSourceUtils.descriptorToDeclaration(descriptor.getContainingDeclaration()) as? JetFunctionLiteral
+            val function = DescriptorToSourceUtils.descriptorToDeclaration(descriptor.getContainingDeclaration()) as? KtFunctionLiteral
             return function == null || !function.isInsideOf(originalElements)
         }
 
-        fun getSyntheticPropertyAccessorDeclarationIfAny(descriptor: DeclarationDescriptor): PsiNameIdentifierOwner? {
-            return (descriptor as? SyntheticJavaPropertyDescriptor ?: return null).getMethod.source.getPsi() as? PsiNameIdentifierOwner
-        }
-
-        fun getDeclaration(descriptor: DeclarationDescriptor, context: BindingContext): PsiNameIdentifierOwner? {
+        tailrec fun getDeclaration(descriptor: DeclarationDescriptor, context: BindingContext): PsiNameIdentifierOwner? {
             (DescriptorToSourceUtilsIde.getAnyDeclaration(project, descriptor) as? PsiNameIdentifierOwner)?.let { return it }
 
             return when {
                 isExtractableIt(descriptor, context) -> itFakeDeclaration
                 isSynthesizedInvoke(descriptor) -> synthesizedInvokeDeclaration
-                else -> getSyntheticPropertyAccessorDeclarationIfAny(descriptor)
+                descriptor is SyntheticJavaPropertyDescriptor -> getDeclaration(descriptor.getMethod, context)
+                else -> null
             }
         }
 
@@ -146,8 +144,8 @@ data class ExtractionData(
         if (originalStartOffset != null && context != null) {
             val resultMap = HashMap<Int, ResolveResult>()
 
-            val visitor = object: JetTreeVisitorVoid() {
-                override fun visitQualifiedExpression(expression: JetQualifiedExpression) {
+            val visitor = object: KtTreeVisitorVoid() {
+                override fun visitQualifiedExpression(expression: KtQualifiedExpression) {
                     if (context[BindingContext.SMARTCAST, expression] != null) {
                         expression.getSelectorExpression()?.accept(this)
                         return
@@ -156,9 +154,9 @@ data class ExtractionData(
                     super.visitQualifiedExpression(expression)
                 }
 
-                override fun visitSimpleNameExpression(ref: JetSimpleNameExpression) {
-                    if (ref !is JetSimpleNameExpression) return
-                    if (ref.getParent() is JetValueArgumentName) return
+                override fun visitSimpleNameExpression(ref: KtSimpleNameExpression) {
+                    if (ref !is KtSimpleNameExpression) return
+                    if (ref.getParent() is KtValueArgumentName) return
 
                     val resolvedCall = ref.getResolvedCall(context)
                     val descriptor = context[BindingContext.REFERENCE_TARGET, ref] ?: return
@@ -175,7 +173,7 @@ data class ExtractionData(
         else Collections.emptyMap<Int, ResolveResult>()
     }
 
-    fun getPossibleTypes(expression: JetExpression, resolvedCall: ResolvedCall<*>?, context: BindingContext): Set<JetType> {
+    fun getPossibleTypes(expression: KtExpression, resolvedCall: ResolvedCall<*>?, context: BindingContext): Set<KotlinType> {
         val typeInfo = context[BindingContext.EXPRESSION_TYPE_INFO, expression] ?: return emptySet()
 
         (resolvedCall?.getImplicitReceiverValue() as? ThisReceiver)?.let {
@@ -183,12 +181,12 @@ data class ExtractionData(
         }
 
         val type = resolvedCall?.resultingDescriptor?.returnType ?: return emptySet()
-        val containingDescriptor = context[BindingContext.LEXICAL_SCOPE, expression]?.ownerDescriptor ?: return emptySet()
+        val containingDescriptor = expression.getResolutionScope(context, expression.getResolutionFacade()).ownerDescriptor
         val dataFlowValue = DataFlowValueFactory.createDataFlowValue(expression, type, context, containingDescriptor)
         return typeInfo.dataFlowInfo.getPossibleTypes(dataFlowValue)
     }
 
-    fun getBrokenReferencesInfo(body: JetBlockExpression): List<ResolvedReferenceInfo> {
+    fun getBrokenReferencesInfo(body: KtBlockExpression): List<ResolvedReferenceInfo> {
         val originalContext = bindingContext ?: return listOf()
 
         val startOffset = body.getBlockContentOffset()
@@ -196,25 +194,25 @@ data class ExtractionData(
         val referencesInfo = ArrayList<ResolvedReferenceInfo>()
         val refToContextMap = JetFileReferencesResolver.resolve(body)
         for ((ref, context) in refToContextMap) {
-            if (ref !is JetSimpleNameExpression) continue
+            if (ref !is KtSimpleNameExpression) continue
 
             val offset = ref.getTextRange()!!.getStartOffset() - startOffset
             val originalResolveResult = refOffsetToDeclaration[offset] ?: continue
 
-            val smartCast: JetType?
-            val possibleTypes: Set<JetType>
+            val smartCast: KotlinType?
+            val possibleTypes: Set<KotlinType>
 
             // Qualified property reference: a.b
             val qualifiedExpression = ref.getQualifiedExpressionForSelector()
             if (qualifiedExpression != null) {
-                val smartCastTarget = originalResolveResult.originalRefExpr.getParent() as JetExpression
+                val smartCastTarget = originalResolveResult.originalRefExpr.getParent() as KtExpression
                 smartCast = originalContext[BindingContext.SMARTCAST, smartCastTarget]
                 possibleTypes = getPossibleTypes(smartCastTarget, originalResolveResult.resolvedCall, originalContext)
                 val receiverDescriptor =
                         (originalResolveResult.resolvedCall?.getDispatchReceiver() as? ThisReceiver)?.getDeclarationDescriptor()
                 if (smartCast == null
                     && !DescriptorUtils.isCompanionObject(receiverDescriptor)
-                    && qualifiedExpression.getReceiverExpression() !is JetSuperExpression) continue
+                    && qualifiedExpression.getReceiverExpression() !is KtSuperExpression) continue
             }
             else {
                 smartCast = originalContext[BindingContext.SMARTCAST, originalResolveResult.originalRefExpr]
@@ -224,7 +222,7 @@ data class ExtractionData(
             val parent = ref.getParent()
 
             // Skip P in type references like 'P.Q'
-            if (parent is JetUserType && (parent.getParent() as? JetUserType)?.getQualifier() == parent) continue
+            if (parent is KtUserType && (parent.getParent() as? KtUserType)?.getQualifier() == parent) continue
 
             val descriptor = context[BindingContext.REFERENCE_TARGET, ref]
             val isBadRef = !(compareDescriptors(project, originalResolveResult.descriptor, descriptor)
@@ -257,8 +255,8 @@ data class ExtractionData(
 // Hack:
 // we can't get first element offset through getStatement()/getChildren() since they skip comments and whitespaces
 // So we take offset of the left brace instead and increase it by 2 (which is length of "{\n" separating block start and its first element)
-internal fun JetExpression.getBlockContentOffset(): Int {
-    (this as? JetBlockExpression)?.getLBrace()?.let {
+internal fun KtExpression.getBlockContentOffset(): Int {
+    (this as? KtBlockExpression)?.getLBrace()?.let {
         return it.getTextRange()!!.getStartOffset() + 2
     }
     return getTextRange()!!.getStartOffset()

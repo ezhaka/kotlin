@@ -17,11 +17,11 @@
 package org.jetbrains.kotlin.descriptors;
 
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 
 public interface ParameterDescriptor extends CallableDescriptor {
     @NotNull
-    JetType getType();
+    KotlinType getType();
 
     @Override
     @NotNull

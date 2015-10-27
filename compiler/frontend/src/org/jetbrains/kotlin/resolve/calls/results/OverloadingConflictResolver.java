@@ -27,7 +27,7 @@ import org.jetbrains.kotlin.resolve.calls.model.MutableResolvedCall;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
 import org.jetbrains.kotlin.resolve.calls.model.VariableAsFunctionResolvedCall;
 import org.jetbrains.kotlin.types.*;
-import org.jetbrains.kotlin.types.checker.JetTypeChecker;
+import org.jetbrains.kotlin.types.checker.KotlinTypeChecker;
 
 import java.util.List;
 import java.util.Set;
@@ -164,8 +164,8 @@ public class OverloadingConflictResolver {
                 ValueParameterDescriptor fParam = fParams.get(i);
                 ValueParameterDescriptor gParam = gParams.get(i);
 
-                JetType fParamType = fParam.getType();
-                JetType gParamType = gParam.getType();
+                KotlinType fParamType = fParam.getType();
+                KotlinType gParamType = gParam.getType();
 
                 if (!typeMoreSpecific(fParamType, gParamType)) {
                     return false;
@@ -180,8 +180,8 @@ public class OverloadingConflictResolver {
                 ValueParameterDescriptor fParam = fParams.get(i);
                 ValueParameterDescriptor gParam = gParams.get(i);
 
-                JetType fParamType = fParam.getType();
-                JetType gParamType = gParam.getType();
+                KotlinType fParamType = fParam.getType();
+                KotlinType gParamType = gParam.getType();
 
                 if (!typeMoreSpecific(fParamType, gParamType)) {
                     return false;
@@ -195,7 +195,7 @@ public class OverloadingConflictResolver {
             // here we check that typeOf(a) < elementTypeOf(vf) and elementTypeOf(vg) < elementTypeOf(vf)
             if (fSize < gSize) {
                 ValueParameterDescriptor fParam = fParams.get(fSize - 1);
-                JetType fParamType = fParam.getVarargElementType();
+                KotlinType fParamType = fParam.getVarargElementType();
                 assert fParamType != null : "fIsVararg guarantees this";
                 for (int i = fSize - 1; i < gSize; i++) {
                     ValueParameterDescriptor gParam = gParams.get(i);
@@ -206,7 +206,7 @@ public class OverloadingConflictResolver {
             }
             else {
                 ValueParameterDescriptor gParam = gParams.get(gSize - 1);
-                JetType gParamType = gParam.getVarargElementType();
+                KotlinType gParamType = gParam.getVarargElementType();
                 assert gParamType != null : "gIsVararg guarantees this";
                 for (int i = gSize - 1; i < fSize; i++) {
                     ValueParameterDescriptor fParam = fParams.get(i);
@@ -221,8 +221,8 @@ public class OverloadingConflictResolver {
     }
 
     @NotNull
-    private static JetType getVarargElementTypeOrType(@NotNull ValueParameterDescriptor parameterDescriptor) {
-        JetType varargElementType = parameterDescriptor.getVarargElementType();
+    private static KotlinType getVarargElementTypeOrType(@NotNull ValueParameterDescriptor parameterDescriptor) {
+        KotlinType varargElementType = parameterDescriptor.getVarargElementType();
         if (varargElementType != null) {
             return varargElementType;
         }
@@ -238,14 +238,14 @@ public class OverloadingConflictResolver {
         return !f.getOriginal().getTypeParameters().isEmpty();
     }
 
-    private boolean typeMoreSpecific(@NotNull JetType specific, @NotNull JetType general) {
-        boolean isSubtype = JetTypeChecker.DEFAULT.isSubtypeOf(specific, general) ||
-                    numericTypeMoreSpecific(specific, general);
+    private boolean typeMoreSpecific(@NotNull KotlinType specific, @NotNull KotlinType general) {
+        boolean isSubtype = KotlinTypeChecker.DEFAULT.isSubtypeOf(specific, general) ||
+                            numericTypeMoreSpecific(specific, general);
 
         if (!isSubtype) return false;
 
-        Specificity.Relation sThanG = TypesPackage.getSpecificityRelationTo(specific, general);
-        Specificity.Relation gThanS = TypesPackage.getSpecificityRelationTo(general, specific);
+        Specificity.Relation sThanG = TypeCapabilitiesKt.getSpecificityRelationTo(specific, general);
+        Specificity.Relation gThanS = TypeCapabilitiesKt.getSpecificityRelationTo(general, specific);
         if (sThanG == Specificity.Relation.LESS_SPECIFIC && gThanS != Specificity.Relation.LESS_SPECIFIC) {
             return false;
         }
@@ -253,13 +253,13 @@ public class OverloadingConflictResolver {
         return true;
     }
 
-    private boolean numericTypeMoreSpecific(@NotNull JetType specific, @NotNull JetType general) {
-        JetType _double = builtIns.getDoubleType();
-        JetType _float = builtIns.getFloatType();
-        JetType _long = builtIns.getLongType();
-        JetType _int = builtIns.getIntType();
-        JetType _byte = builtIns.getByteType();
-        JetType _short = builtIns.getShortType();
+    private boolean numericTypeMoreSpecific(@NotNull KotlinType specific, @NotNull KotlinType general) {
+        KotlinType _double = builtIns.getDoubleType();
+        KotlinType _float = builtIns.getFloatType();
+        KotlinType _long = builtIns.getLongType();
+        KotlinType _int = builtIns.getIntType();
+        KotlinType _byte = builtIns.getByteType();
+        KotlinType _short = builtIns.getShortType();
 
         if (TypeUtils.equalTypes(specific, _double) && TypeUtils.equalTypes(general, _float)) return true;
         if (TypeUtils.equalTypes(specific, _int)) {

@@ -35,7 +35,7 @@ import org.jetbrains.android.util.AndroidResourceUtil;
 import org.jetbrains.android.util.AndroidUtils;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.kotlin.psi.JetSimpleNameExpression;
+import org.jetbrains.kotlin.psi.KtSimpleNameExpression;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -46,7 +46,7 @@ import java.util.List;
 public class KotlinAndroidGotoDeclarationHandler implements GotoDeclarationHandler {
     @Override
     public PsiElement[] getGotoDeclarationTargets(@Nullable PsiElement sourceElement, int offset, Editor editor) {
-        JetSimpleNameExpression referenceExpression = NavigationPackage.getReferenceExpression(sourceElement);
+        KtSimpleNameExpression referenceExpression = GotoResourceHelperKt.getReferenceExpression(sourceElement);
         if (referenceExpression == null) {
             return null;
         }
@@ -61,7 +61,7 @@ public class KotlinAndroidGotoDeclarationHandler implements GotoDeclarationHandl
             return null;
         }
 
-        AndroidResourceUtil.MyReferredResourceFieldInfo info = NavigationPackage.getInfo(referenceExpression, facet);
+        AndroidResourceUtil.MyReferredResourceFieldInfo info = GotoResourceHelperKt.getInfo(referenceExpression, facet);
 
         if (info == null) return null;
 

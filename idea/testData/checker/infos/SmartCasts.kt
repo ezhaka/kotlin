@@ -212,7 +212,10 @@ fun f(): String {
     if (<info>a</info> is String) {
         val <warning>i</warning>: String = <info descr="Smart cast to kotlin.String"><info descr="Wrapped into a reference object to be modified when captured in a closure">a</info></info>
         <info descr="Smart cast to kotlin.String"><info descr="Wrapped into a reference object to be modified when captured in a closure">a</info></info>.compareTo("f")
-        val <warning>f</warning>: Function0<String> = { <error descr="[SMARTCAST_IMPOSSIBLE] Smart cast to 'kotlin.String' is impossible, because 'a' could have changed since the is-check">a</error> }
+        val <warning>f</warning>: Function0<String> = {
+            <info>a</info> = 42
+            <error descr="[TYPE_MISMATCH] Type mismatch: inferred type is kotlin.Any but kotlin.String was expected">a</error>
+        }
         return <error descr="[SMARTCAST_IMPOSSIBLE] Smart cast to 'kotlin.String' is impossible, because 'a' could have changed since the is-check">a</error>
     }
     return ""
@@ -227,8 +230,8 @@ fun foo(aa: Any): Int {
 }
 
 fun inForLoop(x: Any?) {
-    if (x is Array<String>) {
-        for (i in <info descr="Smart cast to kotlin.Array<kotlin.String>">x</info>) {}
+    if (x is Array<*>) {
+        for (i in <info descr="Smart cast to kotlin.Array<*>">x</info>) {}
     }
     for (i in <error descr="[ITERATOR_MISSING] For-loop range must have an iterator() method">x</error>) {}
 }

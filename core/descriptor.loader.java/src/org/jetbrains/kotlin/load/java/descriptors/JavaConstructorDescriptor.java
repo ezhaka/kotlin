@@ -21,7 +21,7 @@ import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.descriptors.annotations.Annotations;
 import org.jetbrains.kotlin.descriptors.impl.ConstructorDescriptorImpl;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 
 import java.util.List;
 
@@ -96,9 +96,9 @@ public class JavaConstructorDescriptor extends ConstructorDescriptorImpl impleme
     @Override
     @NotNull
     public JavaConstructorDescriptor enhance(
-            @Nullable JetType enhancedReceiverType,
-            @NotNull List<JetType> enhancedValueParametersTypes,
-            @NotNull JetType enhancedReturnType
+            @Nullable KotlinType enhancedReceiverType,
+            @NotNull List<KotlinType> enhancedValueParametersTypes,
+            @NotNull KotlinType enhancedReturnType
     ) {
         JavaConstructorDescriptor enhanced = createSubstitutedCopy(getContainingDeclaration(), getOriginal(), getKind());
         // We do not use doSubstitute here as in JavaMethodDescriptor.enhance because type parameters of constructor belongs to class
@@ -106,7 +106,7 @@ public class JavaConstructorDescriptor extends ConstructorDescriptorImpl impleme
                 enhancedReceiverType,
                 getDispatchReceiverParameter(),
                 getTypeParameters(),
-                DescriptorsPackage.createEnhancedValueParameters(enhancedValueParametersTypes, getValueParameters(), enhanced),
+                UtilKt.copyValueParameters(enhancedValueParametersTypes, getValueParameters(), enhanced),
                 enhancedReturnType,
                 getModality(),
                 getVisibility()

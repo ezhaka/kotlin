@@ -23,31 +23,30 @@ import com.intellij.psi.PsiFile
 import com.intellij.psi.search.searches.ReferencesSearch
 import org.jetbrains.kotlin.descriptors.ConstructorDescriptor
 import org.jetbrains.kotlin.descriptors.FunctionDescriptor
-import org.jetbrains.kotlin.idea.caches.resolve.analyzeFully
+import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.core.CollectingNameValidator
-import org.jetbrains.kotlin.idea.refactoring.changeSignature.JetChangeSignatureConfiguration
-import org.jetbrains.kotlin.idea.refactoring.changeSignature.JetMethodDescriptor
-import org.jetbrains.kotlin.idea.refactoring.changeSignature.modify
-import org.jetbrains.kotlin.idea.refactoring.changeSignature.runChangeSignature
+import org.jetbrains.kotlin.idea.refactoring.changeSignature.*
 import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers
-import org.jetbrains.kotlin.psi.JetCallElement
-import org.jetbrains.kotlin.psi.JetFile
+import org.jetbrains.kotlin.psi.KtCallElement
+import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.ValueArgument
 import org.jetbrains.kotlin.psi.psiUtil.getParentOfType
 import org.jetbrains.kotlin.resolve.BindingContext
-import org.jetbrains.kotlin.types.JetType
-import org.jetbrains.kotlin.types.checker.JetTypeChecker
+import org.jetbrains.kotlin.resolve.descriptorUtil.builtIns
+import org.jetbrains.kotlin.types.KotlinType
+import org.jetbrains.kotlin.types.checker.KotlinTypeChecker
 import java.util.*
 
 public class AddFunctionParametersFix(
-        private val callElement: JetCallElement,
+        private val callElement: KtCallElement,
         functionDescriptor: FunctionDescriptor,
         private val hasTypeMismatches: Boolean) : ChangeFunctionSignatureFix(callElement, functionDescriptor) {
-    private val typesToShorten = ArrayList<JetType>()
+    private val typesToShorten = ArrayList<KotlinType>()
 
     override fun getText(): String {
         val parameters = functionDescriptor.valueParameters
         val arguments = callElement.valueArguments
-        val newParametersCnt = arguments.size() - parameters.size()
+        val newParametersCnt = arguments.size - parameters.size
         assert(newParametersCnt > 0)
 
         val subjectSuffix = if (newParametersCnt > 1) "s" else ""
@@ -67,21 +66,21 @@ public class AddFunctionParametersFix(
             "Add parameter$subjectSuffix to $callableDescription"
     }
 
-    override fun isAvailable(project: Project, editor: Editor, file: PsiFile): Boolean {
+    override fun isAvailable(project: Project, editor: Editor?, file: PsiFile): Boolean {
         if (!super.isAvailable(project, editor, file)) return false
 
         // newParametersCnt <= 0: psi for this quickfix is no longer valid
-        val newParametersCnt = callElement.valueArguments.size() - functionDescriptor.valueParameters.size()
+        val newParametersCnt = callElement.valueArguments.size - functionDescriptor.valueParameters.size
         return newParametersCnt > 0
     }
 
-    override fun invoke(project: Project, editor: Editor?, file: JetFile) {
-        runChangeSignature(project, functionDescriptor, addParameterConfiguration(), callElement.analyzeFully(), callElement, text)
+    override fun invoke(project: Project, editor: Editor?, file: KtFile) {
+        runChangeSignature(project, functionDescriptor, addParameterConfiguration(), callElement, text)
     }
 
     private fun addParameterConfiguration(): JetChangeSignatureConfiguration {
         return object : JetChangeSignatureConfiguration {
-            override fun configure(originalDescriptor: JetMethodDescriptor, bindingContext: BindingContext): JetMethodDescriptor {
+            override fun configure(originalDescriptor: JetMethodDescriptor): JetMethodDescriptor {
                 return originalDescriptor.modify {
                     val parameters = functionDescriptor.valueParameters
                     val arguments = callElement.valueArguments
@@ -91,22 +90,22 @@ public class AddFunctionParametersFix(
                         val argument = arguments.get(i)
                         val expression = argument.getArgumentExpression()
 
-                        if (i < parameters.size()) {
+                        if (i < parameters.size) {
                             validator.addName(parameters.get(i).name.asString())
                             val argumentType = expression?.let {
+                                val bindingContext = it.analyze()
                                 bindingContext[BindingContext.SMARTCAST, it] ?: bindingContext.getType(it)
                             }
                             val parameterType = parameters.get(i).type
 
-                            if (argumentType != null && !JetTypeChecker.DEFAULT.isSubtypeOf(argumentType, parameterType)) {
+                            if (argumentType != null && !KotlinTypeChecker.DEFAULT.isSubtypeOf(argumentType, parameterType)) {
                                 it.parameters.get(i).currentTypeText = IdeDescriptorRenderers.SOURCE_CODE.renderType(argumentType)
                                 typesToShorten.add(argumentType)
                             }
                         }
                         else {
-                            val parameterInfo = ChangeFunctionSignatureFix.getNewParameterInfo(
+                            val parameterInfo = getNewParameterInfo(
                                     originalDescriptor.baseDescriptor as FunctionDescriptor,
-                                    bindingContext,
                                     argument,
                                     validator
                             )
@@ -129,9 +128,21 @@ public class AddFunctionParametersFix(
         }
     }
 
+    private fun getNewParameterInfo(
+            functionDescriptor: FunctionDescriptor,
+            argument: ValueArgument,
+            validator: (String) -> Boolean
+    ): JetParameterInfo {
+        val name = getNewArgumentName(argument, validator)
+        val expression = argument.getArgumentExpression()
+        val type = expression?.let { it.analyze().getType(it) } ?: functionDescriptor.builtIns.nullableAnyType
+        return JetParameterInfo(functionDescriptor, -1, name, type, null, null, JetValVar.None, null)
+                .apply { currentTypeText = IdeDescriptorRenderers.SOURCE_CODE.renderType(type) }
+    }
+
     private fun hasOtherUsages(function: PsiElement): Boolean {
         return ReferencesSearch.search(function).any {
-            val call = it.element.getParentOfType<JetCallElement>(false)
+            val call = it.element.getParentOfType<KtCallElement>(false)
             call != null && callElement != call
         }
     }

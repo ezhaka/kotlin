@@ -45,14 +45,12 @@ import org.jetbrains.kotlin.resolve.calls.tasks.TracingStrategyForInvoke;
 import org.jetbrains.kotlin.resolve.calls.util.DelegatingCall;
 import org.jetbrains.kotlin.resolve.scopes.receivers.ExpressionReceiver;
 import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.util.OperatorNameConventions;
 
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
-
-import static org.jetbrains.kotlin.psi.PsiPackage.JetPsiFactory;
 
 /**
  * CallTransformer treats specially 'variable as function' call case, other cases keeps unchanged (base realization).
@@ -160,7 +158,7 @@ public class CallTransformer<D extends CallableDescriptor, F extends D> {
         private Call stripCallArguments(@NotNull Call call) {
             return new DelegatingCall(call) {
                 @Override
-                public JetValueArgumentList getValueArgumentList() {
+                public KtValueArgumentList getValueArgumentList() {
                     return null;
                 }
 
@@ -178,19 +176,19 @@ public class CallTransformer<D extends CallableDescriptor, F extends D> {
 
                 @NotNull
                 @Override
-                public List<JetTypeProjection> getTypeArguments() {
+                public List<KtTypeProjection> getTypeArguments() {
                     return Collections.emptyList();
                 }
 
                 @Override
-                public JetTypeArgumentList getTypeArgumentList() {
+                public KtTypeArgumentList getTypeArgumentList() {
                     return null;
                 }
 
                 @NotNull
                 @Override
-                public JetElement getCallElement() {
-                    JetExpression calleeExpression = getCalleeExpression();
+                public KtElement getCallElement() {
+                    KtExpression calleeExpression = getCalleeExpression();
                     assert calleeExpression != null : "No callee expression: " + getCallElement().getText();
 
                     return calleeExpression;
@@ -227,14 +225,14 @@ public class CallTransformer<D extends CallableDescriptor, F extends D> {
             }
 
             assert descriptor instanceof VariableDescriptor;
-            JetType returnType = descriptor.getReturnType();
+            KotlinType returnType = descriptor.getReturnType();
             if (returnType == null) {
                 return Collections.emptyList();
             }
 
             final MutableResolvedCall<VariableDescriptor> variableResolvedCall = (MutableResolvedCall)context.candidateCall;
 
-            JetExpression calleeExpression = task.call.getCalleeExpression();
+            KtExpression calleeExpression = task.call.getCalleeExpression();
             if (calleeExpression == null) return Collections.emptyList();
 
             ExpressionReceiver variableReceiver = new ExpressionReceiver(calleeExpression, variableResolvedCall.getResultingDescriptor().getType());
@@ -265,7 +263,7 @@ public class CallTransformer<D extends CallableDescriptor, F extends D> {
         private final Call outerCall;
         private final ReceiverValue explicitExtensionReceiver;
         private final ExpressionReceiver calleeExpressionAsDispatchReceiver;
-        private final JetSimpleNameExpression fakeInvokeExpression;
+        private final KtSimpleNameExpression fakeInvokeExpression;
 
         public CallForImplicitInvoke(
                 @NotNull ReceiverValue explicitExtensionReceiver,
@@ -277,7 +275,7 @@ public class CallTransformer<D extends CallableDescriptor, F extends D> {
             this.explicitExtensionReceiver = explicitExtensionReceiver;
             this.calleeExpressionAsDispatchReceiver = calleeExpressionAsDispatchReceiver;
             this.fakeInvokeExpression =
-                    (JetSimpleNameExpression) JetPsiFactory(call.getCallElement())
+                    (KtSimpleNameExpression) KtPsiFactoryKt.KtPsiFactory(call.getCallElement())
                             .createExpression(OperatorNameConventions.INVOKE.asString());
         }
 
@@ -303,7 +301,7 @@ public class CallTransformer<D extends CallableDescriptor, F extends D> {
         }
 
         @Override
-        public JetExpression getCalleeExpression() {
+        public KtExpression getCalleeExpression() {
             return fakeInvokeExpression;
         }
 

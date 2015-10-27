@@ -47,15 +47,15 @@ import org.jetbrains.kotlin.idea.test.ConfigLibraryUtil
 import org.jetbrains.kotlin.idea.test.JetLightCodeInsightFixtureTestCase
 import org.jetbrains.kotlin.idea.test.PluginTestCaseBase
 import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers
-import org.jetbrains.kotlin.psi.JetFile
-import org.jetbrains.kotlin.psi.JetNamedDeclaration
+import org.jetbrains.kotlin.psi.KtFile
+import org.jetbrains.kotlin.psi.KtNamedDeclaration
 import org.jetbrains.kotlin.renderer.DescriptorRenderer
 import org.jetbrains.kotlin.test.InTextDirectivesUtils
 import org.jetbrains.kotlin.test.JetTestUtils
 import org.jetbrains.kotlin.test.util.findElementByCommentPrefix
 import org.jetbrains.kotlin.utils.emptyOrSingletonList
 import java.io.File
-import java.util.Collections
+import java.util.*
 import kotlin.test.assertEquals
 
 public abstract class AbstractJetExtractionTest() : JetLightCodeInsightFixtureTestCase() {
@@ -65,7 +65,7 @@ public abstract class AbstractJetExtractionTest() : JetLightCodeInsightFixtureTe
 
     protected fun doIntroduceVariableTest(path: String) {
         doTest(path) { file ->
-            file as JetFile
+            file as KtFile
 
             KotlinIntroduceVariableHandler().invoke(
                     fixture.getProject(),
@@ -106,7 +106,7 @@ public abstract class AbstractJetExtractionTest() : JetLightCodeInsightFixtureTe
                 KotlinIntroduceParameterHandler(HelperImpl())
             }
             with (handler) {
-                val target = (file as JetFile).findElementByCommentPrefix("// TARGET:") as? JetNamedDeclaration
+                val target = (file as KtFile).findElementByCommentPrefix("// TARGET:") as? KtNamedDeclaration
                 if (target != null) {
                     JetRefactoringUtil.selectExpression(fixture.getEditor(), file, true) { expression ->
                         invoke(fixture.getProject(), fixture.getEditor(), expression!!, target)
@@ -203,10 +203,10 @@ public abstract class AbstractJetExtractionTest() : JetLightCodeInsightFixtureTe
 
     protected fun doIntroducePropertyTest(path: String) {
         doTest(path) { file ->
-            file as JetFile
+            file as KtFile
 
             val extractionTarget = propertyTargets.single {
-                it.name == InTextDirectivesUtils.findStringWithPrefixes(file.getText(), "// EXTRACTION_TARGET: ")
+                it.targetName == InTextDirectivesUtils.findStringWithPrefixes(file.getText(), "// EXTRACTION_TARGET: ")
             }
             val explicitPreviousSibling = file.findElementByCommentPrefix("// SIBLING:")
             val helper = object : ExtractionEngineHelper(INTRODUCE_PROPERTY) {
@@ -235,7 +235,7 @@ public abstract class AbstractJetExtractionTest() : JetLightCodeInsightFixtureTe
 
     protected fun doExtractFunctionTest(path: String) {
         doTest(path) { file ->
-            file as JetFile
+            file as KtFile
 
             val explicitPreviousSibling = file.findElementByCommentPrefix("// SIBLING:")
             val fileText = file.getText() ?: ""
@@ -286,8 +286,8 @@ public abstract class AbstractJetExtractionTest() : JetLightCodeInsightFixtureTe
                             if (actualReturnTypes.size() != 1 || expectedReturnTypes.isNotEmpty()) {
                                 assertEquals(expectedReturnTypes, actualReturnTypes, "Expected return types mismatch.")
                             }
-                            assertEquals(expectedDescriptors, actualDescriptors, "Expected descriptors mismatch.")
-                            assertEquals(expectedTypes, actualTypes, "Expected types mismatch.")
+                            assertEquals("Expected descriptors mismatch.", expectedDescriptors, actualDescriptors)
+                            assertEquals("Expected types mismatch.", expectedTypes, actualTypes)
 
                             val newDescriptor = if (descriptor.name == "") {
                                 descriptor.copy(suggestedNames = Collections.singletonList("__dummyTestFun__"))
@@ -338,9 +338,13 @@ public abstract class AbstractJetExtractionTest() : JetLightCodeInsightFixtureTe
                 }
             }
         }
-        catch(e: Exception) {
-            val message = if (e is ConflictsInTestsException) e.getMessages().sorted().joinToString(" ") else e.getMessage()
-            JetTestUtils.assertEqualsToFile(conflictFile, message?.replace("\n", " ") ?: e.javaClass.getName())
+        catch(e: ConflictsInTestsException) {
+            val message = e.messages.sorted().joinToString(" ").replace("\n", " ")
+            JetTestUtils.assertEqualsToFile(conflictFile, message)
+        }
+        catch(e: RuntimeException) { // RuntimeException is thrown by IDEA code in CodeInsightUtils.java
+            if (e.javaClass != RuntimeException::class.java) throw e
+            JetTestUtils.assertEqualsToFile(conflictFile, e.message!!)
         }
         finally {
             if (addKotlinRuntime) {

@@ -21,14 +21,9 @@ import com.intellij.openapi.project.Project;
 import com.intellij.util.IncorrectOperationException;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.idea.JetBundle;
-import org.jetbrains.kotlin.psi.JetBinaryExpressionWithTypeRHS;
-import org.jetbrains.kotlin.psi.JetExpression;
-import org.jetbrains.kotlin.psi.JetFile;
-import org.jetbrains.kotlin.psi.JetTypeReference;
+import org.jetbrains.kotlin.psi.*;
 
-import static org.jetbrains.kotlin.psi.PsiPackage.JetPsiFactory;
-
-public abstract class ReplaceOperationInBinaryExpressionFix<T extends JetExpression> extends JetIntentionAction<T> {
+public abstract class ReplaceOperationInBinaryExpressionFix<T extends KtExpression> extends KotlinQuickFixAction<T> {
     private final String operation;
 
     public ReplaceOperationInBinaryExpressionFix(@NotNull T element, String operation) {
@@ -43,13 +38,13 @@ public abstract class ReplaceOperationInBinaryExpressionFix<T extends JetExpress
     }
 
     @Override
-    public void invoke(@NotNull Project project, Editor editor, JetFile file) throws IncorrectOperationException {
-        if (element instanceof JetBinaryExpressionWithTypeRHS) {
-            JetExpression left = ((JetBinaryExpressionWithTypeRHS) element).getLeft();
-            JetTypeReference right = ((JetBinaryExpressionWithTypeRHS) element).getRight();
+    public void invoke(@NotNull Project project, Editor editor, KtFile file) throws IncorrectOperationException {
+        if (getElement() instanceof KtBinaryExpressionWithTypeRHS) {
+            KtExpression left = ((KtBinaryExpressionWithTypeRHS) getElement()).getLeft();
+            KtTypeReference right = ((KtBinaryExpressionWithTypeRHS) getElement()).getRight();
             if (right != null) {
-                JetExpression expression = JetPsiFactory(file).createExpression(left.getText() + operation + right.getText());
-                element.replace(expression);
+                KtExpression expression = KtPsiFactoryKt.KtPsiFactory(file).createExpression(left.getText() + operation + right.getText());
+                getElement().replace(expression);
             }
         }
     }

@@ -27,24 +27,24 @@ import org.jetbrains.kotlin.descriptors.TypeParameterDescriptor;
 import org.jetbrains.kotlin.descriptors.annotations.Annotations;
 import org.jetbrains.kotlin.resolve.calls.inference.ConstraintSystemImpl;
 import org.jetbrains.kotlin.resolve.scopes.ChainedScope;
-import org.jetbrains.kotlin.resolve.scopes.JetScope;
-import org.jetbrains.kotlin.types.checker.JetTypeChecker;
+import org.jetbrains.kotlin.resolve.scopes.KtScope;
+import org.jetbrains.kotlin.types.checker.KotlinTypeChecker;
 
 import java.util.*;
 
-import static org.jetbrains.kotlin.resolve.calls.inference.InferencePackage.registerTypeVariables;
+import static org.jetbrains.kotlin.resolve.calls.inference.ConstraintSystemImplKt.registerTypeVariables;
 import static org.jetbrains.kotlin.resolve.calls.inference.constraintPosition.ConstraintPositionKind.SPECIAL;
 
 public class TypeIntersector {
 
-    public static boolean isIntersectionEmpty(@NotNull JetType typeA, @NotNull JetType typeB) {
-        return intersectTypes(JetTypeChecker.DEFAULT, new LinkedHashSet<JetType>(Arrays.asList(typeA, typeB))) == null;
+    public static boolean isIntersectionEmpty(@NotNull KotlinType typeA, @NotNull KotlinType typeB) {
+        return intersectTypes(KotlinTypeChecker.DEFAULT, new LinkedHashSet<KotlinType>(Arrays.asList(typeA, typeB))) == null;
     }
 
     @Nullable
-    public static JetType intersectTypes(
-            @NotNull JetTypeChecker typeChecker,
-            @NotNull Set<JetType> types
+    public static KotlinType intersectTypes(
+            @NotNull KotlinTypeChecker typeChecker,
+            @NotNull Set<KotlinType> types
     ) {
         assert (!types.isEmpty()) : "Attempting to intersect empty set of types, this case should be dealt with on the call site.";
 
@@ -54,10 +54,10 @@ public class TypeIntersector {
 
         // Intersection of T1..Tn is an intersection of their non-null versions,
         //   made nullable is they all were nullable
-        JetType nothingOrNullableNothing = null;
+        KotlinType nothingOrNullableNothing = null;
         boolean allNullable = true;
-        List<JetType> nullabilityStripped = new ArrayList<JetType>(types.size());
-        for (JetType type : types) {
+        List<KotlinType> nullabilityStripped = new ArrayList<KotlinType>(types.size());
+        for (KotlinType type : types) {
             if (type.isError()) continue;
 
             if (KotlinBuiltIns.isNothingOrNullableNothing(type)) {
@@ -77,11 +77,11 @@ public class TypeIntersector {
         }
 
         // Now we remove types that have subtypes in the list
-        List<JetType> resultingTypes = new ArrayList<JetType>();
+        List<KotlinType> resultingTypes = new ArrayList<KotlinType>();
         outer:
-        for (JetType type : nullabilityStripped) {
+        for (KotlinType type : nullabilityStripped) {
             if (!TypeUtils.canHaveSubtypes(typeChecker, type)) {
-                for (JetType other : nullabilityStripped) {
+                for (KotlinType other : nullabilityStripped) {
                     // It makes sense to check for subtyping (other <: type), despite that
                     // type is not supposed to be open, for there're enums
                     if (!TypeUnifier.mayBeEqual(type, other) && !typeChecker.isSubtypeOf(type, other) && !typeChecker.isSubtypeOf(other, type)) {
@@ -91,7 +91,7 @@ public class TypeIntersector {
                 return TypeUtils.makeNullableAsSpecified(type, allNullable);
             }
             else {
-                for (JetType other : nullabilityStripped) {
+                for (KotlinType other : nullabilityStripped) {
                     if (!type.equals(other) && typeChecker.isSubtypeOf(other, type)) {
                         continue outer;
                     }
@@ -100,7 +100,7 @@ public class TypeIntersector {
             }
 
             // Don't add type if it is already present, to avoid trivial type intersections in result
-            for (JetType other : resultingTypes) {
+            for (KotlinType other : resultingTypes) {
                 if (typeChecker.equalTypes(other, type)) {
                     continue outer;
                 }
@@ -114,7 +114,7 @@ public class TypeIntersector {
             // in that case, we can safely select the best representative out of that set and return it
             // TODO: maybe return the most specific among the types that are subtypes to all others in the `nullabilityStripped`?
             // TODO: e.g. among {Int, Int?, Int!}, return `Int` (now it returns `Int!`).
-            JetType bestRepresentative = TypesPackage.singleBestRepresentative(nullabilityStripped);
+            KotlinType bestRepresentative = FlexibleTypesKt.singleBestRepresentative(nullabilityStripped);
             if (bestRepresentative == null) {
                 throw new AssertionError("Empty intersection for types " + types);
             }
@@ -127,14 +127,14 @@ public class TypeIntersector {
 
         TypeConstructor constructor = new IntersectionTypeConstructor(Annotations.Companion.getEMPTY(), resultingTypes);
 
-        JetScope[] scopes = new JetScope[resultingTypes.size()];
+        KtScope[] scopes = new KtScope[resultingTypes.size()];
         int i = 0;
-        for (JetType type : resultingTypes) {
+        for (KotlinType type : resultingTypes) {
             scopes[i] = type.getMemberScope();
             i++;
         }
 
-        return JetTypeImpl.create(
+        return KotlinTypeImpl.create(
                 Annotations.Companion.getEMPTY(),
                 constructor,
                 allNullable,
@@ -145,7 +145,7 @@ public class TypeIntersector {
 
     // TODO : check intersectibility, don't use a chanied scope
     private static class IntersectionScope extends ChainedScope {
-        public IntersectionScope(@NotNull TypeConstructor constructor, @NotNull JetScope[] scopes) {
+        public IntersectionScope(@NotNull TypeConstructor constructor, @NotNull KtScope[] scopes) {
             super(null, "member scope for intersection type " + constructor, scopes);
         }
 
@@ -167,11 +167,11 @@ public class TypeIntersector {
             }
         }
 
-        public static boolean mayBeEqual(@NotNull JetType type, @NotNull JetType other) {
+        public static boolean mayBeEqual(@NotNull KotlinType type, @NotNull KotlinType other) {
             return unify(type, other);
         }
 
-        private static boolean unify(JetType withParameters, JetType expected) {
+        private static boolean unify(KotlinType withParameters, KotlinType expected) {
             // T -> how T is used
             final Map<TypeParameterDescriptor, Variance> parameters = new HashMap<TypeParameterDescriptor, Variance>();
             Function1<TypeParameterUsage, Unit> processor = new Function1<TypeParameterUsage, Unit>() {
@@ -183,7 +183,7 @@ public class TypeIntersector {
                     }
                     parameters.put(parameterUsage.typeParameterDescriptor,
                                    parameterUsage.howTheTypeParameterIsUsed.superpose(howTheTypeIsUsedBefore));
-                    return Unit.INSTANCE$;
+                    return Unit.INSTANCE;
                 }
             };
             processAllTypeParameters(withParameters, Variance.INVARIANT, processor);
@@ -195,7 +195,7 @@ public class TypeIntersector {
             return constraintSystem.getStatus().isSuccessful();
         }
 
-        private static void processAllTypeParameters(JetType type, Variance howThisTypeIsUsed, Function1<TypeParameterUsage, Unit> result) {
+        private static void processAllTypeParameters(KotlinType type, Variance howThisTypeIsUsed, Function1<TypeParameterUsage, Unit> result) {
             ClassifierDescriptor descriptor = type.getConstructor().getDeclarationDescriptor();
             if (descriptor instanceof TypeParameterDescriptor) {
                 result.invoke(new TypeParameterUsage((TypeParameterDescriptor) descriptor, howThisTypeIsUsed));

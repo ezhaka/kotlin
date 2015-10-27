@@ -21,7 +21,7 @@ import org.jetbrains.kotlin.AbstractDataFlowValueRenderingTest
 import org.jetbrains.kotlin.addImport.AbstractAddImportTest
 import org.jetbrains.kotlin.android.*
 import org.jetbrains.kotlin.annotation.AbstractAnnotationProcessorBoxTest
-import org.jetbrains.kotlin.asJava.AbstractKotlinLightClassTest
+import org.jetbrains.kotlin.asJava.AbstractCompilerLightClassTest
 import org.jetbrains.kotlin.cfg.AbstractControlFlowTest
 import org.jetbrains.kotlin.cfg.AbstractDataFlowTest
 import org.jetbrains.kotlin.cfg.AbstractPseudoValueTest
@@ -42,8 +42,11 @@ import org.jetbrains.kotlin.generators.tests.reservedWords.generateTestDataForRe
 import org.jetbrains.kotlin.idea.AbstractExpressionSelectionTest
 import org.jetbrains.kotlin.idea.AbstractSmartSelectionTest
 import org.jetbrains.kotlin.idea.actions.AbstractGotoTestOrCodeActionTest
+import org.jetbrains.kotlin.idea.caches.resolve.AbstractIdeLightClassTest
 import org.jetbrains.kotlin.idea.codeInsight.*
-import org.jetbrains.kotlin.idea.codeInsight.generate.AbstractGenerateActionTest
+import org.jetbrains.kotlin.idea.codeInsight.generate.AbstractCodeInsightActionTest
+import org.jetbrains.kotlin.idea.codeInsight.generate.AbstractGenerateHashCodeAndEqualsActionTest
+import org.jetbrains.kotlin.idea.codeInsight.generate.AbstractGenerateTestSupportMethodActionTest
 import org.jetbrains.kotlin.idea.codeInsight.moveUpDown.AbstractCodeMoverTest
 import org.jetbrains.kotlin.idea.codeInsight.surroundWith.AbstractSurroundWithTest
 import org.jetbrains.kotlin.idea.codeInsight.unwrap.AbstractUnwrapRemoveTest
@@ -99,6 +102,7 @@ import org.jetbrains.kotlin.integration.AbstractAntTaskTest
 import org.jetbrains.kotlin.j2k.AbstractJavaToKotlinConverterForWebDemoTest
 import org.jetbrains.kotlin.j2k.AbstractJavaToKotlinConverterMultiFileTest
 import org.jetbrains.kotlin.j2k.AbstractJavaToKotlinConverterSingleFileTest
+import org.jetbrains.kotlin.jps.build.AbstractIncrementalCacheVersionChangedTest
 import org.jetbrains.kotlin.jps.build.AbstractIncrementalJpsTest
 import org.jetbrains.kotlin.jps.build.AbstractIncrementalLazyCachesTest
 import org.jetbrains.kotlin.jps.build.AbstractLookupTrackerTest
@@ -257,6 +261,10 @@ fun main(args: Array<String>) {
             model("loadJava/sourceJava", extension = "java", testMethod = "doTestSourceJava")
         }
 
+        testClass<AbstractLoadKotlinWithTypeTableTest>() {
+            model("loadJava/compiledKotlin")
+        }
+
         testClass<AbstractJvmRuntimeDescriptorLoaderTest>() {
             model("loadJava/compiledKotlin")
             model("loadJava/compiledJava", extension = "java", excludeDirs = listOf("sam", "kotlinSignature/propagation"))
@@ -322,7 +330,7 @@ fun main(args: Array<String>) {
             model("evaluate/usesVariableAsConstant", testMethod = "doUsesVariableAsConstantTest")
         }
 
-        testClass<AbstractKotlinLightClassTest>() {
+        testClass<AbstractCompilerLightClassTest>() {
             model("asJava/lightClasses")
         }
 
@@ -417,7 +425,7 @@ fun main(args: Array<String>) {
         }
 
         testClass<AbstractQuickFixMultiFileTest>() {
-            model("quickfix", pattern = """^(\w+)\.before\.Main\.\w+$""", testMethod = "doTestWithExtraFile")
+            model("quickfix", pattern = """^(\w+)\.((before\.Main\.\w+)|(test))$""", testMethod = "doTestWithExtraFile")
         }
 
         testClass<AbstractHighlightingTest>() {
@@ -730,14 +738,28 @@ fun main(args: Array<String>) {
             model("kdoc/typing")
         }
 
-        testClass<AbstractGenerateActionTest>() {
-            model("codeInsight/generate")
+        testClass<AbstractGenerateTestSupportMethodActionTest>() {
+            model("codeInsight/generate/testFrameworkSupport")
+        }
+
+        testClass<AbstractGenerateHashCodeAndEqualsActionTest>() {
+            model("codeInsight/generate/equalsWithHashCode")
+        }
+
+        testClass<AbstractCodeInsightActionTest>() {
+            model("codeInsight/generate/secondaryConstructors")
         }
     }
 
     testGroup("idea/tests", "compiler/testData") {
         testClass<AbstractResolveByStubTest>() {
             model("loadJava/compiledKotlin")
+        }
+    }
+
+    testGroup("idea/tests", "compiler/testData") {
+        testClass<AbstractIdeLightClassTest>() {
+            model("asJava/lightClasses", excludeDirs = listOf("delegation"))
         }
     }
 
@@ -849,6 +871,10 @@ fun main(args: Array<String>) {
 
         testClass(AbstractIncrementalLazyCachesTest::class.java) {
             model("incremental/lazyKotlinCaches", extension = null, excludeParentDirs = true)
+        }
+
+        testClass(AbstractIncrementalCacheVersionChangedTest::class.java) {
+            model("incremental/cacheVersionChanged", extension = null, excludeParentDirs = true)
         }
     }
 

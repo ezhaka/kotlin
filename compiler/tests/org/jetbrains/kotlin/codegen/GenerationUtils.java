@@ -23,7 +23,7 @@ import org.jetbrains.kotlin.cli.jvm.compiler.JvmPackagePartProvider;
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment;
 import org.jetbrains.kotlin.codegen.state.GenerationState;
 import org.jetbrains.kotlin.descriptors.PackagePartProvider;
-import org.jetbrains.kotlin.psi.JetFile;
+import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.resolve.lazy.JvmResolveUtil;
 
 import java.util.Collections;
@@ -36,7 +36,7 @@ public class GenerationUtils {
 
     @NotNull
     public static ClassFileFactory compileFileGetClassFileFactoryForTest(
-            @NotNull JetFile psiFile,
+            @NotNull KtFile psiFile,
             @NotNull KotlinCoreEnvironment environment
     ) {
         return compileFileGetGenerationStateForTest(psiFile, environment).getFactory();
@@ -44,33 +44,34 @@ public class GenerationUtils {
 
     @NotNull
     public static GenerationState compileFileGetGenerationStateForTest(
-            @NotNull JetFile psiFile,
+            @NotNull KtFile psiFile,
             @NotNull KotlinCoreEnvironment environment
     ) {
         AnalysisResult analysisResult =
                 JvmResolveUtil.analyzeOneFileWithJavaIntegrationAndCheckForErrors(psiFile, new JvmPackagePartProvider(environment));
-        return compileFilesGetGenerationState(psiFile.getProject(), analysisResult, Collections.singletonList(psiFile));
+        return compileFilesGetGenerationState(psiFile.getProject(), analysisResult, Collections.singletonList(psiFile), false);
     }
 
     @NotNull
-    public static GenerationState compileManyFilesGetGenerationStateForTest(@NotNull Project project, @NotNull List<JetFile> files) {
+    public static GenerationState compileManyFilesGetGenerationStateForTest(@NotNull Project project, @NotNull List<KtFile> files) {
         return compileManyFilesGetGenerationStateForTest(project, files, PackagePartProvider.Companion.getEMPTY());
     }
 
     @NotNull
-    public static GenerationState compileManyFilesGetGenerationStateForTest(@NotNull Project project, @NotNull List<JetFile> files,
+    public static GenerationState compileManyFilesGetGenerationStateForTest(@NotNull Project project, @NotNull List<KtFile> files,
             @NotNull PackagePartProvider packagePartProvider
     ) {
         AnalysisResult analysisResult = JvmResolveUtil.analyzeFilesWithJavaIntegrationAndCheckForErrors(
                 project, files, packagePartProvider);
-        return compileFilesGetGenerationState(project, analysisResult, files);
+        return compileFilesGetGenerationState(project, analysisResult, files, false);
     }
 
     @NotNull
     public static GenerationState compileFilesGetGenerationState(
             @NotNull Project project,
             @NotNull AnalysisResult analysisResult,
-            @NotNull List<JetFile> files
+            @NotNull List<KtFile> files,
+            boolean useTypeTableInSerializer
     ) {
         analysisResult.throwIfError();
         GenerationState state = new GenerationState(
@@ -78,7 +79,11 @@ public class GenerationUtils {
                 analysisResult.getModuleDescriptor(), analysisResult.getBindingContext(),
                 files,
                 /* disableCallAssertions = */ false,
-                /* disableParamAssertions = */ false
+                /* disableParamAssertions = */ false,
+                GenerationState.GenerateClassFilter.GENERATE_ALL,
+                /* disableInline = */ false,
+                /* disableOptimization = */ false,
+                useTypeTableInSerializer
         );
         KotlinCodegenFacade.compileCorrectFiles(state, CompilationErrorHandler.THROW_EXCEPTION);
         return state;

@@ -41,7 +41,7 @@ import com.intellij.util.IncorrectOperationException
 import org.jetbrains.kotlin.asJava.namedUnwrappedElement
 import org.jetbrains.kotlin.asJava.unwrapped
 import org.jetbrains.kotlin.descriptors.*
-import org.jetbrains.kotlin.idea.JetFileType
+import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptor
 import org.jetbrains.kotlin.idea.codeInsight.DescriptorToSourceUtilsIde
 import org.jetbrains.kotlin.idea.codeInsight.JetFileReferencesResolver
@@ -49,9 +49,9 @@ import org.jetbrains.kotlin.idea.core.refactoring.isInJavaSourceRoot
 import org.jetbrains.kotlin.idea.imports.importableFqName
 import org.jetbrains.kotlin.idea.refactoring.fqName.isImported
 import org.jetbrains.kotlin.idea.refactoring.move.moveTopLevelDeclarations.ui.MoveFilesOrDirectoriesDialogWithKotlinOptions
-import org.jetbrains.kotlin.idea.references.JetReference
-import org.jetbrains.kotlin.idea.references.JetSimpleNameReference
-import org.jetbrains.kotlin.idea.references.JetSimpleNameReference.ShorteningMode
+import org.jetbrains.kotlin.idea.references.KtReference
+import org.jetbrains.kotlin.idea.references.KtSimpleNameReference
+import org.jetbrains.kotlin.idea.references.KtSimpleNameReference.ShorteningMode
 import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.idea.util.ImportInsertHelper
 import org.jetbrains.kotlin.idea.util.application.executeCommand
@@ -71,8 +71,8 @@ val UNKNOWN_PACKAGE_FQ_NAME = FqNameUnsafe("org.jetbrains.kotlin.idea.refactorin
 
 public class PackageNameInfo(val oldPackageName: FqName, val newPackageName: FqNameUnsafe)
 
-public fun JetElement.getInternalReferencesToUpdateOnPackageNameChange(packageNameInfo: PackageNameInfo): List<UsageInfo> {
-    val file = getContainingFile() as? JetFile ?: return listOf()
+public fun KtElement.getInternalReferencesToUpdateOnPackageNameChange(packageNameInfo: PackageNameInfo): List<UsageInfo> {
+    val file = getContainingFile() as? KtFile ?: return listOf()
 
     val importPaths = file.getImportDirectives().map { it.getImportPath() }.filterNotNull()
 
@@ -87,7 +87,7 @@ public fun JetElement.getInternalReferencesToUpdateOnPackageNameChange(packageNa
         }
     }
 
-    fun processReference(refExpr: JetSimpleNameExpression, bindingContext: BindingContext): UsageInfo? {
+    fun processReference(refExpr: KtSimpleNameExpression, bindingContext: BindingContext): UsageInfo? {
         val descriptor = bindingContext[BindingContext.REFERENCE_TARGET, refExpr]?.getImportableDescriptor() ?: return null
 
         val declaration = DescriptorToSourceUtilsIde.getAnyDeclaration(getProject(), descriptor) ?: return null
@@ -99,7 +99,7 @@ public fun JetElement.getInternalReferencesToUpdateOnPackageNameChange(packageNa
             val containingDescriptor = descriptor.getContainingDeclaration()
             val receiver = refExpr.getReceiverExpression()
             if (receiver != null) {
-                val receiverRef = receiver.getQualifiedElementSelector() as? JetSimpleNameExpression ?: return null
+                val receiverRef = receiver.getQualifiedElementSelector() as? KtSimpleNameExpression ?: return null
                 if (bindingContext[BindingContext.QUALIFIER, receiverRef] == null) return null
                 return processReference(receiverRef, bindingContext)
             }
@@ -143,7 +143,7 @@ public fun JetElement.getInternalReferencesToUpdateOnPackageNameChange(packageNa
 
     val usages = ArrayList<UsageInfo>()
     for ((refExpr, bindingContext) in referenceToContext) {
-        if (refExpr !is JetSimpleNameExpression || refExpr.getParent() is JetThisExpression) continue
+        if (refExpr !is KtSimpleNameExpression || refExpr.getParent() is KtThisExpression) continue
         if (bindingContext[BindingContext.QUALIFIER, refExpr] != null) continue
 
         processReference(refExpr, bindingContext)?.let { usages.add(it) }
@@ -162,9 +162,9 @@ class MoveRenameUsageInfoForExtension(
         val addImportToOriginalFile: Boolean
 ): MoveRenameUsageInfo(element, reference, startOffset, endOffset, referencedElement, false)
 
-class MoveRenameSelfUsageInfo(ref: JetSimpleNameReference, refTarget: PsiElement, val newFqName: FqName):
+class MoveRenameSelfUsageInfo(ref: KtSimpleNameReference, refTarget: PsiElement, val newFqName: FqName):
         MoveRenameUsageInfo(ref.element, ref, ref.rangeInElement.startOffset, ref.rangeInElement.endOffset, refTarget, false) {
-    override fun getReference() = super.getReference() as? JetSimpleNameReference
+    override fun getReference() = super.getReference() as? KtSimpleNameReference
 }
 
 fun createMoveUsageInfoIfPossible(
@@ -173,7 +173,7 @@ fun createMoveUsageInfoIfPossible(
         addImportToOriginalFile: Boolean
 ): UsageInfo? {
     val element = reference.getElement()
-    if (element.getStrictParentOfType<JetSuperExpression>() != null) return null
+    if (element.getStrictParentOfType<KtSuperExpression>() != null) return null
 
     val range = reference.getRangeInElement()!!
     val startOffset = range.getStartOffset()
@@ -188,17 +188,17 @@ fun createMoveUsageInfoIfPossible(
 }
 
 private fun isUnqualifiedExtensionReference(reference: PsiReference, referencedElement: PsiElement): Boolean {
-    return reference is JetReference
-           && (referencedElement.namedUnwrappedElement as? JetDeclaration)?.isExtensionDeclaration() ?: false
-           && reference.element.getNonStrictParentOfType<JetImportDirective>() == null
+    return reference is KtReference
+           && (referencedElement.namedUnwrappedElement as? KtDeclaration)?.isExtensionDeclaration() ?: false
+           && reference.element.getNonStrictParentOfType<KtImportDirective>() == null
 }
 
-public fun guessNewFileName(declarationsToMove: Collection<JetNamedDeclaration>): String? {
+public fun guessNewFileName(declarationsToMove: Collection<KtNamedDeclaration>): String? {
     if (declarationsToMove.isEmpty()) return null
 
     val representative = declarationsToMove.singleOrNull()
-                         ?: declarationsToMove.filterIsInstance<JetClassOrObject>().singleOrNull()
-    representative?.let { return "${it.name}.${JetFileType.EXTENSION}" }
+                         ?: declarationsToMove.filterIsInstance<KtClassOrObject>().singleOrNull()
+    representative?.let { return "${it.name}.${KotlinFileType.EXTENSION}" }
 
     return declarationsToMove.first().containingFile.name
 }
@@ -209,8 +209,12 @@ private fun updateJavaReference(reference: PsiReferenceExpression, oldElement: P
         // Remove import of old package facade, if any
         val oldClassName = oldElement.getContainingClass()?.getQualifiedName()
         if (oldClassName != null) {
-            val importOfOldClass = (reference.getContainingFile() as? PsiJavaFile)?.getImportList()?.getImportStatements()?.firstOrNull {
-                it.getQualifiedName() == oldClassName
+            val importOfOldClass = (reference.containingFile as? PsiJavaFile)?.importList?.allImportStatements?.firstOrNull {
+                when (it) {
+                    is PsiImportStatement -> it.qualifiedName == oldClassName
+                    is PsiImportStaticStatement -> it.isOnDemand && it.importReference?.canonicalText == oldClassName
+                    else -> false
+                }
             }
             if (importOfOldClass != null && importOfOldClass.resolve() == null) {
                 importOfOldClass.delete()
@@ -274,8 +278,8 @@ fun postProcessMoveUsages(usages: List<UsageInfo>,
             }
 
             is MoveRenameUsageInfoForExtension -> {
-                val file = with(usage) { if (addImportToOriginalFile) originalFile else counterpart(originalFile) } as JetFile
-                val declaration = counterpart(usage.getReferencedElement()!!).unwrapped as JetDeclaration
+                val file = with(usage) { if (addImportToOriginalFile) originalFile else counterpart(originalFile) } as KtFile
+                val declaration = counterpart(usage.getReferencedElement()!!).unwrapped as KtDeclaration
                 ImportInsertHelper.getInstance(usage.getProject()).importDescriptor(file, declaration.resolveToDescriptor())
             }
 
@@ -284,7 +288,7 @@ fun postProcessMoveUsages(usages: List<UsageInfo>,
                 val newElement = counterpart(oldElement)
                 usage.getReference()?.let {
                     try {
-                        if (it is JetSimpleNameReference) {
+                        if (it is KtSimpleNameReference) {
                             it.bindToElement(newElement, shorteningMode)
                         }
                         else if (it is PsiReferenceExpression && updateJavaReference(it, oldElement, newElement)) {
@@ -304,7 +308,7 @@ fun postProcessMoveUsages(usages: List<UsageInfo>,
     return nonCodeUsages
 }
 
-var JetFile.updatePackageDirective: Boolean? by UserDataProperty(Key.create("UPDATE_PACKAGE_DIRECTIVE"))
+var KtFile.updatePackageDirective: Boolean? by UserDataProperty(Key.create("UPDATE_PACKAGE_DIRECTIVE"))
 
 // Mostly copied from MoveFilesOrDirectoriesUtil.doMove()
 public fun moveFilesOrDirectories(
@@ -338,7 +342,7 @@ public fun moveFilesOrDirectories(
 
                 elementsToMove.forEach {
                     MoveFilesOrDirectoriesUtil.checkMove(it, selectedDir!!)
-                    if (it is JetFile && it.isInJavaSourceRoot()) {
+                    if (it is KtFile && it.isInJavaSourceRoot()) {
                         it.updatePackageDirective = updatePackageDirective
                     }
                 }

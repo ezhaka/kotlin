@@ -21,6 +21,7 @@ import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.annotations.Annotations
 import org.jetbrains.kotlin.descriptors.impl.ClassDescriptorBase
 import org.jetbrains.kotlin.load.java.FakePureImplementationsProvider
+import org.jetbrains.kotlin.load.java.JavaVisibilities
 import org.jetbrains.kotlin.load.java.JvmAnnotationNames
 import org.jetbrains.kotlin.load.java.components.TypeUsage
 import org.jetbrains.kotlin.load.java.descriptors.JavaClassDescriptor
@@ -35,11 +36,11 @@ import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.isValidJavaFqName
 import org.jetbrains.kotlin.resolve.constants.StringValue
 import org.jetbrains.kotlin.resolve.scopes.InnerClassesScopeWrapper
-import org.jetbrains.kotlin.resolve.scopes.JetScope
+import org.jetbrains.kotlin.resolve.scopes.KtScope
 import org.jetbrains.kotlin.types.*
 import org.jetbrains.kotlin.utils.addIfNotNull
 import org.jetbrains.kotlin.utils.toReadOnlyList
-import java.util.ArrayList
+import java.util.*
 
 class LazyJavaClassDescriptor(
         private val outerC: LazyJavaResolverContext,
@@ -71,8 +72,18 @@ class LazyJavaClassDescriptor(
 
     override fun getKind() = kind
     override fun getModality() = modality
-    override fun getVisibility() = visibility
+
+    // To workaround a problem with Scala compatibility (KT-9700),
+    // we consider private visibility of a Java top level class as package private
+    // Shortly: Scala plugin introduces special kind of "private in package" classes
+    // which can be inherited from the same package.
+    // Kotlin considers this "private in package" just as "private" and thinks they are invisible for inheritors,
+    // so their functions are invisible fake which is not true.
+    override fun getVisibility() =
+            if (visibility == Visibilities.PRIVATE && jClass.outerClass == null) JavaVisibilities.PACKAGE_VISIBILITY else visibility
+
     override fun isInner() = isInner
+    override fun isData() = false
 
     private val typeConstructor = c.storageManager.createLazyValue { LazyJavaClassTypeConstructor() }
     override fun getTypeConstructor(): TypeConstructor = typeConstructor()
@@ -81,10 +92,10 @@ class LazyJavaClassDescriptor(
     override fun getUnsubstitutedMemberScope() = unsubstitutedMemberScope
 
     private val innerClassesScope = InnerClassesScopeWrapper(getUnsubstitutedMemberScope())
-    override fun getUnsubstitutedInnerClassesScope(): JetScope = innerClassesScope
+    override fun getUnsubstitutedInnerClassesScope(): KtScope = innerClassesScope
 
     private val staticScope = LazyJavaStaticClassScope(c, jClass, this)
-    override fun getStaticScope(): JetScope = staticScope
+    override fun getStaticScope(): KtScope = staticScope
 
     override fun getUnsubstitutedPrimaryConstructor(): ConstructorDescriptor? = null
 
@@ -101,7 +112,7 @@ class LazyJavaClassDescriptor(
         }
     }
 
-    override fun getFunctionTypeForSamInterface(): JetType? = functionTypeForSamInterface()
+    override fun getFunctionTypeForSamInterface(): KotlinType? = functionTypeForSamInterface()
 
     override fun isCompanionObject() = false
 
@@ -119,12 +130,12 @@ class LazyJavaClassDescriptor(
 
         override fun getParameters(): List<TypeParameterDescriptor> = parameters()
 
-        private val supertypes = c.storageManager.createLazyValue<Collection<JetType>> {
+        private val supertypes = c.storageManager.createLazyValue<Collection<KotlinType>> {
             val javaTypes = jClass.getSupertypes()
-            val result = ArrayList<JetType>(javaTypes.size())
+            val result = ArrayList<KotlinType>(javaTypes.size())
             val incomplete = ArrayList<JavaType>(0)
 
-            val purelyImplementedSupertype: JetType? = getPurelyImplementedSupertype()
+            val purelyImplementedSupertype: KotlinType? = getPurelyImplementedSupertype()
 
             for (javaType in javaTypes) {
                 val jetType = c.typeResolver.transformJavaType(javaType, TypeUsage.SUPERTYPE.toAttributes())
@@ -153,7 +164,7 @@ class LazyJavaClassDescriptor(
             if (result.isNotEmpty()) result.toReadOnlyList() else listOf(c.module.builtIns.getAnyType())
         }
 
-        private fun getPurelyImplementedSupertype(): JetType? {
+        private fun getPurelyImplementedSupertype(): KotlinType? {
             val purelyImplementedFqName = getPurelyImplementsFqNameFromAnnotation()
                                           ?: FakePureImplementationsProvider.getPurelyImplementedInterface(fqName)
                                           ?: return null
@@ -168,7 +179,7 @@ class LazyJavaClassDescriptor(
                 parameter -> TypeProjectionImpl(Variance.INVARIANT, parameter.getDefaultType())
             }
 
-            return JetTypeImpl.create(
+            return KotlinTypeImpl.create(
                     Annotations.EMPTY, classDescriptor,
                     /* nullable =*/ false, parametersAsTypeProjections
             )
@@ -185,7 +196,7 @@ class LazyJavaClassDescriptor(
             return FqName(fqNameString)
         }
 
-        override fun getSupertypes(): Collection<JetType> = supertypes()
+        override fun getSupertypes(): Collection<KotlinType> = supertypes()
 
         override fun getAnnotations() = Annotations.EMPTY
 

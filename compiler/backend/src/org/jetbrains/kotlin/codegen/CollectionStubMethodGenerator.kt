@@ -20,9 +20,9 @@ import org.jetbrains.kotlin.codegen.state.GenerationState
 import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.descriptors.CallableMemberDescriptor.Kind.DECLARATION
 import org.jetbrains.kotlin.descriptors.annotations.Annotations
-import org.jetbrains.kotlin.load.java.SpecialSignatureInfo
-import org.jetbrains.kotlin.load.java.getSpecialSignatureInfo
-import org.jetbrains.kotlin.load.java.isBuiltinWithSpecialDescriptorInJvm
+import org.jetbrains.kotlin.load.java.BuiltinMethodsWithSpecialGenericSignature.SpecialSignatureInfo
+import org.jetbrains.kotlin.load.java.BuiltinMethodsWithSpecialGenericSignature.getSpecialSignatureInfo
+import org.jetbrains.kotlin.load.java.BuiltinMethodsWithSpecialGenericSignature.isBuiltinWithSpecialDescriptorInJvm
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.resolve.OverrideResolver
 import org.jetbrains.kotlin.resolve.OverridingUtil
@@ -30,7 +30,7 @@ import org.jetbrains.kotlin.resolve.descriptorUtil.builtIns
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOrigin
 import org.jetbrains.kotlin.resolve.jvm.jvmSignature.JvmMethodSignature
 import org.jetbrains.kotlin.types.*
-import org.jetbrains.kotlin.types.checker.JetTypeChecker
+import org.jetbrains.kotlin.types.checker.KotlinTypeChecker
 import org.jetbrains.org.objectweb.asm.Opcodes.*
 import org.jetbrains.org.objectweb.asm.commons.InstructionAdapter
 import java.util.ArrayList
@@ -187,7 +187,7 @@ class CollectionStubMethodGenerator(
         return ourSuperCollectionClasses.filter { klass -> klass.readOnlyClass !in redundantClasses }
     }
 
-    private fun Collection<JetType>.classes(): Collection<ClassDescriptor> =
+    private fun Collection<KotlinType>.classes(): Collection<ClassDescriptor> =
             this.map { it.getConstructor().getDeclarationDescriptor() as ClassDescriptor }
 
     private fun findFakeOverridesForMethodsFromMutableCollection(
@@ -199,7 +199,7 @@ class CollectionStubMethodGenerator(
         OverrideResolver.generateOverridesInAClass(klass, listOf(), object : OverridingUtil.DescriptorSink {
             override fun addFakeOverride(fakeOverride: CallableMemberDescriptor) {
                 if (fakeOverride !is FunctionDescriptor) return
-                if (fakeOverride.findOverriddenFromDirectSuperClass(mutableCollectionClass) != null) {
+                if (fakeOverride.findOverriddenFromDirectSuperClass(mutableCollectionClass)?.kind == DECLARATION) {
                     result.add(fakeOverride)
                 }
             }
@@ -213,13 +213,13 @@ class CollectionStubMethodGenerator(
         return result
     }
 
-    private fun Collection<JetType>.findMostSpecificTypeForClass(klass: ClassDescriptor): JetType {
+    private fun Collection<KotlinType>.findMostSpecificTypeForClass(klass: ClassDescriptor): KotlinType {
         val types = this.filter { it.getConstructor().getDeclarationDescriptor() == klass }
         if (types.isEmpty()) error("No supertype of $klass in $this")
         if (types.size() == 1) return types.first()
         // Find the first type in the list such that it's a subtype of every other type in that list
         return types.first { type ->
-            types.all { other -> JetTypeChecker.DEFAULT.isSubtypeOf(type, other) }
+            types.all { other -> KotlinTypeChecker.DEFAULT.isSubtypeOf(type, other) }
         }
     }
 
@@ -239,8 +239,8 @@ class CollectionStubMethodGenerator(
         return this.getOverriddenDescriptors().firstOrNull { it.getContainingDeclaration() == classDescriptor }
     }
 
-    private fun newType(classDescriptor: ClassDescriptor, typeArguments: List<TypeProjection>): JetType {
-        return JetTypeImpl.create(Annotations.EMPTY, classDescriptor, false, typeArguments)
+    private fun newType(classDescriptor: ClassDescriptor, typeArguments: List<TypeProjection>): KotlinType {
+        return KotlinTypeImpl.create(Annotations.EMPTY, classDescriptor, false, typeArguments)
     }
 
     private fun FunctionDescriptor.signature(): JvmMethodSignature = typeMapper.mapSignature(this)

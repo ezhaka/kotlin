@@ -28,8 +28,9 @@ import org.jetbrains.kotlin.diagnostics.Diagnostic;
 import org.jetbrains.kotlin.diagnostics.DiagnosticFactory;
 import org.jetbrains.kotlin.diagnostics.Errors;
 import org.jetbrains.kotlin.diagnostics.rendering.DefaultErrorMessages;
+import org.jetbrains.kotlin.idea.highlighter.formatHtml.FormatHtmlUtilKt;
 import org.jetbrains.kotlin.idea.test.PluginTestCaseBase;
-import org.jetbrains.kotlin.psi.JetFile;
+import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.resolve.BindingContext;
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.ErrorsJvm;
 import org.jetbrains.kotlin.resolve.lazy.JvmResolveUtil;
@@ -42,8 +43,6 @@ import java.lang.reflect.Field;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import static org.jetbrains.kotlin.idea.highlighter.formatHtml.FormatHtmlPackage.formatHtml;
 
 public abstract class AbstractDiagnosticMessageTest extends JetLiteFixture {
     private static final String DIAGNOSTICS_NUMBER_DIRECTIVE = "DIAGNOSTICS_NUMBER";
@@ -65,7 +64,7 @@ public abstract class AbstractDiagnosticMessageTest extends JetLiteFixture {
     @NotNull
     @Override
     protected KotlinCoreEnvironment createEnvironment() {
-        return createEnvironmentWithMockJdk(ConfigurationKind.JDK_ONLY);
+        return createEnvironmentWithMockJdk(ConfigurationKind.ALL);
     }
 
     @NotNull
@@ -75,7 +74,7 @@ public abstract class AbstractDiagnosticMessageTest extends JetLiteFixture {
     }
 
     @NotNull
-    protected AnalysisResult analyze(@NotNull JetFile file) {
+    protected AnalysisResult analyze(@NotNull KtFile file) {
         return JvmResolveUtil.analyzeOneFileWithJavaIntegration(file);
     }
 
@@ -89,7 +88,7 @@ public abstract class AbstractDiagnosticMessageTest extends JetLiteFixture {
         final Set<DiagnosticFactory<?>> diagnosticFactories = getDiagnosticFactories(directives);
         MessageType messageType = getMessageTypeDirective(directives);
 
-        JetFile psiFile = createPsiFile(null, fileName, loadFile(fileName));
+        KtFile psiFile = createPsiFile(null, fileName, loadFile(fileName));
         AnalysisResult analysisResult = analyze(psiFile);
         BindingContext bindingContext = analysisResult.getBindingContext();
 
@@ -108,7 +107,7 @@ public abstract class AbstractDiagnosticMessageTest extends JetLiteFixture {
             String readableDiagnosticText;
             String extension;
             if (messageType != MessageType.TEXT && IdeErrorMessages.hasIdeSpecificMessage(diagnostic)) {
-                readableDiagnosticText = formatHtml(IdeErrorMessages.render(diagnostic));
+                readableDiagnosticText = FormatHtmlUtilKt.formatHtml(IdeErrorMessages.render(diagnostic));
                 extension = MessageType.HTML.extension;
             }
             else {

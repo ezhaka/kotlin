@@ -27,11 +27,12 @@ import org.jetbrains.kotlin.js.translate.context.TranslationContext;
 import org.jetbrains.kotlin.js.translate.declaration.DelegationTranslator;
 import org.jetbrains.kotlin.js.translate.general.AbstractTranslator;
 import org.jetbrains.kotlin.js.translate.reference.CallArgumentTranslator;
-import org.jetbrains.kotlin.lexer.JetTokens;
+import org.jetbrains.kotlin.js.translate.utils.jsAstUtils.AstUtilsKt;
+import org.jetbrains.kotlin.lexer.KtTokens;
 import org.jetbrains.kotlin.psi.*;
-import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilPackage;
+import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilKt;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -40,19 +41,18 @@ import java.util.List;
 import static org.jetbrains.kotlin.js.translate.utils.BindingUtils.*;
 import static org.jetbrains.kotlin.js.translate.utils.FunctionBodyTranslator.setDefaultValueForArguments;
 import static org.jetbrains.kotlin.js.translate.utils.PsiUtils.getPrimaryConstructorParameters;
-import static org.jetbrains.kotlin.js.translate.utils.jsAstUtils.JsAstUtilsPackage.toInvocationWith;
 import static org.jetbrains.kotlin.resolve.DescriptorUtils.getClassDescriptorForType;
 
 public final class ClassInitializerTranslator extends AbstractTranslator {
     @NotNull
-    private final JetClassOrObject classDeclaration;
+    private final KtClassOrObject classDeclaration;
     @NotNull
     private final List<JsStatement> initializerStatements = new SmartList<JsStatement>();
     private final JsFunction initFunction;
     private final TranslationContext context;
 
     public ClassInitializerTranslator(
-            @NotNull JetClassOrObject classDeclaration,
+            @NotNull KtClassOrObject classDeclaration,
             @NotNull TranslationContext context
     ) {
         super(context);
@@ -68,7 +68,7 @@ public final class ClassInitializerTranslator extends AbstractTranslator {
     }
 
     @NotNull
-    private static JsFunction createInitFunction(JetClassOrObject declaration, TranslationContext context) {
+    private static JsFunction createInitFunction(KtClassOrObject declaration, TranslationContext context) {
         //TODO: it's inconsistent that we have scope for class and function for constructor, currently have problems implementing better way
         ClassDescriptor classDescriptor = getClassDescriptor(context.bindingContext(), declaration);
         ConstructorDescriptor primaryConstructor = classDescriptor.getUnsubstitutedPrimaryConstructor();
@@ -114,7 +114,7 @@ public final class ClassInitializerTranslator extends AbstractTranslator {
     }
 
     @NotNull
-    public JsExpression generateEnumEntryInstanceCreation(@NotNull JetType enumClassType) {
+    public JsExpression generateEnumEntryInstanceCreation(@NotNull KotlinType enumClassType) {
         ResolvedCall<FunctionDescriptor> superCall = getSuperCall();
 
         if (superCall == null) {
@@ -127,7 +127,7 @@ public final class ClassInitializerTranslator extends AbstractTranslator {
     }
 
     private void mayBeAddCallToSuperMethod(JsFunction initializer) {
-        if (classDeclaration.hasModifier(JetTokens.ENUM_KEYWORD)) {
+        if (classDeclaration.hasModifier(KtTokens.ENUM_KEYWORD)) {
             addCallToSuperMethod(Collections.<JsExpression>emptyList(), initializer);
             return;
         }
@@ -135,9 +135,9 @@ public final class ClassInitializerTranslator extends AbstractTranslator {
             ResolvedCall<FunctionDescriptor> superCall = getSuperCall();
             if (superCall == null) return;
 
-            if (classDeclaration instanceof JetEnumEntry) {
+            if (classDeclaration instanceof KtEnumEntry) {
                 JsExpression expression = CallTranslator.translate(context(), superCall, null);
-                JsExpression fixedInvocation = toInvocationWith(expression, JsLiteral.THIS);
+                JsExpression fixedInvocation = AstUtilsKt.toInvocationWith(expression, JsLiteral.THIS);
                 initializerStatements.add(0, fixedInvocation.makeStmt());
             }
             else {
@@ -158,11 +158,11 @@ public final class ClassInitializerTranslator extends AbstractTranslator {
 
     @Nullable
     private ResolvedCall<FunctionDescriptor> getSuperCall() {
-        for (JetDelegationSpecifier specifier : classDeclaration.getDelegationSpecifiers()) {
-            if (specifier instanceof JetDelegatorToSuperCall) {
-                JetDelegatorToSuperCall superCall = (JetDelegatorToSuperCall) specifier;
+        for (KtDelegationSpecifier specifier : classDeclaration.getDelegationSpecifiers()) {
+            if (specifier instanceof KtDelegatorToSuperCall) {
+                KtDelegatorToSuperCall superCall = (KtDelegatorToSuperCall) specifier;
                 //noinspection unchecked
-                return (ResolvedCall<FunctionDescriptor>) CallUtilPackage.getResolvedCallWithAssert(superCall, bindingContext());
+                return (ResolvedCall<FunctionDescriptor>) CallUtilKt.getResolvedCallWithAssert(superCall, bindingContext());
             }
         }
         return null;
@@ -170,16 +170,16 @@ public final class ClassInitializerTranslator extends AbstractTranslator {
 
     @NotNull
     List<JsParameter> translatePrimaryConstructorParameters() {
-        List<JetParameter> parameterList = getPrimaryConstructorParameters(classDeclaration);
+        List<KtParameter> parameterList = getPrimaryConstructorParameters(classDeclaration);
         List<JsParameter> result = new ArrayList<JsParameter>();
-        for (JetParameter jetParameter : parameterList) {
+        for (KtParameter jetParameter : parameterList) {
             result.add(translateParameter(jetParameter));
         }
         return result;
     }
 
     @NotNull
-    private JsParameter translateParameter(@NotNull JetParameter jetParameter) {
+    private JsParameter translateParameter(@NotNull KtParameter jetParameter) {
         DeclarationDescriptor parameterDescriptor =
                 getDescriptorForElement(bindingContext(), jetParameter);
         JsName parameterName = context().getNameForDescriptor(parameterDescriptor);
@@ -189,7 +189,7 @@ public final class ClassInitializerTranslator extends AbstractTranslator {
     }
 
     private void mayBeAddInitializerStatementForProperty(@NotNull JsParameter jsParameter,
-            @NotNull JetParameter jetParameter) {
+            @NotNull KtParameter jetParameter) {
         PropertyDescriptor propertyDescriptor =
                 getPropertyDescriptorForConstructorParameter(bindingContext(), jetParameter);
         if (propertyDescriptor == null) {

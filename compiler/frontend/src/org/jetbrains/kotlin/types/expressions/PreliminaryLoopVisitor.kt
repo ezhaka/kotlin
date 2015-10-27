@@ -17,7 +17,7 @@
 package org.jetbrains.kotlin.types.expressions
 
 import org.jetbrains.kotlin.descriptors.impl.LocalVariableDescriptor
-import org.jetbrains.kotlin.psi.JetLoopExpression
+import org.jetbrains.kotlin.psi.KtLoopExpression
 import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowInfo
 import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowValue
 import java.util.*
@@ -36,7 +36,7 @@ class PreliminaryLoopVisitor private constructor() : AssignedVariablesSearcher()
             // Only predictable variables are under interest here
             val id = value.id
             if (value.kind == DataFlowValue.Kind.PREDICTABLE_VARIABLE && id is LocalVariableDescriptor) {
-                if (assignedNames.contains(id.name)) {
+                if (hasWriters(id)) {
                     valueSetToClear.add(value)
                 }
             }
@@ -50,7 +50,7 @@ class PreliminaryLoopVisitor private constructor() : AssignedVariablesSearcher()
     companion object {
 
         @JvmStatic
-        fun visitLoop(loopExpression: JetLoopExpression): PreliminaryLoopVisitor {
+        fun visitLoop(loopExpression: KtLoopExpression): PreliminaryLoopVisitor {
             val visitor = PreliminaryLoopVisitor()
             loopExpression.accept(visitor, null)
             return visitor

@@ -33,32 +33,32 @@ import org.jetbrains.kotlin.idea.core.refactoring.reportDeclarationConflict
 import org.jetbrains.kotlin.idea.refactoring.CallableRefactoring
 import org.jetbrains.kotlin.idea.refactoring.getAffectedCallables
 import org.jetbrains.kotlin.idea.refactoring.getContainingScope
-import org.jetbrains.kotlin.idea.references.JetReference
-import org.jetbrains.kotlin.idea.references.JetSimpleNameReference
+import org.jetbrains.kotlin.idea.references.KtReference
+import org.jetbrains.kotlin.idea.references.KtSimpleNameReference
 import org.jetbrains.kotlin.idea.util.application.executeWriteCommand
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
 import org.jetbrains.kotlin.load.java.JvmAbi
-import org.jetbrains.kotlin.psi.JetCallableReferenceExpression
-import org.jetbrains.kotlin.psi.JetProperty
-import org.jetbrains.kotlin.psi.JetPsiFactory
-import org.jetbrains.kotlin.psi.JetSimpleNameExpression
+import org.jetbrains.kotlin.psi.KtCallableReferenceExpression
+import org.jetbrains.kotlin.psi.KtProperty
+import org.jetbrains.kotlin.psi.KtPsiFactory
+import org.jetbrains.kotlin.psi.KtSimpleNameExpression
 import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
 import org.jetbrains.kotlin.psi.psiUtil.siblings
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.calls.callUtil.getCall
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
+import org.jetbrains.kotlin.resolve.scopes.utils.findFunction
 import java.util.*
 
-public class ConvertPropertyToFunctionIntention : JetSelfTargetingIntention<JetProperty>(javaClass(), "Convert property to function"), LowPriorityAction {
+public class ConvertPropertyToFunctionIntention : JetSelfTargetingIntention<KtProperty>(javaClass(), "Convert property to function"), LowPriorityAction {
     private inner class Converter(
             project: Project,
-            descriptor: CallableDescriptor,
-            context: BindingContext
-    ): CallableRefactoring<CallableDescriptor>(project, descriptor, context, getText()) {
+            descriptor: CallableDescriptor
+    ): CallableRefactoring<CallableDescriptor>(project, descriptor, getText()) {
         private val newName: String = JvmAbi.getterName(callableDescriptor.name.asString())
 
-        private fun convertProperty(originalProperty: JetProperty, psiFactory: JetPsiFactory) {
-            val property = originalProperty.copy() as JetProperty;
+        private fun convertProperty(originalProperty: KtProperty, psiFactory: KtPsiFactory) {
+            val property = originalProperty.copy() as KtProperty;
             val getter = property.getGetter();
 
             val sampleFunction = psiFactory.createFunction("fun foo() {\n\n}");
@@ -90,7 +90,7 @@ public class ConvertPropertyToFunctionIntention : JetSelfTargetingIntention<JetP
             val getterName = JvmAbi.getterName(callableDescriptor.getName().asString())
             val conflicts = MultiMap<PsiElement, String>()
             val callables = getAffectedCallables(project, descriptorsForChange)
-            val kotlinRefsToReplaceWithCall = ArrayList<JetSimpleNameExpression>()
+            val kotlinRefsToReplaceWithCall = ArrayList<KtSimpleNameExpression>()
             val refsToRename = ArrayList<PsiReference>()
             val javaRefsToReplaceWithCall = ArrayList<PsiReferenceExpression>()
             for (callable in callables) {
@@ -101,10 +101,9 @@ public class ConvertPropertyToFunctionIntention : JetSelfTargetingIntention<JetP
                     conflicts.putValue(callable, "Can't modify $renderedCallable")
                 }
 
-                if (callable is JetProperty) {
-                    callableDescriptor.getContainingScope(bindingContext)
-                            ?.getFunctions(callableDescriptor.name, NoLookupLocation.FROM_IDE)
-                            ?.firstOrNull { it.getValueParameters().isEmpty() }
+                if (callable is KtProperty) {
+                    callableDescriptor.getContainingScope()
+                            ?.findFunction(callableDescriptor.name, NoLookupLocation.FROM_IDE) { it.valueParameters.isEmpty() }
                             ?.let { DescriptorToSourceUtilsIde.getAnyDeclaration(project, it) }
                             ?.let { reportDeclarationConflict(conflicts, it) { "$it already exists" } }
                 }
@@ -117,11 +116,11 @@ public class ConvertPropertyToFunctionIntention : JetSelfTargetingIntention<JetP
 
                 val usages = ReferencesSearch.search(callable)
                 for (usage in usages) {
-                    if (usage is JetReference) {
-                        if (usage is JetSimpleNameReference) {
+                    if (usage is KtReference) {
+                        if (usage is KtSimpleNameReference) {
                             val expression = usage.expression
                             if (expression.getCall(expression.analyze(BodyResolveMode.PARTIAL)) != null
-                                && expression.getStrictParentOfType<JetCallableReferenceExpression>() == null) {
+                                && expression.getStrictParentOfType<KtCallableReferenceExpression>() == null) {
                                 kotlinRefsToReplaceWithCall.add(expression)
                             }
                             else if (nameChanged) {
@@ -158,7 +157,7 @@ public class ConvertPropertyToFunctionIntention : JetSelfTargetingIntention<JetP
 
             project.checkConflictsInteractively(conflicts) {
                 project.executeWriteCommand(getText()) {
-                    val kotlinPsiFactory = JetPsiFactory(project)
+                    val kotlinPsiFactory = KtPsiFactory(project)
                     val javaPsiFactory = PsiElementFactory.SERVICE.getInstance(project)
                     val newKotlinCallExpr = kotlinPsiFactory.createExpression("$newName()")
 
@@ -170,7 +169,7 @@ public class ConvertPropertyToFunctionIntention : JetSelfTargetingIntention<JetP
                     }
                     callables.forEach {
                         when (it) {
-                            is JetProperty -> convertProperty(it, kotlinPsiFactory)
+                            is KtProperty -> convertProperty(it, kotlinPsiFactory)
                             is PsiMethod -> it.setName(newName)
                         }
                     }
@@ -181,15 +180,15 @@ public class ConvertPropertyToFunctionIntention : JetSelfTargetingIntention<JetP
 
     override fun startInWriteAction(): Boolean = false
 
-    override fun isApplicableTo(element: JetProperty, caretOffset: Int): Boolean {
+    override fun isApplicableTo(element: KtProperty, caretOffset: Int): Boolean {
         val identifier = element.getNameIdentifier() ?: return false
         if (!identifier.getTextRange().containsOffset(caretOffset)) return false
         return element.getDelegate() == null && !element.isVar() && !element.isLocal()
     }
 
-    override fun applyTo(element: JetProperty, editor: Editor) {
+    override fun applyTo(element: KtProperty, editor: Editor) {
         val context = element.analyze()
         val descriptor = context[BindingContext.DECLARATION_TO_DESCRIPTOR, element] as? CallableDescriptor ?: return
-        Converter(element.getProject(), descriptor, context).run()
+        Converter(element.getProject(), descriptor).run()
     }
 }

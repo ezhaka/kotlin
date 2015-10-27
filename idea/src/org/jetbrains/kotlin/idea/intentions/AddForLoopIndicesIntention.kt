@@ -23,19 +23,20 @@ import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiDocumentManager
 import org.jetbrains.kotlin.idea.analysis.analyzeInContext
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
+import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
+import org.jetbrains.kotlin.idea.util.getResolutionScope
 import org.jetbrains.kotlin.idea.core.replaced
 import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.endOffset
 import org.jetbrains.kotlin.psi.psiUtil.startOffset
-import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.calls.callUtil.getResolvedCall
 import org.jetbrains.kotlin.resolve.descriptorUtil.fqNameUnsafe
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 
-public class AddForLoopIndicesIntention : JetSelfTargetingRangeIntention<JetForExpression>(javaClass(), "Add indices to 'for' loop"), LowPriorityAction {
+public class AddForLoopIndicesIntention : JetSelfTargetingRangeIntention<KtForExpression>(javaClass(), "Add indices to 'for' loop"), LowPriorityAction {
     private val WITH_INDEX_FQ_NAME = "kotlin.withIndex"
 
-    override fun applicabilityRange(element: JetForExpression): TextRange? {
+    override fun applicabilityRange(element: KtForExpression): TextRange? {
         if (element.loopParameter == null) return null
         val loopRange = element.loopRange ?: return null
 
@@ -44,7 +45,7 @@ public class AddForLoopIndicesIntention : JetSelfTargetingRangeIntention<JetForE
         val resolvedCall = loopRange.getResolvedCall(bindingContext)
         if (resolvedCall?.resultingDescriptor?.fqNameUnsafe?.asString() == WITH_INDEX_FQ_NAME) return null // already withIndex() call
 
-        val resolutionScope = bindingContext[BindingContext.RESOLUTION_SCOPE, element] ?: return null
+        val resolutionScope = element.getResolutionScope(bindingContext, element.getResolutionFacade())
         val potentialExpression = createWithIndexExpression(loopRange)
 
         val newBindingContext = potentialExpression.analyzeInContext(resolutionScope, loopRange)
@@ -54,14 +55,14 @@ public class AddForLoopIndicesIntention : JetSelfTargetingRangeIntention<JetForE
         return TextRange(element.startOffset, element.body?.startOffset ?: element.endOffset)
     }
 
-    override fun applyTo(element: JetForExpression, editor: Editor) {
+    override fun applyTo(element: KtForExpression, editor: Editor) {
         val loopRange = element.loopRange!!
         val loopParameter = element.loopParameter!!
-        val psiFactory = JetPsiFactory(element)
+        val psiFactory = KtPsiFactory(element)
 
         loopRange.replace(createWithIndexExpression(loopRange))
 
-        var multiParameter = (psiFactory.createExpressionByPattern("for((index, $0) in x){}", loopParameter.text) as JetForExpression).multiParameter!!
+        var multiParameter = (psiFactory.createExpressionByPattern("for((index, $0) in x){}", loopParameter.text) as KtForExpression).multiParameter!!
 
         multiParameter = loopParameter.replaced(multiParameter)
 
@@ -71,7 +72,7 @@ public class AddForLoopIndicesIntention : JetSelfTargetingRangeIntention<JetForE
         runTemplate(editor, element, indexVariable)
     }
 
-    private fun runTemplate(editor: Editor, forExpression: JetForExpression, indexVariable: JetMultiDeclarationEntry) {
+    private fun runTemplate(editor: Editor, forExpression: KtForExpression, indexVariable: KtMultiDeclarationEntry) {
         PsiDocumentManager.getInstance(forExpression.project).doPostponedOperationsAndUnblockDocument(editor.document)
 
         val templateBuilder = TemplateBuilderImpl(forExpression)
@@ -79,7 +80,7 @@ public class AddForLoopIndicesIntention : JetSelfTargetingRangeIntention<JetForE
 
         val body = forExpression.body
         when (body) {
-            is JetBlockExpression -> {
+            is KtBlockExpression -> {
                 val statement = body.statements.firstOrNull()
                 if (statement != null) {
                     templateBuilder.setEndVariableBefore(statement)
@@ -97,7 +98,7 @@ public class AddForLoopIndicesIntention : JetSelfTargetingRangeIntention<JetForE
         templateBuilder.run(editor, true)
     }
 
-    private fun createWithIndexExpression(originalExpression: JetExpression): JetExpression {
-        return JetPsiFactory(originalExpression).createExpressionByPattern("$0.withIndex()", originalExpression)
+    private fun createWithIndexExpression(originalExpression: KtExpression): KtExpression {
+        return KtPsiFactory(originalExpression).createExpressionByPattern("$0.withIndex()", originalExpression)
     }
 }

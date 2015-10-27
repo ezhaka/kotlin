@@ -23,6 +23,7 @@ import com.intellij.psi.*;
 import com.intellij.psi.search.GlobalSearchScope;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.kotlin.cli.jvm.config.JvmContentRootsKt;
 import org.jetbrains.kotlin.codegen.forTestCompile.ForTestCompileRuntime;
 import org.jetbrains.kotlin.config.CompilerConfiguration;
 import org.jetbrains.kotlin.name.SpecialNames;
@@ -34,7 +35,6 @@ import java.util.List;
 import java.util.Set;
 
 import static org.jetbrains.kotlin.asJava.KotlinLightClassStructureTest.ClassProperty.*;
-import static org.jetbrains.kotlin.cli.jvm.config.ConfigPackage.addJvmClasspathRoot;
 
 @SuppressWarnings("JUnitTestClassNamingConvention")
 public abstract class KotlinLightClassStructureTest extends KotlinAsJavaTestBase {
@@ -149,7 +149,7 @@ public abstract class KotlinLightClassStructureTest extends KotlinAsJavaTestBase
 
         @Override
         protected void extraConfiguration(@NotNull CompilerConfiguration configuration) {
-            addJvmClasspathRoot(configuration, ForTestCompileRuntime.runtimeJarForTests());
+            JvmContentRootsKt.addJvmClasspathRoot(configuration, ForTestCompileRuntime.runtimeJarForTests());
         }
     }
 
@@ -163,7 +163,7 @@ public abstract class KotlinLightClassStructureTest extends KotlinAsJavaTestBase
         }
 
         public void testPackage() throws Exception {
-            checkModifiers("test.TestPackage", PUBLIC, FINAL, DEPRECATED);
+            checkModifiers("test.PackageKt", PUBLIC, FINAL);
         }
     }
 
@@ -177,8 +177,8 @@ public abstract class KotlinLightClassStructureTest extends KotlinAsJavaTestBase
             assertTrue(findMethodsOfClass("test.C").length == 2);
         }
 
-        public void testPackageWithErrors() {
-            assertTrue(findMethodsOfClass("test.TestPackage").length == 1);
+        public void testFileFacadeWithErrors() {
+            assertTrue(findMethodsOfClass("test.CodeWithErrorsKt").length == 1);
         }
 
         private PsiMethod[] findMethodsOfClass(String qualifiedName) {

@@ -32,8 +32,8 @@ import org.jetbrains.kotlin.cfg.PseudocodeVariablesData.VariableControlFlowState
 import org.jetbrains.kotlin.cfg.PseudocodeVariablesData.VariableUseState;
 import org.jetbrains.kotlin.cfg.pseudocode.PseudoValue;
 import org.jetbrains.kotlin.cfg.pseudocode.Pseudocode;
-import org.jetbrains.kotlin.cfg.pseudocode.PseudocodePackage;
 import org.jetbrains.kotlin.cfg.pseudocode.PseudocodeUtil;
+import org.jetbrains.kotlin.cfg.pseudocode.PseudocodeUtilsKt;
 import org.jetbrains.kotlin.cfg.pseudocode.instructions.Instruction;
 import org.jetbrains.kotlin.cfg.pseudocode.instructions.InstructionVisitor;
 import org.jetbrains.kotlin.cfg.pseudocode.instructions.JetElementInstruction;
@@ -44,7 +44,7 @@ import org.jetbrains.kotlin.cfg.pseudocode.instructions.special.MarkInstruction;
 import org.jetbrains.kotlin.cfg.pseudocode.instructions.special.SubroutineExitInstruction;
 import org.jetbrains.kotlin.cfg.pseudocode.instructions.special.VariableDeclarationInstruction;
 import org.jetbrains.kotlin.cfg.pseudocodeTraverser.Edges;
-import org.jetbrains.kotlin.cfg.pseudocodeTraverser.PseudocodeTraverserPackage;
+import org.jetbrains.kotlin.cfg.pseudocodeTraverser.PseudocodeTraverserKt;
 import org.jetbrains.kotlin.cfg.pseudocodeTraverser.TraversalOrder;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.descriptors.impl.SyntheticFieldDescriptorKt;
@@ -52,15 +52,15 @@ import org.jetbrains.kotlin.diagnostics.Diagnostic;
 import org.jetbrains.kotlin.diagnostics.DiagnosticFactory;
 import org.jetbrains.kotlin.diagnostics.Errors;
 import org.jetbrains.kotlin.idea.MainFunctionDetector;
-import org.jetbrains.kotlin.lexer.JetTokens;
+import org.jetbrains.kotlin.lexer.KtTokens;
 import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.resolve.*;
-import org.jetbrains.kotlin.resolve.bindingContextUtil.BindingContextUtilPackage;
-import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilPackage;
+import org.jetbrains.kotlin.resolve.bindingContextUtil.BindingContextUtilsKt;
+import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilKt;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
-import org.jetbrains.kotlin.resolve.calls.resolvedCallUtil.ResolvedCallUtilPackage;
+import org.jetbrains.kotlin.resolve.calls.resolvedCallUtil.ResolvedCallUtilKt;
 import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.types.expressions.ExpressionTypingUtils;
 
 import java.util.*;
@@ -69,21 +69,20 @@ import static org.jetbrains.kotlin.cfg.PseudocodeVariablesData.VariableUseState.
 import static org.jetbrains.kotlin.cfg.TailRecursionKind.*;
 import static org.jetbrains.kotlin.cfg.pseudocodeTraverser.TraversalOrder.FORWARD;
 import static org.jetbrains.kotlin.diagnostics.Errors.*;
-import static org.jetbrains.kotlin.resolve.BindingContext.CAPTURED_IN_CLOSURE;
-import static org.jetbrains.kotlin.resolve.BindingContext.TAIL_RECURSION_CALL;
-import static org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilPackage.getResolvedCall;
+import static org.jetbrains.kotlin.diagnostics.Errors.UNREACHABLE_CODE;
+import static org.jetbrains.kotlin.resolve.BindingContext.*;
 import static org.jetbrains.kotlin.types.TypeUtils.NO_EXPECTED_TYPE;
 import static org.jetbrains.kotlin.types.TypeUtils.noExpectedType;
 
 public class JetFlowInformationProvider {
 
-    private final JetElement subroutine;
+    private final KtElement subroutine;
     private final Pseudocode pseudocode;
     private final BindingTrace trace;
     private PseudocodeVariablesData pseudocodeVariablesData;
 
     private JetFlowInformationProvider(
-            @NotNull JetElement declaration,
+            @NotNull KtElement declaration,
             @NotNull BindingTrace trace,
             @NotNull Pseudocode pseudocode
     ) {
@@ -93,7 +92,7 @@ public class JetFlowInformationProvider {
     }
 
     public JetFlowInformationProvider(
-            @NotNull JetElement declaration,
+            @NotNull KtElement declaration,
             @NotNull BindingTrace trace
     ) {
         this(declaration, trace, new JetControlFlowProcessor(trace).generatePseudocode(declaration));
@@ -130,18 +129,18 @@ public class JetFlowInformationProvider {
         markWhenWithoutElse();
     }
 
-    public void checkFunction(@Nullable JetType expectedReturnType) {
+    public void checkFunction(@Nullable KotlinType expectedReturnType) {
         UnreachableCode unreachableCode = collectUnreachableCode();
         reportUnreachableCode(unreachableCode);
 
-        if (subroutine instanceof JetFunctionLiteral) return;
+        if (subroutine instanceof KtFunctionLiteral) return;
 
         checkDefiniteReturn(expectedReturnType != null ? expectedReturnType : NO_EXPECTED_TYPE, unreachableCode);
 
         markTailCalls();
     }
 
-    private void collectReturnExpressions(@NotNull final Collection<JetElement> returnedExpressions) {
+    private void collectReturnExpressions(@NotNull final Collection<KtElement> returnedExpressions) {
         final Set<Instruction> instructions = Sets.newHashSet(pseudocode.getInstructions());
         SubroutineExitInstruction exitInstruction = pseudocode.getExitInstruction();
         for (Instruction previousInstruction : exitInstruction.getPreviousInstructions()) {
@@ -203,13 +202,13 @@ public class JetFlowInformationProvider {
 
     private void checkLocalFunctions() {
         for (LocalFunctionDeclarationInstruction localDeclarationInstruction : pseudocode.getLocalDeclarations()) {
-            JetElement element = localDeclarationInstruction.getElement();
-            if (element instanceof JetDeclarationWithBody) {
-                JetDeclarationWithBody localDeclaration = (JetDeclarationWithBody) element;
+            KtElement element = localDeclarationInstruction.getElement();
+            if (element instanceof KtDeclarationWithBody) {
+                KtDeclarationWithBody localDeclaration = (KtDeclarationWithBody) element;
 
                 CallableDescriptor functionDescriptor =
                         (CallableDescriptor) trace.getBindingContext().get(BindingContext.DECLARATION_TO_DESCRIPTOR, localDeclaration);
-                JetType expectedType = functionDescriptor != null ? functionDescriptor.getReturnType() : null;
+                KotlinType expectedType = functionDescriptor != null ? functionDescriptor.getReturnType() : null;
 
                 JetFlowInformationProvider providerForLocalDeclaration =
                         new JetFlowInformationProvider(localDeclaration, trace, localDeclarationInstruction.getBody());
@@ -219,30 +218,30 @@ public class JetFlowInformationProvider {
         }
     }
 
-    public void checkDefiniteReturn(final @NotNull JetType expectedReturnType, @NotNull final UnreachableCode unreachableCode) {
-        assert subroutine instanceof JetDeclarationWithBody;
-        JetDeclarationWithBody function = (JetDeclarationWithBody) subroutine;
+    public void checkDefiniteReturn(final @NotNull KotlinType expectedReturnType, @NotNull final UnreachableCode unreachableCode) {
+        assert subroutine instanceof KtDeclarationWithBody;
+        KtDeclarationWithBody function = (KtDeclarationWithBody) subroutine;
 
         if (!function.hasBody()) return;
 
-        List<JetElement> returnedExpressions = Lists.newArrayList();
+        List<KtElement> returnedExpressions = Lists.newArrayList();
         collectReturnExpressions(returnedExpressions);
 
         final boolean blockBody = function.hasBlockBody();
 
         final boolean[] noReturnError = new boolean[] { false };
-        for (JetElement returnedExpression : returnedExpressions) {
-            returnedExpression.accept(new JetVisitorVoid() {
+        for (KtElement returnedExpression : returnedExpressions) {
+            returnedExpression.accept(new KtVisitorVoid() {
                 @Override
-                public void visitReturnExpression(@NotNull JetReturnExpression expression) {
+                public void visitReturnExpression(@NotNull KtReturnExpression expression) {
                     if (!blockBody) {
                         trace.report(RETURN_IN_FUNCTION_WITH_EXPRESSION_BODY.on(expression));
                     }
                 }
 
                 @Override
-                public void visitJetElement(@NotNull JetElement element) {
-                    if (!(element instanceof JetExpression || element instanceof JetWhenCondition)) return;
+                public void visitJetElement(@NotNull KtElement element) {
+                    if (!(element instanceof KtExpression || element instanceof KtWhenCondition)) return;
 
                     if (blockBody && !noExpectedType(expectedReturnType)
                             && !KotlinBuiltIns.isUnit(expectedReturnType)
@@ -258,7 +257,7 @@ public class JetFlowInformationProvider {
     }
 
     private void reportUnreachableCode(@NotNull UnreachableCode unreachableCode) {
-        for (JetElement element : unreachableCode.getElements()) {
+        for (KtElement element : unreachableCode.getElements()) {
             trace.report(UNREACHABLE_CODE.on(element, unreachableCode.getUnreachableTextRanges(element)));
             trace.record(BindingContext.UNREACHABLE_CODE, element, true);
         }
@@ -266,21 +265,21 @@ public class JetFlowInformationProvider {
 
     @NotNull
     private UnreachableCode collectUnreachableCode() {
-        Set<JetElement> reachableElements = Sets.newHashSet();
-        Set<JetElement> unreachableElements = Sets.newHashSet();
+        Set<KtElement> reachableElements = Sets.newHashSet();
+        Set<KtElement> unreachableElements = Sets.newHashSet();
         for (Instruction instruction : pseudocode.getInstructionsIncludingDeadCode()) {
             if (!(instruction instanceof JetElementInstruction)
                     || instruction instanceof LoadUnitValueInstruction
                     || instruction instanceof MergeInstruction
                     || (instruction instanceof MagicInstruction && ((MagicInstruction) instruction).getSynthetic())) continue;
 
-            JetElement element = ((JetElementInstruction) instruction).getElement();
+            KtElement element = ((JetElementInstruction) instruction).getElement();
 
             if (instruction instanceof JumpInstruction) {
-                boolean isJumpElement = element instanceof JetBreakExpression
-                                        || element instanceof JetContinueExpression
-                                        || element instanceof JetReturnExpression
-                                        || element instanceof JetThrowExpression;
+                boolean isJumpElement = element instanceof KtBreakExpression
+                                        || element instanceof KtContinueExpression
+                                        || element instanceof KtReturnExpression
+                                        || element instanceof KtThrowExpression;
                 if (!isJumpElement) continue;
             }
 
@@ -300,7 +299,7 @@ public class JetFlowInformationProvider {
     public void markUninitializedVariables() {
         final Collection<VariableDescriptor> varWithUninitializedErrorGenerated = Sets.newHashSet();
         final Collection<VariableDescriptor> varWithValReassignErrorGenerated = Sets.newHashSet();
-        final boolean processClassOrObject = subroutine instanceof JetClassOrObject;
+        final boolean processClassOrObject = subroutine instanceof KtClassOrObject;
 
         PseudocodeVariablesData pseudocodeVariablesData = getPseudocodeVariablesData();
         Map<Instruction, Edges<Map<VariableDescriptor, VariableControlFlowState>>> initializers =
@@ -310,7 +309,7 @@ public class JetFlowInformationProvider {
 
         final Map<Instruction, DiagnosticFactory<?>> reportedDiagnosticMap = Maps.newHashMap();
 
-        PseudocodeTraverserPackage.traverse(
+        PseudocodeTraverserKt.traverse(
                 pseudocode, FORWARD, initializers,
                 new InstructionDataAnalyzeStrategy<Map<VariableDescriptor, VariableControlFlowState>>() {
                     @Override
@@ -325,10 +324,8 @@ public class JetFlowInformationProvider {
                         if (ctxt.variableDescriptor == null) return;
                         if (instruction instanceof ReadValueInstruction) {
                             ReadValueInstruction readValueInstruction = (ReadValueInstruction) instruction;
-                            JetElement element = readValueInstruction.getElement();
-                            boolean error = checkBackingField(ctxt, element);
-                            if (!error &&
-                                PseudocodeUtil.isThisOrNoDispatchReceiver(readValueInstruction, trace.getBindingContext()) &&
+                            KtElement element = readValueInstruction.getElement();
+                            if (PseudocodeUtil.isThisOrNoDispatchReceiver(readValueInstruction, trace.getBindingContext()) &&
                                 declaredVariables.contains(ctxt.variableDescriptor)) {
                                 checkIsInitialized(ctxt, element, varWithUninitializedErrorGenerated);
                             }
@@ -336,18 +333,15 @@ public class JetFlowInformationProvider {
                         }
                         if (!(instruction instanceof WriteValueInstruction)) return;
                         WriteValueInstruction writeValueInstruction = (WriteValueInstruction) instruction;
-                        JetElement element = writeValueInstruction.getLValue();
-                        boolean error = checkBackingField(ctxt, element);
-                        if (!(element instanceof JetExpression)) return;
-                        if (!error) {
-                            error = checkValReassignment(ctxt, (JetExpression) element, writeValueInstruction,
-                                                         varWithValReassignErrorGenerated);
+                        KtElement element = writeValueInstruction.getLValue();
+                        if (!(element instanceof KtExpression)) return;
+                        boolean error = checkValReassignment(ctxt, (KtExpression) element, writeValueInstruction,
+                                                             varWithValReassignErrorGenerated);
+                        if (!error && processClassOrObject) {
+                            error = checkAssignmentBeforeDeclaration(ctxt, (KtExpression) element);
                         }
                         if (!error && processClassOrObject) {
-                            error = checkAssignmentBeforeDeclaration(ctxt, (JetExpression) element);
-                        }
-                        if (!error && processClassOrObject) {
-                            checkInitializationUsingBackingField(ctxt, (JetExpression) element);
+                            checkInitializationForCustomSetter(ctxt, (KtExpression) element);
                         }
                     }
                 }
@@ -367,10 +361,10 @@ public class JetFlowInformationProvider {
 
     private void checkIsInitialized(
             @NotNull VariableInitContext ctxt,
-            @NotNull JetElement element,
+            @NotNull KtElement element,
             @NotNull Collection<VariableDescriptor> varWithUninitializedErrorGenerated
     ) {
-        if (!(element instanceof JetSimpleNameExpression)) return;
+        if (!(element instanceof KtSimpleNameExpression)) return;
 
 
         boolean isDefinitelyInitialized = ctxt.exitInitState.definitelyInitialized();
@@ -386,25 +380,25 @@ public class JetFlowInformationProvider {
                 varWithUninitializedErrorGenerated.add(variableDescriptor);
             }
             if (variableDescriptor instanceof ValueParameterDescriptor) {
-                report(Errors.UNINITIALIZED_PARAMETER.on((JetSimpleNameExpression) element,
+                report(Errors.UNINITIALIZED_PARAMETER.on((KtSimpleNameExpression) element,
                                                          (ValueParameterDescriptor) variableDescriptor), ctxt);
             }
             else {
-                report(Errors.UNINITIALIZED_VARIABLE.on((JetSimpleNameExpression) element, variableDescriptor), ctxt);
+                report(Errors.UNINITIALIZED_VARIABLE.on((KtSimpleNameExpression) element, variableDescriptor), ctxt);
             }
         }
     }
 
     private boolean checkValReassignment(
             @NotNull VariableInitContext ctxt,
-            @NotNull JetExpression expression,
+            @NotNull KtExpression expression,
             @NotNull WriteValueInstruction writeValueInstruction,
             @NotNull Collection<VariableDescriptor> varWithValReassignErrorGenerated
     ) {
         VariableDescriptor variableDescriptor = ctxt.variableDescriptor;
         PropertyDescriptor propertyDescriptor = SyntheticFieldDescriptorKt.getReferencedProperty(variableDescriptor);
-        if (JetPsiUtil.isBackingFieldReference(expression, variableDescriptor) && propertyDescriptor != null) {
-            JetPropertyAccessor accessor = PsiTreeUtil.getParentOfType(expression, JetPropertyAccessor.class);
+        if (KtPsiUtil.isBackingFieldReference(variableDescriptor) && propertyDescriptor != null) {
+            KtPropertyAccessor accessor = PsiTreeUtil.getParentOfType(expression, KtPropertyAccessor.class);
             if (accessor != null) {
                 DeclarationDescriptor accessorDescriptor = trace.get(BindingContext.DECLARATION_TO_DESCRIPTOR, accessor);
                 if (propertyDescriptor.getGetter() == accessorDescriptor) {
@@ -423,7 +417,7 @@ public class JetFlowInformationProvider {
             DeclarationDescriptor descriptor = BindingContextUtils.getEnclosingDescriptor(trace.getBindingContext(), expression);
             PropertySetterDescriptor setterDescriptor = ((PropertyDescriptor) variableDescriptor).getSetter();
 
-            ResolvedCall<? extends CallableDescriptor> resolvedCall = CallUtilPackage.getResolvedCall(expression, trace.getBindingContext());
+            ResolvedCall<? extends CallableDescriptor> resolvedCall = CallUtilKt.getResolvedCall(expression, trace.getBindingContext());
             ReceiverValue receiverValue = ReceiverValue.IRRELEVANT_RECEIVER;
             if (resolvedCall != null) {
                 receiverValue = ExpressionTypingUtils
@@ -441,13 +435,13 @@ public class JetFlowInformationProvider {
                 PseudocodeUtil.isThisOrNoDispatchReceiver(writeValueInstruction, trace.getBindingContext());
         if ((mayBeInitializedNotHere || !hasBackingField || !isThisOrNoDispatchReceiver) && !variableDescriptor.isVar()) {
             boolean hasReassignMethodReturningUnit = false;
-            JetSimpleNameExpression operationReference = null;
+            KtSimpleNameExpression operationReference = null;
             PsiElement parent = expression.getParent();
-            if (parent instanceof JetBinaryExpression) {
-                operationReference = ((JetBinaryExpression) parent).getOperationReference();
+            if (parent instanceof KtBinaryExpression) {
+                operationReference = ((KtBinaryExpression) parent).getOperationReference();
             }
-            else if (parent instanceof JetUnaryExpression) {
-                operationReference = ((JetUnaryExpression) parent).getOperationReference();
+            else if (parent instanceof KtUnaryExpression) {
+                operationReference = ((KtUnaryExpression) parent).getOperationReference();
             }
             if (operationReference != null) {
                 DeclarationDescriptor descriptor = trace.get(BindingContext.REFERENCE_TARGET, operationReference);
@@ -483,7 +477,7 @@ public class JetFlowInformationProvider {
         return false;
     }
 
-    private boolean checkAssignmentBeforeDeclaration(@NotNull VariableInitContext ctxt, @NotNull JetExpression expression) {
+    private boolean checkAssignmentBeforeDeclaration(@NotNull VariableInitContext ctxt, @NotNull KtExpression expression) {
         if (!ctxt.enterInitState.isDeclared && !ctxt.exitInitState.isDeclared
             && !ctxt.enterInitState.mayBeInitialized() && ctxt.exitInitState.mayBeInitialized()) {
             report(Errors.INITIALIZATION_BEFORE_DECLARATION.on(expression, ctxt.variableDescriptor), ctxt);
@@ -492,97 +486,33 @@ public class JetFlowInformationProvider {
         return false;
     }
 
-    private boolean checkInitializationUsingBackingField(@NotNull VariableInitContext ctxt, @NotNull JetExpression expression) {
+    private boolean checkInitializationForCustomSetter(@NotNull VariableInitContext ctxt, @NotNull KtExpression expression) {
         VariableDescriptor variableDescriptor = ctxt.variableDescriptor;
-        if (variableDescriptor instanceof PropertyDescriptor
-            && !ctxt.enterInitState.mayBeInitialized() && ctxt.exitInitState.mayBeInitialized()) {
-            if (!variableDescriptor.isVar()) return false;
-            if (!trace.get(BindingContext.BACKING_FIELD_REQUIRED, (PropertyDescriptor) variableDescriptor)) return false;
-            PsiElement property = DescriptorToSourceUtils.descriptorToDeclaration(variableDescriptor);
-            assert property instanceof JetProperty;
-            if (((PropertyDescriptor) variableDescriptor).getModality() == Modality.FINAL && ((JetProperty) property).getSetter() == null) {
-                return false;
-            }
-            JetExpression variable = expression;
-            if (expression instanceof JetDotQualifiedExpression) {
-                if (((JetDotQualifiedExpression) expression).getReceiverExpression() instanceof JetThisExpression) {
-                    variable = ((JetDotQualifiedExpression) expression).getSelectorExpression();
-                }
-            }
-            if (variable instanceof JetSimpleNameExpression) {
-                JetSimpleNameExpression simpleNameExpression = (JetSimpleNameExpression) variable;
-                if (simpleNameExpression.getReferencedNameElementType() != JetTokens.FIELD_IDENTIFIER) {
-                    if (((PropertyDescriptor) variableDescriptor).getModality() != Modality.FINAL) {
-                        report(Errors.INITIALIZATION_USING_BACKING_FIELD_OPEN_SETTER.on(expression, variableDescriptor), ctxt);
-                    }
-                    else {
-                        report(Errors.INITIALIZATION_USING_BACKING_FIELD_CUSTOM_SETTER.on(expression, variableDescriptor), ctxt);
-                    }
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    private boolean checkBackingField(@NotNull VariableContext cxtx, @NotNull JetElement element) {
-        VariableDescriptor variableDescriptor = cxtx.variableDescriptor;
-        boolean[] error = new boolean[1];
-        if (!isCorrectBackingFieldReference(element, cxtx, error, true)) return false;
-        if (error[0]) return true;
-        if (!(variableDescriptor instanceof PropertyDescriptor)) {
-            report(Errors.NOT_PROPERTY_BACKING_FIELD.on(element), cxtx);
-            return true;
-        }
-        PsiElement property = DescriptorToSourceUtils.descriptorToDeclaration(variableDescriptor);
-        boolean insideSelfAccessors = PsiTreeUtil.isAncestor(property, element, false);
-        if (!trace.get(BindingContext.BACKING_FIELD_REQUIRED, (PropertyDescriptor) variableDescriptor) &&
-                // not to generate error in accessors of abstract properties, there is one: declared accessor of abstract property
-                !insideSelfAccessors) {
-
-            if (((PropertyDescriptor) variableDescriptor).getModality() == Modality.ABSTRACT) {
-                report(NO_BACKING_FIELD_ABSTRACT_PROPERTY.on(element), cxtx);
-            }
-            else {
-                report(NO_BACKING_FIELD_CUSTOM_ACCESSORS.on(element), cxtx);
-            }
-            return true;
-        }
-        if (insideSelfAccessors) return false;
-
-        DeclarationDescriptor declarationDescriptor = BindingContextUtils.getEnclosingDescriptor(trace.getBindingContext(), element);
-
-        DeclarationDescriptor containingDeclaration = variableDescriptor.getContainingDeclaration();
-        if ((containingDeclaration instanceof ClassDescriptor)
-                && DescriptorUtils.isAncestor(containingDeclaration, declarationDescriptor, false)) {
-            if (element instanceof JetSimpleNameExpression) {
-                report(Errors.BACKING_FIELD_USAGE_FORBIDDEN.on((JetSimpleNameExpression) element), cxtx);
-            }
+        if (!(variableDescriptor instanceof PropertyDescriptor)
+            || ctxt.enterInitState.mayBeInitialized()
+            || !ctxt.exitInitState.mayBeInitialized()
+            || !variableDescriptor.isVar()
+            || !trace.get(BindingContext.BACKING_FIELD_REQUIRED, (PropertyDescriptor) variableDescriptor)
+        ) {
             return false;
         }
-        report(Errors.INACCESSIBLE_BACKING_FIELD.on(element), cxtx);
-        return true;
-    }
 
-    private boolean isCorrectBackingFieldReference(
-            @Nullable JetElement element,
-            VariableContext ctxt,
-            boolean[] error,
-            boolean reportError
-    ) {
-        error[0] = false;
-        if (JetPsiUtil.isBackingFieldReference(element, null)) {
-            return true;
+        PsiElement property = DescriptorToSourceUtils.descriptorToDeclaration(variableDescriptor);
+        assert property instanceof KtProperty;
+        KtPropertyAccessor setter = ((KtProperty) property).getSetter();
+        if (((PropertyDescriptor) variableDescriptor).getModality() == Modality.FINAL && (setter == null || !setter.hasBody())) {
+            return false;
         }
-        if (element instanceof JetDotQualifiedExpression && isCorrectBackingFieldReference(
-                ((JetDotQualifiedExpression) element).getSelectorExpression(), ctxt, error, false)) {
-            if (((JetDotQualifiedExpression) element).getReceiverExpression() instanceof JetThisExpression) {
-                return true;
+
+        KtExpression variable = expression;
+        if (expression instanceof KtDotQualifiedExpression) {
+            if (((KtDotQualifiedExpression) expression).getReceiverExpression() instanceof KtThisExpression) {
+                variable = ((KtDotQualifiedExpression) expression).getSelectorExpression();
             }
-            error[0] = true;
-            if (reportError) {
-                report(Errors.INACCESSIBLE_BACKING_FIELD.on(element), ctxt);
-            }
+        }
+        if (variable instanceof KtSimpleNameExpression) {
+            trace.record(IS_UNINITIALIZED, (PropertyDescriptor) variableDescriptor);
+            return true;
         }
         return false;
     }
@@ -633,50 +563,50 @@ public class JetFlowInformationProvider {
                         PseudocodeVariablesData.VariableUseState variableUseState = in.get(variableDescriptor);
                         if (instruction instanceof WriteValueInstruction) {
                             if (trace.get(CAPTURED_IN_CLOSURE, variableDescriptor) != null) return;
-                            JetElement element = ((WriteValueInstruction) instruction).getElement();
+                            KtElement element = ((WriteValueInstruction) instruction).getElement();
                             if (variableUseState != READ) {
-                                if (element instanceof JetBinaryExpression &&
-                                    ((JetBinaryExpression) element).getOperationToken() == JetTokens.EQ) {
-                                    JetExpression right = ((JetBinaryExpression) element).getRight();
+                                if (element instanceof KtBinaryExpression &&
+                                    ((KtBinaryExpression) element).getOperationToken() == KtTokens.EQ) {
+                                    KtExpression right = ((KtBinaryExpression) element).getRight();
                                     if (right != null) {
-                                        report(Errors.UNUSED_VALUE.on((JetBinaryExpression) element, right, variableDescriptor), ctxt);
+                                        report(Errors.UNUSED_VALUE.on((KtBinaryExpression) element, right, variableDescriptor), ctxt);
                                     }
                                 }
-                                else if (element instanceof JetPostfixExpression) {
+                                else if (element instanceof KtPostfixExpression) {
                                     IElementType operationToken =
-                                            ((JetPostfixExpression) element).getOperationReference().getReferencedNameElementType();
-                                    if (operationToken == JetTokens.PLUSPLUS || operationToken == JetTokens.MINUSMINUS) {
+                                            ((KtPostfixExpression) element).getOperationReference().getReferencedNameElementType();
+                                    if (operationToken == KtTokens.PLUSPLUS || operationToken == KtTokens.MINUSMINUS) {
                                         report(Errors.UNUSED_CHANGED_VALUE.on(element, element), ctxt);
                                     }
                                 }
                             }
                         }
                         else if (instruction instanceof VariableDeclarationInstruction) {
-                            JetDeclaration element = ((VariableDeclarationInstruction) instruction).getVariableDeclarationElement();
-                            if (!(element instanceof JetNamedDeclaration)) return;
-                            PsiElement nameIdentifier = ((JetNamedDeclaration) element).getNameIdentifier();
+                            KtDeclaration element = ((VariableDeclarationInstruction) instruction).getVariableDeclarationElement();
+                            if (!(element instanceof KtNamedDeclaration)) return;
+                            PsiElement nameIdentifier = ((KtNamedDeclaration) element).getNameIdentifier();
                             if (nameIdentifier == null) return;
                             if (!VariableUseState.isUsed(variableUseState)) {
-                                if (JetPsiUtil.isVariableNotParameterDeclaration(element)) {
-                                    report(Errors.UNUSED_VARIABLE.on((JetNamedDeclaration) element, variableDescriptor), ctxt);
+                                if (KtPsiUtil.isVariableNotParameterDeclaration(element)) {
+                                    report(Errors.UNUSED_VARIABLE.on((KtNamedDeclaration) element, variableDescriptor), ctxt);
                                 }
-                                else if (element instanceof JetParameter) {
+                                else if (element instanceof KtParameter) {
                                     PsiElement owner = element.getParent().getParent();
-                                    if (owner instanceof JetPrimaryConstructor) {
-                                        if (!((JetParameter) element).hasValOrVar()) {
-                                            JetClassOrObject containingClass = ((JetPrimaryConstructor) owner).getContainingClassOrObject();
+                                    if (owner instanceof KtPrimaryConstructor) {
+                                        if (!((KtParameter) element).hasValOrVar()) {
+                                            KtClassOrObject containingClass = ((KtPrimaryConstructor) owner).getContainingClassOrObject();
                                             DeclarationDescriptor containingClassDescriptor = trace.get(
                                                     BindingContext.DECLARATION_TO_DESCRIPTOR, containingClass
                                             );
                                             if (!DescriptorUtils.isAnnotationClass(containingClassDescriptor)) {
-                                                report(Errors.UNUSED_PARAMETER.on((JetParameter) element, variableDescriptor), ctxt);
+                                                report(Errors.UNUSED_PARAMETER.on((KtParameter) element, variableDescriptor), ctxt);
                                             }
                                         }
                                     }
-                                    else if (owner instanceof JetFunction) {
+                                    else if (owner instanceof KtFunction) {
                                         MainFunctionDetector mainFunctionDetector = new MainFunctionDetector(trace.getBindingContext());
-                                        boolean isMain = (owner instanceof JetNamedFunction) && mainFunctionDetector.isMain((JetNamedFunction) owner);
-                                        if (owner instanceof JetFunctionLiteral) return;
+                                        boolean isMain = (owner instanceof KtNamedFunction) && mainFunctionDetector.isMain((KtNamedFunction) owner);
+                                        if (owner instanceof KtFunctionLiteral) return;
                                         DeclarationDescriptor descriptor = trace.get(BindingContext.DECLARATION_TO_DESCRIPTOR, owner);
                                         assert descriptor instanceof FunctionDescriptor : owner.getText();
                                         FunctionDescriptor functionDescriptor = (FunctionDescriptor) descriptor;
@@ -689,28 +619,28 @@ public class JetFlowInformationProvider {
                                                 ) {
                                             return;
                                         }
-                                        report(Errors.UNUSED_PARAMETER.on((JetParameter) element, variableDescriptor), ctxt);
+                                        report(Errors.UNUSED_PARAMETER.on((KtParameter) element, variableDescriptor), ctxt);
                                     }
                                 }
                             }
-                            else if (variableUseState == ONLY_WRITTEN_NEVER_READ && JetPsiUtil.isVariableNotParameterDeclaration(element)) {
-                                report(Errors.ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE.on((JetNamedDeclaration) element, variableDescriptor), ctxt);
+                            else if (variableUseState == ONLY_WRITTEN_NEVER_READ && KtPsiUtil.isVariableNotParameterDeclaration(element)) {
+                                report(Errors.ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE.on((KtNamedDeclaration) element, variableDescriptor), ctxt);
                             }
-                            else if (variableUseState == WRITTEN_AFTER_READ && element instanceof JetVariableDeclaration) {
-                                if (element instanceof JetProperty) {
-                                    JetExpression initializer = ((JetProperty) element).getInitializer();
+                            else if (variableUseState == WRITTEN_AFTER_READ && element instanceof KtVariableDeclaration) {
+                                if (element instanceof KtProperty) {
+                                    KtExpression initializer = ((KtProperty) element).getInitializer();
                                     if (initializer != null) {
                                         report(Errors.VARIABLE_WITH_REDUNDANT_INITIALIZER.on(initializer, variableDescriptor), ctxt);
                                     }
                                 }
-                                else if (element instanceof JetMultiDeclarationEntry) {
+                                else if (element instanceof KtMultiDeclarationEntry) {
                                     report(VARIABLE_WITH_REDUNDANT_INITIALIZER.on(element, variableDescriptor), ctxt);
                                 }
                             }
                         }
                     }
                 };
-        PseudocodeTraverserPackage.traverse(pseudocode, TraversalOrder.BACKWARD, variableStatusData, variableStatusAnalyzeStrategy);
+        PseudocodeTraverserKt.traverse(pseudocode, TraversalOrder.BACKWARD, variableStatusData, variableStatusAnalyzeStrategy);
     }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -718,21 +648,21 @@ public class JetFlowInformationProvider {
 
     public void markUnusedExpressions() {
         final Map<Instruction, DiagnosticFactory<?>> reportedDiagnosticMap = Maps.newHashMap();
-        PseudocodeTraverserPackage.traverse(
+        PseudocodeTraverserKt.traverse(
                 pseudocode, FORWARD, new JetFlowInformationProvider.FunctionVoid1<Instruction>() {
                     @Override
                     public void execute(@NotNull Instruction instruction) {
                         if (!(instruction instanceof JetElementInstruction)) return;
 
-                        JetElement element = ((JetElementInstruction)instruction).getElement();
-                        if (!(element instanceof JetExpression)) return;
+                        KtElement element = ((JetElementInstruction)instruction).getElement();
+                        if (!(element instanceof KtExpression)) return;
 
-                        if (BindingContextUtilPackage.isUsedAsStatement((JetExpression) element, trace.getBindingContext())
-                                && PseudocodePackage.getSideEffectFree(instruction)) {
+                        if (BindingContextUtilsKt.isUsedAsStatement((KtExpression) element, trace.getBindingContext())
+                            && PseudocodeUtilsKt.getSideEffectFree(instruction)) {
                             VariableContext ctxt = new VariableContext(instruction, reportedDiagnosticMap);
                             report(
-                                    element instanceof JetFunctionLiteralExpression
-                                        ? Errors.UNUSED_FUNCTION_LITERAL.on((JetFunctionLiteralExpression) element)
+                                    element instanceof KtFunctionLiteralExpression
+                                        ? Errors.UNUSED_FUNCTION_LITERAL.on((KtFunctionLiteralExpression) element)
                                         : Errors.UNUSED_EXPRESSION.on(element),
                                     ctxt
                             );
@@ -746,7 +676,7 @@ public class JetFlowInformationProvider {
 // Statements
 
     public void markStatements() {
-        PseudocodeTraverserPackage.traverse(
+        PseudocodeTraverserKt.traverse(
                 pseudocode, FORWARD, new JetFlowInformationProvider.FunctionVoid1<Instruction>() {
                     @Override
                     public void execute(@NotNull Instruction instruction) {
@@ -755,7 +685,7 @@ public class JetFlowInformationProvider {
                                             : null;
                         Pseudocode pseudocode = instruction.getOwner();
                         boolean isUsedAsExpression = !pseudocode.getUsages(value).isEmpty();
-                        for (JetElement element : pseudocode.getValueElements(value)) {
+                        for (KtElement element : pseudocode.getValueElements(value)) {
                             trace.record(BindingContext.USED_AS_EXPRESSION, element, isUsedAsExpression);
                         }
                     }
@@ -764,16 +694,16 @@ public class JetFlowInformationProvider {
     }
 
     public void markWhenWithoutElse() {
-        PseudocodeTraverserPackage.traverse(
+        PseudocodeTraverserKt.traverse(
                 pseudocode, FORWARD, new JetFlowInformationProvider.FunctionVoid1<Instruction>() {
                     @Override
                     public void execute(@NotNull Instruction instruction) {
                         PseudoValue value = instruction instanceof InstructionWithValue
                                             ? ((InstructionWithValue) instruction).getOutputValue()
                                             : null;
-                        for (JetElement element : instruction.getOwner().getValueElements(value)) {
-                            if (!(element instanceof JetWhenExpression)) continue;
-                            JetWhenExpression whenExpression = (JetWhenExpression) element;
+                        for (KtElement element : instruction.getOwner().getValueElements(value)) {
+                            if (!(element instanceof KtWhenExpression)) continue;
+                            KtWhenExpression whenExpression = (KtWhenExpression) element;
                             if (whenExpression.getElseExpression() != null) continue;
 
                             if (WhenChecker.mustHaveElse(whenExpression, trace)) {
@@ -799,7 +729,7 @@ public class JetFlowInformationProvider {
     public void markTailCalls() {
         final DeclarationDescriptor subroutineDescriptor = trace.get(BindingContext.DECLARATION_TO_DESCRIPTOR, subroutine);
         if (!(subroutineDescriptor instanceof FunctionDescriptor)) return;
-        if (!KotlinBuiltIns.isTailRecursive(subroutineDescriptor)) return;
+        if (!((FunctionDescriptor) subroutineDescriptor).isTailrec()) return;
 
         // finally blocks are copied which leads to multiple diagnostics reported on one instruction
         class KindAndCall {
@@ -811,8 +741,8 @@ public class JetFlowInformationProvider {
                 this.call = call;
             }
         }
-        final Map<JetElement, KindAndCall> calls = new HashMap<JetElement, KindAndCall>();
-        PseudocodeTraverserPackage.traverse(
+        final Map<KtElement, KindAndCall> calls = new HashMap<KtElement, KindAndCall>();
+        PseudocodeTraverserKt.traverse(
                 pseudocode,
                 FORWARD,
                 new FunctionVoid1<Instruction>() {
@@ -820,28 +750,28 @@ public class JetFlowInformationProvider {
                         if (!(instruction instanceof CallInstruction)) return;
                         CallInstruction callInstruction = (CallInstruction) instruction;
 
-                        ResolvedCall<?> resolvedCall = getResolvedCall(callInstruction.getElement(), trace.getBindingContext());
+                        ResolvedCall<?> resolvedCall = CallUtilKt.getResolvedCall(callInstruction.getElement(), trace.getBindingContext());
                         if (resolvedCall == null) return;
 
                         // is this a recursive call?
                         CallableDescriptor functionDescriptor = resolvedCall.getResultingDescriptor();
                         if (!functionDescriptor.getOriginal().equals(subroutineDescriptor)) return;
 
-                        JetElement element = callInstruction.getElement();
+                        KtElement element = callInstruction.getElement();
                         //noinspection unchecked
-                        JetExpression parent = PsiTreeUtil.getParentOfType(
+                        KtExpression parent = PsiTreeUtil.getParentOfType(
                                 element,
-                                JetTryExpression.class, JetFunction.class, JetClassInitializer.class
+                                KtTryExpression.class, KtFunction.class, KtClassInitializer.class
                         );
 
-                        if (parent instanceof JetTryExpression) {
+                        if (parent instanceof KtTryExpression) {
                             // We do not support tail calls Collections.singletonMap() try-catch-finally, for simplicity of the mental model
                             // very few cases there would be real tail-calls, and it's often not so easy for the user to see why
                             calls.put(element, new KindAndCall(IN_TRY, resolvedCall));
                             return;
                         }
 
-                        boolean isTail = PseudocodeTraverserPackage.traverseFollowingInstructions(
+                        boolean isTail = PseudocodeTraverserKt.traverseFollowingInstructions(
                                 callInstruction,
                                 new HashSet<Instruction>(),
                                 FORWARD,
@@ -855,7 +785,7 @@ public class JetFlowInformationProvider {
                         //       }
                         //   }
                         boolean sameDispatchReceiver =
-                                ResolvedCallUtilPackage.hasThisOrNoDispatchReceiver(resolvedCall, trace.getBindingContext());
+                                ResolvedCallUtilKt.hasThisOrNoDispatchReceiver(resolvedCall, trace.getBindingContext());
 
                         TailRecursionKind kind = isTail && sameDispatchReceiver ? TAIL_CALL : NON_TAIL;
 
@@ -870,8 +800,8 @@ public class JetFlowInformationProvider {
                 }
         );
         boolean hasTailCalls = false;
-        for (Map.Entry<JetElement, KindAndCall> entry : calls.entrySet()) {
-            JetElement element = entry.getKey();
+        for (Map.Entry<KtElement, KindAndCall> entry : calls.entrySet()) {
+            KtElement element = entry.getKey();
             KindAndCall kindAndCall = entry.getValue();
             switch (kindAndCall.kind) {
                 case TAIL_CALL:
@@ -888,7 +818,7 @@ public class JetFlowInformationProvider {
         }
 
         if (!hasTailCalls) {
-            trace.report(Errors.NO_TAIL_CALLS_FOUND.on((JetNamedFunction) subroutine));
+            trace.report(Errors.NO_TAIL_CALLS_FOUND.on((KtNamedFunction) subroutine));
         }
     }
 

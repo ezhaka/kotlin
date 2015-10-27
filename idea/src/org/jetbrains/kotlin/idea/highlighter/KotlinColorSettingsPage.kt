@@ -23,7 +23,7 @@ import com.intellij.openapi.options.colors.AttributesDescriptor
 import com.intellij.openapi.options.colors.ColorDescriptor
 import com.intellij.openapi.options.colors.ColorSettingsPage
 import org.jetbrains.kotlin.idea.JetBundle
-import org.jetbrains.kotlin.idea.JetIcons
+import org.jetbrains.kotlin.idea.KotlinIcons
 import org.jetbrains.kotlin.idea.KotlinLanguage
 
 import javax.swing.*
@@ -32,7 +32,7 @@ import java.lang.reflect.Modifier
 import java.util.HashMap
 
 public class KotlinColorSettingsPage : ColorSettingsPage {
-    override fun getIcon() = JetIcons.SMALL_LOGO
+    override fun getIcon() = KotlinIcons.SMALL_LOGO
     override fun getHighlighter(): SyntaxHighlighter = JetHighlighter()
 
     override fun getDemoText(): String {
@@ -132,7 +132,6 @@ var <PROPERTY_WITH_BACKING_FIELD><PACKAGE_PROPERTY><MUTABLE_VARIABLE>globalCount
                        JetBundle.message("options.kotlin.attribute.descriptor.instance.property") to JetHighlightingColors.INSTANCE_PROPERTY, 
                        JetBundle.message("options.kotlin.attribute.descriptor.package.property") to JetHighlightingColors.PACKAGE_PROPERTY, 
                        JetBundle.message("options.kotlin.attribute.descriptor.property.with.backing") to JetHighlightingColors.PROPERTY_WITH_BACKING_FIELD,
-                       JetBundle.message("options.kotlin.attribute.descriptor.backing.field.access") to JetHighlightingColors.BACKING_FIELD_ACCESS,
                        JetBundle.message("options.kotlin.attribute.descriptor.field") to JetHighlightingColors.BACKING_FIELD_VARIABLE,
                        JetBundle.message("options.kotlin.attribute.descriptor.extension.property") to JetHighlightingColors.EXTENSION_PROPERTY,
                        JetBundle.message("options.kotlin.attribute.descriptor.dynamic.property") to JetHighlightingColors.DYNAMIC_PROPERTY_CALL,

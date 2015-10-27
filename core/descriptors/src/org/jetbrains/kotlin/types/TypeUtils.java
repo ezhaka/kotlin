@@ -26,20 +26,19 @@ import org.jetbrains.kotlin.descriptors.DeclarationDescriptor;
 import org.jetbrains.kotlin.descriptors.TypeParameterDescriptor;
 import org.jetbrains.kotlin.descriptors.annotations.Annotations;
 import org.jetbrains.kotlin.resolve.constants.IntegerValueTypeConstructor;
-import org.jetbrains.kotlin.resolve.scopes.JetScope;
-import org.jetbrains.kotlin.types.checker.JetTypeChecker;
+import org.jetbrains.kotlin.resolve.scopes.KtScope;
+import org.jetbrains.kotlin.types.checker.KotlinTypeChecker;
 import org.jetbrains.kotlin.utils.DFS;
-import org.jetbrains.kotlin.utils.UtilsPackage;
 
 import java.util.*;
 
 public class TypeUtils {
-    public static final JetType DONT_CARE = ErrorUtils.createErrorTypeWithCustomDebugName("DONT_CARE");
-    public static final JetType PLACEHOLDER_FUNCTION_TYPE = ErrorUtils.createErrorTypeWithCustomDebugName("PLACEHOLDER_FUNCTION_TYPE");
+    public static final KotlinType DONT_CARE = ErrorUtils.createErrorTypeWithCustomDebugName("DONT_CARE");
+    public static final KotlinType PLACEHOLDER_FUNCTION_TYPE = ErrorUtils.createErrorTypeWithCustomDebugName("PLACEHOLDER_FUNCTION_TYPE");
 
-    public static final JetType CANT_INFER_FUNCTION_PARAM_TYPE = ErrorUtils.createErrorType("Cannot be inferred");
+    public static final KotlinType CANT_INFER_FUNCTION_PARAM_TYPE = ErrorUtils.createErrorType("Cannot be inferred");
 
-    public static class SpecialType implements JetType {
+    public static class SpecialType implements KotlinType {
         private final String name;
 
         public SpecialType(String name) {
@@ -71,7 +70,7 @@ public class TypeUtils {
 
         @NotNull
         @Override
-        public JetScope getMemberScope() {
+        public KtScope getMemberScope() {
             throw new IllegalStateException(name);
         }
 
@@ -95,7 +94,7 @@ public class TypeUtils {
         @NotNull
         @Override
         public TypeCapabilities getCapabilities() {
-            return TypeCapabilities.NONE.INSTANCE$;
+            return TypeCapabilities.NONE.INSTANCE;
         }
 
         @Override
@@ -105,30 +104,30 @@ public class TypeUtils {
     }
 
     @NotNull
-    public static final JetType NO_EXPECTED_TYPE = new SpecialType("NO_EXPECTED_TYPE");
+    public static final KotlinType NO_EXPECTED_TYPE = new SpecialType("NO_EXPECTED_TYPE");
 
-    public static final JetType UNIT_EXPECTED_TYPE = new SpecialType("UNIT_EXPECTED_TYPE");
+    public static final KotlinType UNIT_EXPECTED_TYPE = new SpecialType("UNIT_EXPECTED_TYPE");
 
-    public static boolean noExpectedType(@NotNull JetType type) {
+    public static boolean noExpectedType(@NotNull KotlinType type) {
         return type == NO_EXPECTED_TYPE || type == UNIT_EXPECTED_TYPE;
     }
 
-    public static boolean isDontCarePlaceholder(@Nullable JetType type) {
+    public static boolean isDontCarePlaceholder(@Nullable KotlinType type) {
         return type != null && type.getConstructor() == DONT_CARE.getConstructor();
     }
 
     @NotNull
-    public static JetType makeNullable(@NotNull JetType type) {
+    public static KotlinType makeNullable(@NotNull KotlinType type) {
         return makeNullableAsSpecified(type, true);
     }
 
     @NotNull
-    public static JetType makeNotNullable(@NotNull JetType type) {
+    public static KotlinType makeNotNullable(@NotNull KotlinType type) {
         return makeNullableAsSpecified(type, false);
     }
 
     @NotNull
-    public static JetType makeNullableAsSpecified(@NotNull JetType type, boolean nullable) {
+    public static KotlinType makeNullableAsSpecified(@NotNull KotlinType type, boolean nullable) {
         NullAwareness nullAwareness = type.getCapability(NullAwareness.class);
         if (nullAwareness != null) {
             return nullAwareness.makeNullableAsSpecified(nullable);
@@ -152,14 +151,14 @@ public class TypeUtils {
     }
 
     @NotNull
-    public static JetType makeNullableIfNeeded(@NotNull JetType type, boolean nullable) {
+    public static KotlinType makeNullableIfNeeded(@NotNull KotlinType type, boolean nullable) {
         if (nullable) {
             return makeNullable(type);
         }
         return type;
     }
 
-    public static boolean canHaveSubtypes(JetTypeChecker typeChecker, @NotNull JetType type) {
+    public static boolean canHaveSubtypes(KotlinTypeChecker typeChecker, @NotNull KotlinType type) {
         if (type.isMarkedNullable()) {
             return true;
         }
@@ -173,7 +172,7 @@ public class TypeUtils {
             TypeParameterDescriptor parameterDescriptor = parameters.get(i);
             TypeProjection typeProjection = arguments.get(i);
             Variance projectionKind = typeProjection.getProjectionKind();
-            JetType argument = typeProjection.getType();
+            KotlinType argument = typeProjection.getType();
 
             switch (parameterDescriptor.getVariance()) {
                 case INVARIANT:
@@ -224,8 +223,8 @@ public class TypeUtils {
         return false;
     }
 
-    private static boolean lowerThanBound(JetTypeChecker typeChecker, JetType argument, TypeParameterDescriptor parameterDescriptor) {
-        for (JetType bound : parameterDescriptor.getUpperBounds()) {
+    private static boolean lowerThanBound(KotlinTypeChecker typeChecker, KotlinType argument, TypeParameterDescriptor parameterDescriptor) {
+        for (KotlinType bound : parameterDescriptor.getUpperBounds()) {
             if (typeChecker.isSubtypeOf(argument, bound)) {
                 if (!argument.getConstructor().equals(bound.getConstructor())) {
                     return true;
@@ -236,13 +235,13 @@ public class TypeUtils {
     }
 
     @NotNull
-    public static JetType makeUnsubstitutedType(ClassDescriptor classDescriptor, JetScope unsubstitutedMemberScope) {
+    public static KotlinType makeUnsubstitutedType(ClassDescriptor classDescriptor, KtScope unsubstitutedMemberScope) {
         if (ErrorUtils.isError(classDescriptor)) {
             return ErrorUtils.createErrorType("Unsubstituted type for " + classDescriptor);
         }
         TypeConstructor typeConstructor = classDescriptor.getTypeConstructor();
         List<TypeProjection> arguments = getDefaultTypeProjections(typeConstructor.getParameters());
-        return JetTypeImpl.create(
+        return KotlinTypeImpl.create(
                 Annotations.Companion.getEMPTY(),
                 typeConstructor,
                 false,
@@ -257,17 +256,17 @@ public class TypeUtils {
         for (TypeParameterDescriptor parameterDescriptor : parameters) {
             result.add(new TypeProjectionImpl(parameterDescriptor.getDefaultType()));
         }
-        return UtilsPackage.toReadOnlyList(result);
+        return org.jetbrains.kotlin.utils.CollectionsKt.toReadOnlyList(result);
     }
 
     @NotNull
-    public static List<JetType> getImmediateSupertypes(@NotNull JetType type) {
+    public static List<KotlinType> getImmediateSupertypes(@NotNull KotlinType type) {
         boolean isNullable = type.isMarkedNullable();
         TypeSubstitutor substitutor = TypeSubstitutor.create(type);
-        Collection<JetType> originalSupertypes = type.getConstructor().getSupertypes();
-        List<JetType> result = new ArrayList<JetType>(originalSupertypes.size());
-        for (JetType supertype : originalSupertypes) {
-            JetType substitutedType = substitutor.substitute(supertype, Variance.INVARIANT);
+        Collection<KotlinType> originalSupertypes = type.getConstructor().getSupertypes();
+        List<KotlinType> result = new ArrayList<KotlinType>(originalSupertypes.size());
+        for (KotlinType supertype : originalSupertypes) {
+            KotlinType substitutedType = substitutor.substitute(supertype, Variance.INVARIANT);
             if (substitutedType != null) {
                 result.add(makeNullableIfNeeded(substitutedType, isNullable));
             }
@@ -275,26 +274,26 @@ public class TypeUtils {
         return result;
     }
 
-    private static void collectAllSupertypes(@NotNull JetType type, @NotNull Set<JetType> result) {
-        List<JetType> immediateSupertypes = getImmediateSupertypes(type);
+    private static void collectAllSupertypes(@NotNull KotlinType type, @NotNull Set<KotlinType> result) {
+        List<KotlinType> immediateSupertypes = getImmediateSupertypes(type);
         result.addAll(immediateSupertypes);
-        for (JetType supertype : immediateSupertypes) {
+        for (KotlinType supertype : immediateSupertypes) {
             collectAllSupertypes(supertype, result);
         }
     }
 
 
     @NotNull
-    public static Set<JetType> getAllSupertypes(@NotNull JetType type) {
+    public static Set<KotlinType> getAllSupertypes(@NotNull KotlinType type) {
         // 15 is obtained by experimentation: JDK classes like ArrayList tend to have so many supertypes,
         // the average number is lower
-        Set<JetType> result = new LinkedHashSet<JetType>(15);
+        Set<KotlinType> result = new LinkedHashSet<KotlinType>(15);
         collectAllSupertypes(type, result);
         return result;
     }
 
     public static boolean hasNullableLowerBound(@NotNull TypeParameterDescriptor typeParameterDescriptor) {
-        for (JetType bound : typeParameterDescriptor.getLowerBounds()) {
+        for (KotlinType bound : typeParameterDescriptor.getLowerBounds()) {
             if (bound.isMarkedNullable()) {
                 return true;
             }
@@ -307,11 +306,11 @@ public class TypeUtils {
      * Semantics should be the same as `!isSubtype(T, Any)`
      * @return true if a value of this type can be null
      */
-    public static boolean isNullableType(@NotNull JetType type) {
+    public static boolean isNullableType(@NotNull KotlinType type) {
         if (type.isMarkedNullable()) {
             return true;
         }
-        if (TypesPackage.isFlexible(type) && isNullableType(TypesPackage.flexibility(type).getUpperBound())) {
+        if (FlexibleTypesKt.isFlexible(type) && isNullableType(FlexibleTypesKt.flexibility(type).getUpperBound())) {
             return true;
         }
         if (isTypeParameter(type)) {
@@ -325,11 +324,11 @@ public class TypeUtils {
      * Semantics should be the same as `isSubtype(Nothing?, T)`
      * @return true if `null` can be assigned to storage of this type
      */
-    public static boolean acceptsNullable(@NotNull JetType type) {
+    public static boolean acceptsNullable(@NotNull KotlinType type) {
         if (type.isMarkedNullable()) {
             return true;
         }
-        if (TypesPackage.isFlexible(type) && acceptsNullable(TypesPackage.flexibility(type).getUpperBound())) {
+        if (FlexibleTypesKt.isFlexible(type) && acceptsNullable(FlexibleTypesKt.flexibility(type).getUpperBound())) {
             return true;
         }
         if (isTypeParameter(type)) {
@@ -338,13 +337,13 @@ public class TypeUtils {
         return false;
     }
 
-    public static boolean hasNullableSuperType(@NotNull JetType type) {
+    public static boolean hasNullableSuperType(@NotNull KotlinType type) {
         if (type.getConstructor().getDeclarationDescriptor() instanceof ClassDescriptor) {
             // A class/trait cannot have a nullable supertype
             return false;
         }
 
-        for (JetType supertype : getImmediateSupertypes(type)) {
+        for (KotlinType supertype : getImmediateSupertypes(type)) {
             if (supertype.isMarkedNullable()) return true;
             if (hasNullableSuperType(supertype)) return true;
         }
@@ -353,7 +352,7 @@ public class TypeUtils {
     }
 
     @Nullable
-    public static ClassDescriptor getClassDescriptor(@NotNull JetType type) {
+    public static ClassDescriptor getClassDescriptor(@NotNull KotlinType type) {
         DeclarationDescriptor declarationDescriptor = type.getConstructor().getDeclarationDescriptor();
         if (declarationDescriptor instanceof ClassDescriptor) {
             return (ClassDescriptor) declarationDescriptor;
@@ -362,10 +361,10 @@ public class TypeUtils {
     }
 
     @NotNull
-    public static JetType substituteParameters(@NotNull ClassDescriptor clazz, @NotNull List<JetType> typeArguments) {
-        List<TypeProjection> projections = CollectionsKt.map(typeArguments, new Function1<JetType, TypeProjection>() {
+    public static KotlinType substituteParameters(@NotNull ClassDescriptor clazz, @NotNull List<KotlinType> typeArguments) {
+        List<TypeProjection> projections = CollectionsKt.map(typeArguments, new Function1<KotlinType, TypeProjection>() {
             @Override
-            public TypeProjection invoke(JetType type) {
+            public TypeProjection invoke(KotlinType type) {
                 return new TypeProjectionImpl(type);
             }
         });
@@ -374,13 +373,14 @@ public class TypeUtils {
     }
 
     @NotNull
-    public static JetType substituteProjectionsForParameters(@NotNull ClassDescriptor clazz, @NotNull List<TypeProjection> projections) {
+    public static KotlinType substituteProjectionsForParameters(@NotNull ClassDescriptor clazz, @NotNull List<TypeProjection> projections) {
         List<TypeParameterDescriptor> clazzTypeParameters = clazz.getTypeConstructor().getParameters();
         if (clazzTypeParameters.size() != projections.size()) {
             throw new IllegalArgumentException("type parameter counts do not match: " + clazz + ", " + projections);
         }
 
-        Map<TypeConstructor, TypeProjection> substitutions = UtilsPackage.newHashMapWithExpectedSize(clazzTypeParameters.size());
+        Map<TypeConstructor, TypeProjection> substitutions = org.jetbrains.kotlin.utils.CollectionsKt
+                .newHashMapWithExpectedSize(clazzTypeParameters.size());
 
         for (int i = 0; i < clazzTypeParameters.size(); ++i) {
             TypeConstructor typeConstructor = clazzTypeParameters.get(i).getTypeConstructor();
@@ -390,11 +390,11 @@ public class TypeUtils {
         return TypeSubstitutor.create(substitutions).substitute(clazz.getDefaultType(), Variance.INVARIANT);
     }
 
-    public static boolean equalTypes(@NotNull JetType a, @NotNull JetType b) {
-        return JetTypeChecker.DEFAULT.isSubtypeOf(a, b) && JetTypeChecker.DEFAULT.isSubtypeOf(b, a);
+    public static boolean equalTypes(@NotNull KotlinType a, @NotNull KotlinType b) {
+        return KotlinTypeChecker.DEFAULT.isSubtypeOf(a, b) && KotlinTypeChecker.DEFAULT.isSubtypeOf(b, a);
     }
 
-    public static boolean dependsOnTypeParameters(@NotNull JetType type, @NotNull Collection<TypeParameterDescriptor> typeParameters) {
+    public static boolean dependsOnTypeParameters(@NotNull KotlinType type, @NotNull Collection<TypeParameterDescriptor> typeParameters) {
         return dependsOnTypeConstructors(type, CollectionsKt.map(
                 typeParameters,
                 new Function1<TypeParameterDescriptor, TypeConstructor>() {
@@ -406,7 +406,7 @@ public class TypeUtils {
         ));
     }
 
-    public static boolean dependsOnTypeConstructors(@NotNull JetType type, @NotNull Collection<TypeConstructor> typeParameterConstructors) {
+    public static boolean dependsOnTypeConstructors(@NotNull KotlinType type, @NotNull Collection<TypeConstructor> typeParameterConstructors) {
         if (typeParameterConstructors.contains(type.getConstructor())) return true;
         for (TypeProjection typeProjection : type.getArguments()) {
             if (!typeProjection.isStarProjection() && dependsOnTypeConstructors(typeProjection.getType(), typeParameterConstructors)) {
@@ -416,18 +416,18 @@ public class TypeUtils {
         return false;
     }
 
-    public static boolean containsSpecialType(@Nullable JetType type, @NotNull final JetType specialType) {
-        return containsSpecialType(type, new Function1<JetType, Boolean>() {
+    public static boolean containsSpecialType(@Nullable KotlinType type, @NotNull final KotlinType specialType) {
+        return containsSpecialType(type, new Function1<KotlinType, Boolean>() {
             @Override
-            public Boolean invoke(JetType type) {
+            public Boolean invoke(KotlinType type) {
                 return specialType.equals(type);
             }
         });
     }
 
     public static boolean containsSpecialType(
-            @Nullable JetType type,
-            @NotNull Function1<JetType, Boolean> isSpecialType
+            @Nullable KotlinType type,
+            @NotNull Function1<KotlinType, Boolean> isSpecialType
     ) {
         if (type == null) return false;
         if (isSpecialType.invoke(type)) return true;
@@ -448,10 +448,10 @@ public class TypeUtils {
     }
 
     @Nullable
-    public static JetType commonSupertypeForNumberTypes(@NotNull Collection<JetType> numberLowerBounds) {
+    public static KotlinType commonSupertypeForNumberTypes(@NotNull Collection<KotlinType> numberLowerBounds) {
         if (numberLowerBounds.isEmpty()) return null;
-        Set<JetType> intersectionOfSupertypes = getIntersectionOfSupertypes(numberLowerBounds);
-        JetType primitiveNumberType = getDefaultPrimitiveNumberType(intersectionOfSupertypes);
+        Set<KotlinType> intersectionOfSupertypes = getIntersectionOfSupertypes(numberLowerBounds);
+        KotlinType primitiveNumberType = getDefaultPrimitiveNumberType(intersectionOfSupertypes);
         if (primitiveNumberType != null) {
             return primitiveNumberType;
         }
@@ -459,10 +459,10 @@ public class TypeUtils {
     }
 
     @NotNull
-    private static Set<JetType> getIntersectionOfSupertypes(@NotNull Collection<JetType> types) {
-        Set<JetType> upperBounds = new HashSet<JetType>();
-        for (JetType type : types) {
-            Collection<JetType> supertypes = type.getConstructor().getSupertypes();
+    private static Set<KotlinType> getIntersectionOfSupertypes(@NotNull Collection<KotlinType> types) {
+        Set<KotlinType> upperBounds = new HashSet<KotlinType>();
+        for (KotlinType type : types) {
+            Collection<KotlinType> supertypes = type.getConstructor().getSupertypes();
             if (upperBounds.isEmpty()) {
                 upperBounds.addAll(supertypes);
             }
@@ -474,29 +474,29 @@ public class TypeUtils {
     }
 
     @NotNull
-    public static JetType getDefaultPrimitiveNumberType(@NotNull IntegerValueTypeConstructor numberValueTypeConstructor) {
-        JetType type = getDefaultPrimitiveNumberType(numberValueTypeConstructor.getSupertypes());
+    public static KotlinType getDefaultPrimitiveNumberType(@NotNull IntegerValueTypeConstructor numberValueTypeConstructor) {
+        KotlinType type = getDefaultPrimitiveNumberType(numberValueTypeConstructor.getSupertypes());
         assert type != null : "Strange number value type constructor: " + numberValueTypeConstructor + ". " +
                               "Super types doesn't contain double, int or long: " + numberValueTypeConstructor.getSupertypes();
         return type;
     }
 
     @Nullable
-    private static JetType getDefaultPrimitiveNumberType(@NotNull Collection<JetType> supertypes) {
+    private static KotlinType getDefaultPrimitiveNumberType(@NotNull Collection<KotlinType> supertypes) {
         if (supertypes.isEmpty()) {
             return null;
         }
 
         KotlinBuiltIns builtIns = supertypes.iterator().next().getConstructor().getBuiltIns();
-        JetType doubleType = builtIns.getDoubleType();
+        KotlinType doubleType = builtIns.getDoubleType();
         if (supertypes.contains(doubleType)) {
             return doubleType;
         }
-        JetType intType = builtIns.getIntType();
+        KotlinType intType = builtIns.getIntType();
         if (supertypes.contains(intType)) {
             return intType;
         }
-        JetType longType = builtIns.getLongType();
+        KotlinType longType = builtIns.getLongType();
         if (supertypes.contains(longType)) {
             return longType;
         }
@@ -504,15 +504,15 @@ public class TypeUtils {
     }
 
     @NotNull
-    public static JetType getPrimitiveNumberType(
+    public static KotlinType getPrimitiveNumberType(
             @NotNull IntegerValueTypeConstructor numberValueTypeConstructor,
-            @NotNull JetType expectedType
+            @NotNull KotlinType expectedType
     ) {
         if (noExpectedType(expectedType) || expectedType.isError()) {
             return getDefaultPrimitiveNumberType(numberValueTypeConstructor);
         }
-        for (JetType primitiveNumberType : numberValueTypeConstructor.getSupertypes()) {
-            if (JetTypeChecker.DEFAULT.isSubtypeOf(primitiveNumberType, expectedType)) {
+        for (KotlinType primitiveNumberType : numberValueTypeConstructor.getSupertypes()) {
+            if (KotlinTypeChecker.DEFAULT.isSubtypeOf(primitiveNumberType, expectedType)) {
                 return primitiveNumberType;
             }
         }
@@ -520,20 +520,20 @@ public class TypeUtils {
     }
 
     public static List<TypeConstructor> topologicallySortSuperclassesAndRecordAllInstances(
-            @NotNull JetType type,
-            @NotNull final Map<TypeConstructor, Set<JetType>> constructorToAllInstances,
+            @NotNull KotlinType type,
+            @NotNull final Map<TypeConstructor, Set<KotlinType>> constructorToAllInstances,
             @NotNull final Set<TypeConstructor> visited
     ) {
         return DFS.dfs(
                 Collections.singletonList(type),
-                new DFS.Neighbors<JetType>() {
+                new DFS.Neighbors<KotlinType>() {
                     @NotNull
                     @Override
-                    public Iterable<JetType> getNeighbors(JetType current) {
+                    public Iterable<KotlinType> getNeighbors(KotlinType current) {
                         TypeSubstitutor substitutor = TypeSubstitutor.create(current);
-                        Collection<JetType> supertypes = current.getConstructor().getSupertypes();
-                        List<JetType> result = new ArrayList<JetType>(supertypes.size());
-                        for (JetType supertype : supertypes) {
+                        Collection<KotlinType> supertypes = current.getConstructor().getSupertypes();
+                        List<KotlinType> result = new ArrayList<KotlinType>(supertypes.size());
+                        for (KotlinType supertype : supertypes) {
                             if (visited.contains(supertype.getConstructor())) {
                                 continue;
                             }
@@ -542,20 +542,20 @@ public class TypeUtils {
                         return result;
                     }
                 },
-                new DFS.Visited<JetType>() {
+                new DFS.Visited<KotlinType>() {
                     @Override
-                    public boolean checkAndMarkVisited(JetType current) {
+                    public boolean checkAndMarkVisited(KotlinType current) {
                         return visited.add(current.getConstructor());
                     }
                 },
-                new DFS.NodeHandlerWithListResult<JetType, TypeConstructor>() {
+                new DFS.NodeHandlerWithListResult<KotlinType, TypeConstructor>() {
                     @Override
-                    public boolean beforeChildren(JetType current) {
+                    public boolean beforeChildren(KotlinType current) {
                         TypeConstructor constructor = current.getConstructor();
 
-                        Set<JetType> instances = constructorToAllInstances.get(constructor);
+                        Set<KotlinType> instances = constructorToAllInstances.get(constructor);
                         if (instances == null) {
-                            instances = new HashSet<JetType>();
+                            instances = new HashSet<KotlinType>();
                             constructorToAllInstances.put(constructor, instances);
                         }
                         instances.add(current);
@@ -564,15 +564,16 @@ public class TypeUtils {
                     }
 
                     @Override
-                    public void afterChildren(JetType current) {
+                    public void afterChildren(KotlinType current) {
                         result.addFirst(current.getConstructor());
                     }
                 }
         );
     }
 
-    public static TypeSubstitutor makeConstantSubstitutor(Collection<TypeParameterDescriptor> typeParameterDescriptors, JetType type) {
-        final Set<TypeConstructor> constructors = UtilsPackage.newHashSetWithExpectedSize(typeParameterDescriptors.size());
+    public static TypeSubstitutor makeConstantSubstitutor(Collection<TypeParameterDescriptor> typeParameterDescriptors, KotlinType type) {
+        final Set<TypeConstructor> constructors = org.jetbrains.kotlin.utils.CollectionsKt
+                .newHashSetWithExpectedSize(typeParameterDescriptors.size());
         for (TypeParameterDescriptor typeParameterDescriptor : typeParameterDescriptors) {
             constructors.add(typeParameterDescriptor.getTypeConstructor());
         }
@@ -594,27 +595,27 @@ public class TypeUtils {
         });
     }
 
-    public static boolean isTypeParameter(@NotNull JetType type) {
+    public static boolean isTypeParameter(@NotNull KotlinType type) {
         return getTypeParameterDescriptorOrNull(type) != null;
     }
 
-    public static boolean isNonReifiedTypeParemeter(@NotNull JetType type) {
+    public static boolean isNonReifiedTypeParemeter(@NotNull KotlinType type) {
         TypeParameterDescriptor typeParameterDescriptor = getTypeParameterDescriptorOrNull(type);
         return typeParameterDescriptor != null && !typeParameterDescriptor.isReified();
     }
 
     @Nullable
-    public static TypeParameterDescriptor getTypeParameterDescriptorOrNull(@NotNull JetType type) {
+    public static TypeParameterDescriptor getTypeParameterDescriptorOrNull(@NotNull KotlinType type) {
         if (type.getConstructor().getDeclarationDescriptor() instanceof TypeParameterDescriptor) {
             return (TypeParameterDescriptor) type.getConstructor().getDeclarationDescriptor();
         }
         return null;
     }
 
-    private static abstract class AbstractTypeWithKnownNullability extends AbstractJetType {
-        private final JetType delegate;
+    private static abstract class AbstractTypeWithKnownNullability extends AbstractKotlinType {
+        private final KotlinType delegate;
 
-        private AbstractTypeWithKnownNullability(@NotNull JetType delegate) {
+        private AbstractTypeWithKnownNullability(@NotNull KotlinType delegate) {
             this.delegate = delegate;
         }
 
@@ -635,7 +636,7 @@ public class TypeUtils {
 
         @Override
         @NotNull
-        public JetScope getMemberScope() {
+        public KtScope getMemberScope() {
             return delegate.getMemberScope();
         }
 
@@ -671,7 +672,7 @@ public class TypeUtils {
 
     private static class NullableType extends AbstractTypeWithKnownNullability {
 
-        private NullableType(@NotNull JetType delegate) {
+        private NullableType(@NotNull KotlinType delegate) {
             super(delegate);
         }
 
@@ -683,7 +684,7 @@ public class TypeUtils {
 
     private static class NotNullType extends AbstractTypeWithKnownNullability {
 
-        private NotNullType(@NotNull JetType delegate) {
+        private NotNullType(@NotNull KotlinType delegate) {
             super(delegate);
         }
 

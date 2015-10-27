@@ -26,16 +26,13 @@ import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.resolve.DescriptorFactory
 import org.jetbrains.kotlin.resolve.OverridingUtil
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
-import org.jetbrains.kotlin.resolve.scopes.JetScope
+import org.jetbrains.kotlin.resolve.scopes.KtScope
 import org.jetbrains.kotlin.resolve.scopes.StaticScopeForKotlinClass
 import org.jetbrains.kotlin.serialization.Flags
 import org.jetbrains.kotlin.serialization.ProtoBuf
-import org.jetbrains.kotlin.serialization.deserialization.Deserialization
-import org.jetbrains.kotlin.serialization.deserialization.DeserializationContext
-import org.jetbrains.kotlin.serialization.deserialization.DeserializedType
-import org.jetbrains.kotlin.serialization.deserialization.NameResolver
+import org.jetbrains.kotlin.serialization.deserialization.*
 import org.jetbrains.kotlin.types.AbstractClassTypeConstructor
-import org.jetbrains.kotlin.types.JetType
+import org.jetbrains.kotlin.types.KotlinType
 import org.jetbrains.kotlin.types.upperIfFlexible
 import org.jetbrains.kotlin.utils.addIfNotNull
 import org.jetbrains.kotlin.utils.singletonOrEmptyList
@@ -57,8 +54,9 @@ public class DeserializedClassDescriptor(
     private val kind = Deserialization.classKind(kindFromProto)
     private val isCompanion = kindFromProto == ProtoBuf.Class.Kind.COMPANION_OBJECT
     private val isInner = Flags.IS_INNER.get(classProto.getFlags())
+    private val isData = Flags.IS_DATA.get(classProto.flags)
 
-    val c = outerContext.childContext(this, classProto.getTypeParameterList(), nameResolver)
+    val c = outerContext.childContext(this, classProto.typeParameterList, nameResolver, TypeTable(classProto.typeTable))
 
     private val classId = nameResolver.getClassId(classProto.getFqName())
 
@@ -92,6 +90,8 @@ public class DeserializedClassDescriptor(
     override fun getVisibility() = visibility
 
     override fun isInner() = isInner
+
+    override fun isData() = isData
 
     override fun getAnnotations() = annotations
 
@@ -134,11 +134,11 @@ public class DeserializedClassDescriptor(
 
     override fun getCompanionObjectDescriptor(): ClassDescriptor? = companionObjectDescriptor()
 
-    private fun computeSupertypes(): Collection<JetType> {
-        val result = ArrayList<JetType>(classProto.supertypeCount)
+    private fun computeSupertypes(): Collection<KotlinType> {
+        val result = ArrayList<KotlinType>(classProto.supertypeCount)
         val unresolved = ArrayList<DeserializedType>(0)
 
-        for (supertypeProto in classProto.supertypeList) {
+        for (supertypeProto in classProto.supertypes(c.typeTable)) {
             val supertype = c.typeDeserializer.type(supertypeProto)
             if (supertype.isError) {
                 unresolved.add(supertype.upperIfFlexible() as? DeserializedType ?: error("Not a deserialized type: $supertype"))
@@ -188,7 +188,7 @@ public class DeserializedClassDescriptor(
     private inner class DeserializedClassMemberScope : DeserializedMemberScope(c, classProto.functionList, classProto.propertyList) {
         private val classDescriptor: DeserializedClassDescriptor get() = this@DeserializedClassDescriptor
         private val allDescriptors = c.storageManager.createLazyValue {
-            computeDescriptors(DescriptorKindFilter.ALL, JetScope.ALL_NAME_FILTER, NoLookupLocation.WHEN_GET_ALL_DESCRIPTORS)
+            computeDescriptors(DescriptorKindFilter.ALL, KtScope.ALL_NAME_FILTER, NoLookupLocation.WHEN_GET_ALL_DESCRIPTORS)
         }
 
         override fun getDescriptors(kindFilter: DescriptorKindFilter,

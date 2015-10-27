@@ -17,62 +17,73 @@
 package org.jetbrains.kotlin.idea.intentions
 
 import com.intellij.openapi.editor.Editor
+import com.intellij.openapi.editor.ScrollType
+import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiReferenceService
 import com.intellij.psi.util.PsiTreeUtil
-import org.jetbrains.kotlin.lexer.JetTokens
+import org.jetbrains.kotlin.idea.core.canOmitDeclaredType
+import org.jetbrains.kotlin.idea.quickfix.moveCaret
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.psi.*
-import org.jetbrains.kotlin.psi.psiUtil.anyDescendantOfType
-import org.jetbrains.kotlin.psi.psiUtil.contentRange
-import org.jetbrains.kotlin.psi.psiUtil.getNonStrictParentOfType
-import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
+import org.jetbrains.kotlin.psi.psiUtil.*
 import org.jetbrains.kotlin.utils.addToStdlib.firstIsInstanceOrNull
 
 public class MoveAssignmentToInitializerIntention :
-        JetSelfTargetingIntention<JetBinaryExpression>(javaClass(), "Move assignment to initializer") {
+        JetSelfTargetingIntention<KtBinaryExpression>(javaClass(), "Move assignment to initializer") {
 
-    override fun isApplicableTo(element: JetBinaryExpression, caretOffset: Int): Boolean {
-        if (element.operationToken != JetTokens.EQ) {
+    override fun isApplicableTo(element: KtBinaryExpression, caretOffset: Int): Boolean {
+        if (element.operationToken != KtTokens.EQ) {
             return false
         }
         val rightExpression = element.right ?: return false
 
         val initializer = PsiTreeUtil.getParentOfType(element,
-                                                      JetClassInitializer::class.java,
-                                                      JetSecondaryConstructor::class.java) ?: return false
+                                                      KtClassInitializer::class.java,
+                                                      KtSecondaryConstructor::class.java) ?: return false
 
         val target = findTargetProperty(element)
         return target != null && target.initializer == null && target.receiverTypeReference == null &&
-               target.getNonStrictParentOfType<JetClassOrObject>() == element.getNonStrictParentOfType<JetClassOrObject>() &&
+               target.getNonStrictParentOfType<KtClassOrObject>() == element.getNonStrictParentOfType<KtClassOrObject>() &&
                hasNoLocalDependencies(rightExpression, initializer)
 
     }
 
-    override fun applyTo(element: JetBinaryExpression, editor: Editor) {
+    override fun applyTo(element: KtBinaryExpression, editor: Editor) {
         val property = findTargetProperty(element) ?: return
         val initializer = element.right ?: return
-        property.setInitializer(initializer)
+        val newInitializer = property.setInitializer(initializer)!!
 
-        val initializerBlock = element.getStrictParentOfType<JetClassInitializer>()
+        val initializerBlock = element.getStrictParentOfType<KtClassInitializer>()
         element.delete()
-        if (initializerBlock != null && (initializerBlock.body as? JetBlockExpression)?.isEmpty() == true) {
+        if (initializerBlock != null && (initializerBlock.body as? KtBlockExpression)?.isEmpty() == true) {
             initializerBlock.delete()
         }
 
-        property.initializer?.navigate(true)
+        PsiDocumentManager.getInstance(property.project).doPostponedOperationsAndUnblockDocument(editor.document)
+
+        val typeRef = property.typeReference
+        if (typeRef != null && property.canOmitDeclaredType(newInitializer, canChangeTypeToSubtype = !property.isVar)) {
+            val colon = property.colon!!
+            editor.selectionModel.setSelection(colon.startOffset, typeRef.endOffset)
+            editor.moveCaret(typeRef.endOffset, ScrollType.CENTER)
+        }
+        else {
+            editor.moveCaret(newInitializer.startOffset, ScrollType.CENTER)
+        }
     }
 
-    private fun findTargetProperty(expr: JetBinaryExpression): JetProperty? {
-        val leftExpression = expr.left as? JetSimpleNameExpression ?: return null
-        return leftExpression.resolveAllReferences().firstIsInstanceOrNull<JetProperty>()
+    private fun findTargetProperty(expr: KtBinaryExpression): KtProperty? {
+        val leftExpression = expr.left as? KtNameReferenceExpression ?: return null
+        return leftExpression.resolveAllReferences().firstIsInstanceOrNull<KtProperty>()
     }
 
-    fun JetBlockExpression.isEmpty(): Boolean {
+    fun KtBlockExpression.isEmpty(): Boolean {
         // a block that only contains comments is not empty
         return contentRange().isEmpty
     }
 
-    private fun hasNoLocalDependencies(element: JetElement, localContext: PsiElement): Boolean {
+    private fun hasNoLocalDependencies(element: KtElement, localContext: PsiElement): Boolean {
         return !element.anyDescendantOfType<PsiElement> { child ->
             child.resolveAllReferences().any { it != null && PsiTreeUtil.isAncestor(localContext, it, false) }
         }

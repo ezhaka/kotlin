@@ -71,6 +71,12 @@ public class KeywordCompletionTestGenerated extends AbstractKeywordCompletionTes
         JetTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("idea/idea-completion/testData/keywords"), Pattern.compile("^(.+)\\.kt$"), false);
     }
 
+    @TestMetadata("BeforeClass.kt")
+    public void testBeforeClass() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("idea/idea-completion/testData/keywords/BeforeClass.kt");
+        doTest(fileName);
+    }
+
     @TestMetadata("BeforeDelegationCall.kt")
     public void testBeforeDelegationCall() throws Exception {
         String fileName = JetTestUtils.navigationMetadata("idea/idea-completion/testData/keywords/BeforeDelegationCall.kt");
@@ -116,6 +122,12 @@ public class KeywordCompletionTestGenerated extends AbstractKeywordCompletionTes
     @TestMetadata("GlobalPropertyAccessors.kt")
     public void testGlobalPropertyAccessors() throws Exception {
         String fileName = JetTestUtils.navigationMetadata("idea/idea-completion/testData/keywords/GlobalPropertyAccessors.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("InAnnotationClassScope.kt")
+    public void testInAnnotationClassScope() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("idea/idea-completion/testData/keywords/InAnnotationClassScope.kt");
         doTest(fileName);
     }
 
@@ -173,6 +185,18 @@ public class KeywordCompletionTestGenerated extends AbstractKeywordCompletionTes
         doTest(fileName);
     }
 
+    @TestMetadata("InEnumScope1.kt")
+    public void testInEnumScope1() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("idea/idea-completion/testData/keywords/InEnumScope1.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("InEnumScope2.kt")
+    public void testInEnumScope2() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("idea/idea-completion/testData/keywords/InEnumScope2.kt");
+        doTest(fileName);
+    }
+
     @TestMetadata("InFunctionExpressionBody.kt")
     public void testInFunctionExpressionBody() throws Exception {
         String fileName = JetTestUtils.navigationMetadata("idea/idea-completion/testData/keywords/InFunctionExpressionBody.kt");
@@ -203,6 +227,12 @@ public class KeywordCompletionTestGenerated extends AbstractKeywordCompletionTes
         doTest(fileName);
     }
 
+    @TestMetadata("InInterfaceScope.kt")
+    public void testInInterfaceScope() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("idea/idea-completion/testData/keywords/InInterfaceScope.kt");
+        doTest(fileName);
+    }
+
     @TestMetadata("InMemberFunParametersList.kt")
     public void testInMemberFunParametersList() throws Exception {
         String fileName = JetTestUtils.navigationMetadata("idea/idea-completion/testData/keywords/InMemberFunParametersList.kt");
@@ -221,9 +251,21 @@ public class KeywordCompletionTestGenerated extends AbstractKeywordCompletionTes
         doTest(fileName);
     }
 
+    @TestMetadata("InObjectScope.kt")
+    public void testInObjectScope() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("idea/idea-completion/testData/keywords/InObjectScope.kt");
+        doTest(fileName);
+    }
+
     @TestMetadata("InParameterDefaultValue.kt")
     public void testInParameterDefaultValue() throws Exception {
         String fileName = JetTestUtils.navigationMetadata("idea/idea-completion/testData/keywords/InParameterDefaultValue.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("InPrimaryConstructorParametersList.kt")
+    public void testInPrimaryConstructorParametersList() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("idea/idea-completion/testData/keywords/InPrimaryConstructorParametersList.kt");
         doTest(fileName);
     }
 
@@ -470,6 +512,12 @@ public class KeywordCompletionTestGenerated extends AbstractKeywordCompletionTes
     @TestMetadata("TopScope.kt")
     public void testTopScope() throws Exception {
         String fileName = JetTestUtils.navigationMetadata("idea/idea-completion/testData/keywords/TopScope.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("UseSiteTargetForPrimaryConstructorParameter.kt")
+    public void testUseSiteTargetForPrimaryConstructorParameter() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("idea/idea-completion/testData/keywords/UseSiteTargetForPrimaryConstructorParameter.kt");
         doTest(fileName);
     }
 }

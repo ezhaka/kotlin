@@ -16,29 +16,19 @@
 
 package org.jetbrains.kotlin.resolve.annotations
 
-import org.jetbrains.kotlin.builtins.KotlinBuiltIns
-import org.jetbrains.kotlin.descriptors.*
+import org.jetbrains.kotlin.descriptors.CallableDescriptor
+import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
+import org.jetbrains.kotlin.descriptors.PropertyAccessorDescriptor
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptor
-import org.jetbrains.kotlin.descriptors.annotations.AnnotationDescriptorImpl
 import org.jetbrains.kotlin.descriptors.annotations.AnnotationUseSiteTarget
 import org.jetbrains.kotlin.descriptors.annotations.Annotations
-import org.jetbrains.kotlin.lexer.JetTokens
+import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.name.FqName
-import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.resolve.DescriptorUtils
-import org.jetbrains.kotlin.types.JetTypeImpl
-
-public fun DeclarationDescriptor.hasInlineAnnotation(): Boolean {
-    return getAnnotations().findAnnotation(FqName("kotlin.inline")) != null
-}
 
 public fun DeclarationDescriptor.hasPlatformStaticAnnotation(): Boolean {
     return getAnnotations().findAnnotation(FqName("kotlin.platform.platformStatic")) != null ||
            getAnnotations().findAnnotation(FqName("kotlin.jvm.JvmStatic")) != null
-}
-
-public fun DeclarationDescriptor.findPublicFieldAnnotation(): AnnotationDescriptor? {
-    return getAnnotations().findAnnotation(FqName("kotlin.jvm.publicField"))
 }
 
 public fun DeclarationDescriptor.hasJvmSyntheticAnnotation(): Boolean {
@@ -72,20 +62,3 @@ public fun AnnotationDescriptor.argumentValue(parameterName: String): Any? {
             .singleOrNull { it.key.getName().asString() == parameterName }
             ?.value?.value
 }
-
-public fun KotlinBuiltIns.buildMigrationAnnotationDescriptors(): List<AnnotationDescriptor> =
-    JetTokens.ANNOTATION_MODIFIERS_KEYWORDS_ARRAY.map {
-        modifierKeyword ->
-
-        val name = Name.identifier(modifierKeyword.value)
-        val type = JetTypeImpl.create(
-                Annotations.EMPTY,
-                getBuiltInClassByNameNullable(name) ?: getAnnotationClassByName(name),
-                /* nullable = */false, /* arguments = */emptyList()
-        )
-
-        AnnotationDescriptorImpl(
-                type,
-                emptyMap(), SourceElement.NO_SOURCE
-        )
-    }

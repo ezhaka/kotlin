@@ -35,9 +35,10 @@ import org.jetbrains.kotlin.load.kotlin.VirtualFileFinderFactory;
 import org.jetbrains.kotlin.name.ClassId;
 import org.jetbrains.kotlin.name.FqName;
 import org.jetbrains.kotlin.name.Name;
-import org.jetbrains.kotlin.psi.JetDeclaration;
-import org.jetbrains.kotlin.psi.JetFile;
+import org.jetbrains.kotlin.psi.KtDeclaration;
+import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.resolve.DescriptorUtils;
+import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt;
 import org.jetbrains.kotlin.serialization.deserialization.descriptors.DeserializedCallableMemberDescriptor;
 import org.jetbrains.kotlin.serialization.js.KotlinJavascriptPackageFragment;
 import org.jetbrains.kotlin.types.ErrorUtils;
@@ -46,12 +47,11 @@ import org.jetbrains.kotlin.types.expressions.ExpressionTypingUtils;
 import java.util.Collection;
 
 import static org.jetbrains.kotlin.load.kotlin.PackageClassUtils.getPackageClassId;
-import static org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilPackage.getClassId;
 
 public final class DecompiledNavigationUtils {
 
     @Nullable
-    public static JetDeclaration getDeclarationFromDecompiledClassFile(
+    public static KtDeclaration getDeclarationFromDecompiledClassFile(
             @NotNull Project project,
             @NotNull DeclarationDescriptor referencedDescriptor
     ) {
@@ -130,13 +130,13 @@ public final class DecompiledNavigationUtils {
                 Name partClassName = JvmFileClassUtil.getImplClassName((DeserializedCallableMemberDescriptor) referencedDescriptor);
                 if (partClassName != null) {
                     FqName partFQN = packageFQN.child(partClassName);
-                    Collection<JetFile> multifileFacadeJetFiles =
+                    Collection<KtFile> multifileFacadeJetFiles =
                             StaticFacadeIndexUtil.getMultifileClassForPart(partFQN, GlobalSearchScope.allScope(project), project);
                     if (multifileFacadeJetFiles.isEmpty()) {
                         return new ClassId(packageFQN, partClassName);
                     }
                     else {
-                        JetFile multifileFacade = multifileFacadeJetFiles.iterator().next();
+                        KtFile multifileFacade = multifileFacadeJetFiles.iterator().next();
                         String multifileFacadeName = multifileFacade.getVirtualFile().getNameWithoutExtension();
                         return new ClassId(packageFQN, Name.identifier(multifileFacadeName));
                     }
@@ -150,7 +150,7 @@ public final class DecompiledNavigationUtils {
                 || ExpressionTypingUtils.isLocal(containerDescriptor.getContainingDeclaration(), containerDescriptor)) {
                 return getContainerClassId(project, containerDescriptor.getContainingDeclaration());
             }
-            return getClassId((ClassDescriptor) containerDescriptor);
+            return DescriptorUtilsKt.getClassId((ClassDescriptor) containerDescriptor);
         }
         return null;
     }

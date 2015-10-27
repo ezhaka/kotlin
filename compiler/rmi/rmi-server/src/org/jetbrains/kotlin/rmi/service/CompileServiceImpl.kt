@@ -27,12 +27,13 @@ import java.io.PrintStream
 import java.rmi.NoSuchObjectException
 import java.rmi.registry.Registry
 import java.rmi.server.UnicastRemoteObject
+import java.util.*
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import java.util.logging.Logger
 import kotlin.concurrent.read
 import kotlin.concurrent.write
-
+import kotlin.concurrent.schedule
 
 fun nowSeconds() = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime())
 
@@ -46,7 +47,7 @@ class CompileServiceImpl(
         val selfCompilerId: CompilerId,
         val daemonOptions: DaemonOptions,
         port: Int
-) : CompileService, UnicastRemoteObject() {
+) : CompileService {
 
     // RMI-exposed API
 
@@ -60,6 +61,14 @@ class CompileServiceImpl(
             alive = false
             UnicastRemoteObject.unexportObject(this, true)
             log.info("Shutdown complete")
+            if (daemonOptions.forceShutdownTimeoutMilliseconds != COMPILE_DAEMON_FORCE_SHUTDOWN_TIMEOUT_INFINITE) {
+                // running a watcher thread that ensures that if the daemon is not exited normally (may be due to RMI leftovers), it's forced to exit
+                // the watcher is a daemon thread, meaning it should not prevent JVM to exit normally
+                Timer(true).schedule(daemonOptions.forceShutdownTimeoutMilliseconds) {
+                    log.info("force JVM shutdown")
+                    System.exit(0)
+                }
+            }
         }
     }
 
@@ -208,12 +217,5 @@ class CompileServiceImpl(
     fun<R> ifAliveExclusive(body: () -> R): R = rwlock.write {
         if (!alive) throw IllegalStateException("Kotlin Compiler Service is not in alive state")
         body()
-    }
-
-    // sometimes used for debugging
-    fun<R> spy(msg: String, body: () -> R): R {
-        val res = body()
-        log.info(msg + " = " + res.toString())
-        return res
     }
 }

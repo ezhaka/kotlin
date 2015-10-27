@@ -18,7 +18,6 @@ package org.jetbrains.kotlin.resolve;
 
 import kotlin.CollectionsKt;
 import kotlin.Unit;
-import kotlin.jvm.KotlinSignature;
 import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -28,9 +27,9 @@ import org.jetbrains.kotlin.descriptors.impl.PropertyAccessorDescriptorImpl;
 import org.jetbrains.kotlin.descriptors.impl.PropertyDescriptorImpl;
 import org.jetbrains.kotlin.name.Name;
 import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue;
-import org.jetbrains.kotlin.types.JetType;
+import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.types.TypeConstructor;
-import org.jetbrains.kotlin.types.checker.JetTypeChecker;
+import org.jetbrains.kotlin.types.checker.KotlinTypeChecker;
 import org.jetbrains.kotlin.utils.DFS;
 
 import java.util.*;
@@ -45,7 +44,7 @@ public class OverridingUtil {
                     ExternalOverridabilityCondition.class.getClassLoader()
             ));
 
-    public static final OverridingUtil DEFAULT = new OverridingUtil(new JetTypeChecker.TypeConstructorEquality() {
+    public static final OverridingUtil DEFAULT = new OverridingUtil(new KotlinTypeChecker.TypeConstructorEquality() {
         @Override
         public boolean equals(@NotNull TypeConstructor a, @NotNull TypeConstructor b) {
             return a.equals(b);
@@ -53,13 +52,13 @@ public class OverridingUtil {
     });
 
     @NotNull
-    public static OverridingUtil createWithEqualityAxioms(@NotNull JetTypeChecker.TypeConstructorEquality equalityAxioms) {
+    public static OverridingUtil createWithEqualityAxioms(@NotNull KotlinTypeChecker.TypeConstructorEquality equalityAxioms) {
         return new OverridingUtil(equalityAxioms);
     }
 
-    private final JetTypeChecker.TypeConstructorEquality equalityAxioms;
+    private final KotlinTypeChecker.TypeConstructorEquality equalityAxioms;
 
-    private OverridingUtil(JetTypeChecker.TypeConstructorEquality axioms) {
+    private OverridingUtil(KotlinTypeChecker.TypeConstructorEquality axioms) {
         equalityAxioms = axioms;
     }
 
@@ -99,18 +98,18 @@ public class OverridingUtil {
             return receiverAndParameterResult;
         }
 
-        List<JetType> superValueParameters = compiledValueParameters(superDescriptor);
-        List<JetType> subValueParameters = compiledValueParameters(subDescriptor);
+        List<KotlinType> superValueParameters = compiledValueParameters(superDescriptor);
+        List<KotlinType> subValueParameters = compiledValueParameters(subDescriptor);
 
         List<TypeParameterDescriptor> superTypeParameters = superDescriptor.getTypeParameters();
         List<TypeParameterDescriptor> subTypeParameters = subDescriptor.getTypeParameters();
 
         if (superTypeParameters.size() != subTypeParameters.size()) {
             for (int i = 0; i < superValueParameters.size(); ++i) {
-                JetType superValueParameterType = getUpperBound(superValueParameters.get(i));
-                JetType subValueParameterType = getUpperBound(subValueParameters.get(i));
+                KotlinType superValueParameterType = getUpperBound(superValueParameters.get(i));
+                KotlinType subValueParameterType = getUpperBound(subValueParameters.get(i));
                 // TODO: compare erasure
-                if (!JetTypeChecker.DEFAULT.equalTypes(superValueParameterType, subValueParameterType)) {
+                if (!KotlinTypeChecker.DEFAULT.equalTypes(superValueParameterType, subValueParameterType)) {
                     return OverrideCompatibilityInfo.typeParameterNumberMismatch();
                 }
             }
@@ -124,7 +123,7 @@ public class OverridingUtil {
             matchingTypeConstructors.put(superTypeParameter.getTypeConstructor(), subTypeParameter.getTypeConstructor());
         }
 
-        JetTypeChecker.TypeConstructorEquality localEqualityAxioms = new JetTypeChecker.TypeConstructorEquality() {
+        KotlinTypeChecker.TypeConstructorEquality localEqualityAxioms = new KotlinTypeChecker.TypeConstructorEquality() {
             @Override
             public boolean equals(@NotNull TypeConstructor a, @NotNull TypeConstructor b) {
                 if (equalityAxioms.equals(a, b)) return true;
@@ -148,8 +147,8 @@ public class OverridingUtil {
         }
 
         for (int i = 0, unsubstitutedValueParametersSize = superValueParameters.size(); i < unsubstitutedValueParametersSize; i++) {
-            JetType superValueParameter = superValueParameters.get(i);
-            JetType subValueParameter = subValueParameters.get(i);
+            KotlinType superValueParameter = superValueParameters.get(i);
+            KotlinType subValueParameter = subValueParameters.get(i);
 
             if (!areTypesEquivalent(superValueParameter, subValueParameter, localEqualityAxioms)) {
                 return OverrideCompatibilityInfo.valueParameterTypeMismatch(superValueParameter, subValueParameter, INCOMPATIBLE);
@@ -157,12 +156,12 @@ public class OverridingUtil {
         }
 
         if (checkReturnType) {
-            JetType superReturnType = superDescriptor.getReturnType();
-            JetType subReturnType = subDescriptor.getReturnType();
+            KotlinType superReturnType = superDescriptor.getReturnType();
+            KotlinType subReturnType = subDescriptor.getReturnType();
 
             if (superReturnType != null && subReturnType != null) {
                 boolean bothErrors = subReturnType.isError() && superReturnType.isError();
-                if (!bothErrors && !JetTypeChecker.withAxioms(localEqualityAxioms).isSubtypeOf(subReturnType, superReturnType)) {
+                if (!bothErrors && !KotlinTypeChecker.withAxioms(localEqualityAxioms).isSubtypeOf(subReturnType, superReturnType)) {
                     return OverrideCompatibilityInfo.returnTypeMismatch(superReturnType, subReturnType);
                 }
             }
@@ -195,20 +194,20 @@ public class OverridingUtil {
     }
 
     private static boolean areTypesEquivalent(
-            @NotNull JetType typeInSuper,
-            @NotNull JetType typeInSub,
-            @NotNull JetTypeChecker.TypeConstructorEquality axioms
+            @NotNull KotlinType typeInSuper,
+            @NotNull KotlinType typeInSub,
+            @NotNull KotlinTypeChecker.TypeConstructorEquality axioms
     ) {
         boolean bothErrors = typeInSuper.isError() && typeInSub.isError();
-        if (!bothErrors && !JetTypeChecker.withAxioms(axioms).equalTypes(typeInSuper, typeInSub)) {
+        if (!bothErrors && !KotlinTypeChecker.withAxioms(axioms).equalTypes(typeInSuper, typeInSub)) {
             return false;
         }
         return true;
     }
 
-    static List<JetType> compiledValueParameters(CallableDescriptor callableDescriptor) {
+    static List<KotlinType> compiledValueParameters(CallableDescriptor callableDescriptor) {
         ReceiverParameterDescriptor receiverParameter = callableDescriptor.getExtensionReceiverParameter();
-        ArrayList<JetType> parameters = new ArrayList<JetType>();
+        ArrayList<KotlinType> parameters = new ArrayList<KotlinType>();
         if (receiverParameter != null) {
             parameters.add(receiverParameter.getType());
         }
@@ -218,7 +217,7 @@ public class OverridingUtil {
         return parameters;
     }
 
-    static JetType getUpperBound(JetType type) {
+    static KotlinType getUpperBound(KotlinType type) {
         if (type.getConstructor().getDeclarationDescriptor() instanceof ClassDescriptor) {
             return type;
         }
@@ -287,7 +286,7 @@ public class OverridingUtil {
     ) {
         Queue<CallableMemberDescriptor> fromSuperQueue = new LinkedList<CallableMemberDescriptor>(notOverridden);
         while (!fromSuperQueue.isEmpty()) {
-            CallableMemberDescriptor notOverriddenFromSuper = VisibilityUtil.findMemberWithMaxVisibility(fromSuperQueue);
+            CallableMemberDescriptor notOverriddenFromSuper = VisibilityUtilKt.findMemberWithMaxVisibility(fromSuperQueue);
             Collection<CallableMemberDescriptor> overridables =
                     extractMembersOverridableInBothWays(notOverriddenFromSuper, fromSuperQueue, sink);
             createAndBindFakeOverride(overridables, current, sink);
@@ -298,12 +297,12 @@ public class OverridingUtil {
         if (a instanceof SimpleFunctionDescriptor) {
             assert b instanceof SimpleFunctionDescriptor : "b is " + b.getClass();
 
-            JetType aReturnType = a.getReturnType();
+            KotlinType aReturnType = a.getReturnType();
             assert aReturnType != null;
-            JetType bReturnType = b.getReturnType();
+            KotlinType bReturnType = b.getReturnType();
             assert bReturnType != null;
 
-            return JetTypeChecker.DEFAULT.isSubtypeOf(aReturnType, bReturnType);
+            return KotlinTypeChecker.DEFAULT.isSubtypeOf(aReturnType, bReturnType);
         }
         if (a instanceof PropertyDescriptor) {
             assert b instanceof PropertyDescriptor : "b is " + b.getClass();
@@ -313,7 +312,7 @@ public class OverridingUtil {
             }
 
             // both vals
-            return JetTypeChecker.DEFAULT.isSubtypeOf(((PropertyDescriptor) a).getType(), ((PropertyDescriptor) b).getType());
+            return KotlinTypeChecker.DEFAULT.isSubtypeOf(((PropertyDescriptor) a).getType(), ((PropertyDescriptor) b).getType());
         }
         throw new IllegalArgumentException("Unexpected callable: " + a.getClass());
     }
@@ -499,9 +498,7 @@ public class OverridingUtil {
         return maxVisibility;
     }
 
-
     @NotNull
-    @KotlinSignature("fun getTopmostOverridenDescriptors(originalDescriptor: CallableDescriptor): List<out CallableDescriptor>")
     public static List<? extends CallableDescriptor> getTopmostOverridenDescriptors(@NotNull CallableDescriptor originalDescriptor) {
         return DFS.dfs(
                 Collections.singletonList(originalDescriptor),
@@ -520,38 +517,6 @@ public class OverridingUtil {
                         if (current.getOverriddenDescriptors().isEmpty()) {
                             result.add(current);
                         }
-                    }
-                }
-        );
-    }
-
-    public static boolean traverseOverridenDescriptors(
-            @NotNull CallableDescriptor originalDescriptor,
-            @NotNull final Function1<CallableDescriptor, Boolean> handler
-    ) {
-        return DFS.dfs(
-                Collections.singletonList(originalDescriptor),
-                new DFS.Neighbors<CallableDescriptor>() {
-                    @NotNull
-                    @Override
-                    public Iterable<? extends CallableDescriptor> getNeighbors(CallableDescriptor current) {
-                        return current.getOverriddenDescriptors();
-                    }
-                },
-                new DFS.AbstractNodeHandler<CallableDescriptor, Boolean>() {
-                    private boolean result = true;
-
-                    @Override
-                    public boolean beforeChildren(CallableDescriptor current) {
-                        if (!handler.invoke(current)) {
-                            result = false;
-                        }
-                        return result;
-                    }
-
-                    @Override
-                    public Boolean result() {
-                        return result;
                     }
                 }
         );
@@ -604,7 +569,7 @@ public class OverridingUtil {
         }
 
         @NotNull
-        public static OverrideCompatibilityInfo valueParameterTypeMismatch(JetType superValueParameter, JetType subValueParameter, Result result) {
+        public static OverrideCompatibilityInfo valueParameterTypeMismatch(KotlinType superValueParameter, KotlinType subValueParameter, Result result) {
             return new OverrideCompatibilityInfo(result, "valueParameterTypeMismatch"); // TODO
         }
 
@@ -614,7 +579,7 @@ public class OverridingUtil {
         }
 
         @NotNull
-        public static OverrideCompatibilityInfo returnTypeMismatch(JetType substitutedSuperReturnType, JetType unsubstitutedSubReturnType) {
+        public static OverrideCompatibilityInfo returnTypeMismatch(KotlinType substitutedSuperReturnType, KotlinType unsubstitutedSubReturnType) {
             return new OverrideCompatibilityInfo(Result.CONFLICT, "returnTypeMismatch: " + unsubstitutedSubReturnType + " >< " + substitutedSuperReturnType); // TODO
         }
 

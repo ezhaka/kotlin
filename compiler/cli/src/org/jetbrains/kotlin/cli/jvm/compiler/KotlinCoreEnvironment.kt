@@ -70,13 +70,13 @@ import org.jetbrains.kotlin.config.CompilerConfiguration
 import org.jetbrains.kotlin.config.kotlinSourceRoots
 import org.jetbrains.kotlin.extensions.ExternalDeclarationsProvider
 import org.jetbrains.kotlin.extensions.StorageComponentContainerContributor
-import org.jetbrains.kotlin.idea.JetFileType
+import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.load.kotlin.JvmVirtualFileFinderFactory
 import org.jetbrains.kotlin.load.kotlin.KotlinBinaryClassCache
 import org.jetbrains.kotlin.load.kotlin.ModuleVisibilityManager
 import org.jetbrains.kotlin.parsing.JetParserDefinition
 import org.jetbrains.kotlin.parsing.JetScriptDefinitionProvider
-import org.jetbrains.kotlin.psi.JetFile
+import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.resolve.CodeAnalyzerInitializer
 import org.jetbrains.kotlin.resolve.jvm.KotlinJavaPsiFacade
 import org.jetbrains.kotlin.resolve.jvm.extensions.AnalysisCompletedHandlerExtension
@@ -97,7 +97,7 @@ public class KotlinCoreEnvironment private constructor(
             registerProjectExtensionPoints(Extensions.getArea(getProject()))
         }
     }
-    private val sourceFiles = ArrayList<JetFile>()
+    private val sourceFiles = ArrayList<KtFile>()
     private val javaRoots = ArrayList<JavaRoot>()
 
     public val configuration: CompilerConfiguration = configuration.copy().let {
@@ -122,8 +122,8 @@ public class KotlinCoreEnvironment private constructor(
             message ->
             report(ERROR, message)
         }))
-        sourceFiles.sortedWith(object : Comparator<JetFile> {
-            override fun compare(o1: JetFile, o2: JetFile): Int {
+        sourceFiles.sortedWith(object : Comparator<KtFile> {
+            override fun compare(o1: KtFile, o2: KtFile): Int {
                 return o1.getVirtualFile().getPath().compareTo(o2.getVirtualFile().getPath(), ignoreCase = true)
             }
         })
@@ -154,7 +154,7 @@ public class KotlinCoreEnvironment private constructor(
 
     public val sourceLinesOfCode: Int by lazy { countLinesOfCode(sourceFiles) }
 
-    public fun countLinesOfCode(sourceFiles: List<JetFile>): Int  =
+    public fun countLinesOfCode(sourceFiles: List<KtFile>): Int  =
             sourceFiles.sumBy {
                 val text = it.getText()
                 StringUtil.getLineBreakCount(it.getText()) + (if (StringUtil.endsWithLineBreak(text)) 0 else 1)
@@ -219,7 +219,7 @@ public class KotlinCoreEnvironment private constructor(
         return uniqueSourceRoots
     }
 
-    public fun getSourceFiles(): List<JetFile> = sourceFiles
+    public fun getSourceFiles(): List<KtFile> = sourceFiles
 
     private fun report(severity: CompilerMessageSeverity, message: String) {
         val messageCollector = configuration.get(CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY)
@@ -239,15 +239,17 @@ public class KotlinCoreEnvironment private constructor(
         ): KotlinCoreEnvironment {
             // JPS may run many instances of the compiler in parallel (there's an option for compiling independent modules in parallel in IntelliJ)
             // All projects share the same ApplicationEnvironment, and when the last project is disposed, the ApplicationEnvironment is disposed as well
-            Disposer.register(parentDisposable, object : Disposable {
-                override fun dispose() {
-                    synchronized (APPLICATION_LOCK) {
-                        if (--ourProjectCount <= 0) {
-                            disposeApplicationEnvironment()
+            if (System.getProperty("kotlin.environment.keepalive") == null) {
+                Disposer.register(parentDisposable, object : Disposable {
+                    override fun dispose() {
+                        synchronized (APPLICATION_LOCK) {
+                            if (--ourProjectCount <= 0) {
+                                disposeApplicationEnvironment()
+                            }
                         }
                     }
-                }
-            })
+                })
+            }
             val environment = KotlinCoreEnvironment(parentDisposable, getOrCreateApplicationEnvironmentForProduction(configuration, configFilePaths), configuration)
 
             synchronized (APPLICATION_LOCK) {
@@ -267,7 +269,8 @@ public class KotlinCoreEnvironment private constructor(
 
         private fun getOrCreateApplicationEnvironmentForProduction(configuration: CompilerConfiguration, configFilePaths: List<String>): JavaCoreApplicationEnvironment {
             synchronized (APPLICATION_LOCK) {
-                if (ourApplicationEnvironment != null) return ourApplicationEnvironment!!
+                if (ourApplicationEnvironment != null)
+                    return ourApplicationEnvironment!!
 
                 val parentDisposable = Disposer.newDisposable()
                 ourApplicationEnvironment = createApplicationEnvironment(parentDisposable, configuration, configFilePaths)
@@ -293,6 +296,7 @@ public class KotlinCoreEnvironment private constructor(
         }
 
         private fun createApplicationEnvironment(parentDisposable: Disposable, configuration: CompilerConfiguration, configFilePaths: List<String>): JavaCoreApplicationEnvironment {
+
             Extensions.cleanRootArea(parentDisposable)
             registerAppExtensionPoints()
             val applicationEnvironment = JavaCoreApplicationEnvironment(parentDisposable)
@@ -347,8 +351,8 @@ public class KotlinCoreEnvironment private constructor(
         @JvmStatic
         public fun registerApplicationServices(applicationEnvironment: JavaCoreApplicationEnvironment) {
             with(applicationEnvironment) {
-                registerFileType(JetFileType.INSTANCE, "kt")
-                registerFileType(JetFileType.INSTANCE, JetParserDefinition.STD_SCRIPT_SUFFIX)
+                registerFileType(KotlinFileType.INSTANCE, "kt")
+                registerFileType(KotlinFileType.INSTANCE, JetParserDefinition.STD_SCRIPT_SUFFIX)
                 registerParserDefinition(JetParserDefinition())
                 getApplication().registerService(javaClass<KotlinBinaryClassCache>(), KotlinBinaryClassCache())
                 getApplication().registerService(javaClass<JavaClassSupers>(), javaClass<JavaClassSupersImpl>())
@@ -366,7 +370,6 @@ public class KotlinCoreEnvironment private constructor(
             with (projectEnvironment.getProject()) {
                 registerService(javaClass<JetScriptDefinitionProvider>(), JetScriptDefinitionProvider())
                 registerService(javaClass<KotlinJavaPsiFacade>(), KotlinJavaPsiFacade(this))
-                registerService(javaClass<KotlinLightClassForFacade.PackageFacadeStubCache>(), KotlinLightClassForFacade.PackageFacadeStubCache(this))
                 registerService(javaClass<KotlinLightClassForFacade.FacadeStubCache>(), KotlinLightClassForFacade.FacadeStubCache(this))
             }
         }

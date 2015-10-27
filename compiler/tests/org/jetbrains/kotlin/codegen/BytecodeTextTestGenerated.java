@@ -107,12 +107,6 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
         doTest(fileName);
     }
 
-    @TestMetadata("defaultDelegation.kt")
-    public void testDefaultDelegation() throws Exception {
-        String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/defaultDelegation.kt");
-        doTest(fileName);
-    }
-
     @TestMetadata("inlineFromOtherModule.kt")
     public void testInlineFromOtherModule() throws Exception {
         String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/inlineFromOtherModule.kt");
@@ -146,6 +140,12 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
     @TestMetadata("interfaceDefaultImpl.kt")
     public void testInterfaceDefaultImpl() throws Exception {
         String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/interfaceDefaultImpl.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("isArrayOf.kt")
+    public void testIsArrayOf() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/isArrayOf.kt");
         doTest(fileName);
     }
 
@@ -194,6 +194,12 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
     @TestMetadata("kt7769.kt")
     public void testKt7769() throws Exception {
         String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/kt7769.kt");
+        doTest(fileName);
+    }
+
+    @TestMetadata("kt9603.kt")
+    public void testKt9603() throws Exception {
+        String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/kt9603.kt");
         doTest(fileName);
     }
 
@@ -460,6 +466,12 @@ public class BytecodeTextTestGenerated extends AbstractBytecodeTextTest {
         @TestMetadata("byte.kt")
         public void testByte() throws Exception {
             String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/constants/byte.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("kt9532.kt")
+        public void testKt9532() throws Exception {
+            String fileName = JetTestUtils.navigationMetadata("compiler/testData/codegen/bytecodeText/constants/kt9532.kt");
             doTest(fileName);
         }
 

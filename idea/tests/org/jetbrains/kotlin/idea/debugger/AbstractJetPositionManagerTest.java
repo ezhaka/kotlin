@@ -45,8 +45,9 @@ import org.jetbrains.kotlin.idea.project.PluginJetFilesProvider;
 import org.jetbrains.kotlin.idea.test.JetLightCodeInsightFixtureTestCase;
 import org.jetbrains.kotlin.idea.test.JetWithJdkAndRuntimeLightProjectDescriptor;
 import org.jetbrains.kotlin.idea.test.PluginTestCaseBase;
-import org.jetbrains.kotlin.psi.JetFile;
-import org.jetbrains.kotlin.utils.UtilsPackage;
+import org.jetbrains.kotlin.psi.KtFile;
+import org.jetbrains.kotlin.utils.CollectionsKt;
+import org.jetbrains.kotlin.utils.ExceptionUtilsKt;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -84,13 +85,13 @@ public abstract class AbstractJetPositionManagerTest extends JetLightCodeInsight
     @NotNull
     private static JetPositionManager createPositionManager(
             @NotNull DebugProcess process,
-            @NotNull List<JetFile> files,
+            @NotNull List<KtFile> files,
             @NotNull GenerationState state
     ) {
         JetPositionManager positionManager = (JetPositionManager) new JetPositionManagerFactory().createPositionManager(process);
         assertNotNull(positionManager);
 
-        for (JetFile file : files) {
+        for (KtFile file : files) {
             positionManager.addTypeMapper(file, state.getTypeMapper());
         }
 
@@ -125,10 +126,10 @@ public abstract class AbstractJetPositionManagerTest extends JetLightCodeInsight
 
     private void performTest() {
         Project project = getProject();
-        List<JetFile> files = new ArrayList<JetFile>(PluginJetFilesProvider.allFilesInProject(project));
+        List<KtFile> files = new ArrayList<KtFile>(PluginJetFilesProvider.allFilesInProject(project));
 
         final List<Breakpoint> breakpoints = Lists.newArrayList();
-        for (JetFile file : files) {
+        for (KtFile file : files) {
             breakpoints.addAll(extractBreakpointsInfo(file, file.getText()));
         }
 
@@ -149,7 +150,7 @@ public abstract class AbstractJetPositionManagerTest extends JetLightCodeInsight
                     }
                 }
                 catch (NoDataException e) {
-                    throw UtilsPackage.rethrow(e);
+                    throw ExceptionUtilsKt.rethrow(e);
                 }
             }
         });
@@ -166,7 +167,7 @@ public abstract class AbstractJetPositionManagerTest extends JetLightCodeInsight
         super.tearDown();
     }
 
-    private static Collection<Breakpoint> extractBreakpointsInfo(JetFile file, String fileContent) {
+    private static Collection<Breakpoint> extractBreakpointsInfo(KtFile file, String fileContent) {
         Collection<Breakpoint> breakpoints = Lists.newArrayList();
         String[] lines = StringUtil.convertLineSeparators(fileContent).split("\n");
 
@@ -225,11 +226,11 @@ public abstract class AbstractJetPositionManagerTest extends JetLightCodeInsight
     }
 
     private static class Breakpoint {
-        private final JetFile file;
+        private final KtFile file;
         private final int lineNumber; // 0-based
         private final String classNameRegexp;
 
-        private Breakpoint(JetFile file, int lineNumber, String classNameRegexp) {
+        private Breakpoint(KtFile file, int lineNumber, String classNameRegexp) {
             this.file = file;
             this.lineNumber = lineNumber;
             this.classNameRegexp = classNameRegexp;
@@ -251,7 +252,7 @@ public abstract class AbstractJetPositionManagerTest extends JetLightCodeInsight
 
         @Override
         public List<ReferenceType> classesByName(String name) {
-            return UtilsPackage.emptyOrSingletonList(referencesByName.get(name));
+            return CollectionsKt.emptyOrSingletonList(referencesByName.get(name));
         }
     }
 }

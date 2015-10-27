@@ -37,12 +37,13 @@ import org.jetbrains.kotlin.cli.common.ExitCode;
 import org.jetbrains.kotlin.cli.common.arguments.K2JSCompilerArguments;
 import org.jetbrains.kotlin.cli.common.arguments.K2JsArgumentConstants;
 import org.jetbrains.kotlin.cli.common.messages.*;
-import org.jetbrains.kotlin.cli.common.output.outputUtils.OutputUtilsPackage;
+import org.jetbrains.kotlin.cli.common.output.outputUtils.OutputUtilsKt;
 import org.jetbrains.kotlin.cli.jvm.compiler.CompilerJarLocator;
 import org.jetbrains.kotlin.cli.jvm.compiler.EnvironmentConfigFiles;
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment;
 import org.jetbrains.kotlin.cli.jvm.config.JVMConfigurationKeys;
 import org.jetbrains.kotlin.config.CompilerConfiguration;
+import org.jetbrains.kotlin.config.ContentRootsKt;
 import org.jetbrains.kotlin.config.Services;
 import org.jetbrains.kotlin.progress.ProgressIndicatorAndCompilationCanceledStatus;
 import org.jetbrains.kotlin.js.analyze.TopDownAnalyzerFacadeForJS;
@@ -53,7 +54,7 @@ import org.jetbrains.kotlin.js.config.LibrarySourcesConfig;
 import org.jetbrains.kotlin.js.facade.K2JSTranslator;
 import org.jetbrains.kotlin.js.facade.MainCallParameters;
 import org.jetbrains.kotlin.js.facade.TranslationResult;
-import org.jetbrains.kotlin.psi.JetFile;
+import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.utils.PathUtil;
 
 import java.io.File;
@@ -62,7 +63,6 @@ import java.util.List;
 import static org.jetbrains.kotlin.cli.common.ExitCode.COMPILATION_ERROR;
 import static org.jetbrains.kotlin.cli.common.ExitCode.OK;
 import static org.jetbrains.kotlin.cli.common.messages.CompilerMessageLocation.NO_LOCATION;
-import static org.jetbrains.kotlin.config.ConfigPackage.addKotlinSourceRoots;
 
 public class K2JSCompiler extends CLICompiler<K2JSCompilerArguments> {
 
@@ -100,12 +100,12 @@ public class K2JSCompiler extends CLICompiler<K2JSCompilerArguments> {
             configuration.put(JVMConfigurationKeys.COMPILER_JAR_LOCATOR, locator);
         }
 
-        addKotlinSourceRoots(configuration, arguments.freeArgs);
+        ContentRootsKt.addKotlinSourceRoots(configuration, arguments.freeArgs);
         KotlinCoreEnvironment environmentForJS =
                 KotlinCoreEnvironment.createForProduction(rootDisposable, configuration, EnvironmentConfigFiles.JS_CONFIG_FILES);
 
         Project project = environmentForJS.getProject();
-        List<JetFile> sourcesFiles = environmentForJS.getSourceFiles();
+        List<KtFile> sourcesFiles = environmentForJS.getSourceFiles();
 
         if (arguments.outputFile == null) {
             messageSeverityCollector.report(CompilerMessageSeverity.ERROR, "Specify output file via -output", CompilerMessageLocation.NO_LOCATION);
@@ -205,15 +205,15 @@ public class K2JSCompiler extends CLICompiler<K2JSCompilerArguments> {
 
         ProgressIndicatorAndCompilationCanceledStatus.checkCanceled();
 
-        OutputUtilsPackage.writeAll(outputFiles, outputDir, messageSeverityCollector);
+        OutputUtilsKt.writeAll(outputFiles, outputDir, messageSeverityCollector);
 
         return OK;
     }
 
-    private static void reportCompiledSourcesList(@NotNull MessageCollector messageCollector, @NotNull List<JetFile> sourceFiles) {
-        Iterable<String> fileNames = ContainerUtil.map(sourceFiles, new Function<JetFile, String>() {
+    private static void reportCompiledSourcesList(@NotNull MessageCollector messageCollector, @NotNull List<KtFile> sourceFiles) {
+        Iterable<String> fileNames = ContainerUtil.map(sourceFiles, new Function<KtFile, String>() {
             @Override
-            public String fun(@Nullable JetFile file) {
+            public String fun(@Nullable KtFile file) {
                 assert file != null;
                 VirtualFile virtualFile = file.getVirtualFile();
                 if (virtualFile != null) {
@@ -227,7 +227,7 @@ public class K2JSCompiler extends CLICompiler<K2JSCompilerArguments> {
     }
 
     private static AnalyzerWithCompilerReport analyzeAndReportErrors(@NotNull MessageCollector messageCollector,
-            @NotNull final List<JetFile> sources, @NotNull final Config config) {
+            @NotNull final List<KtFile> sources, @NotNull final Config config) {
         AnalyzerWithCompilerReport analyzerWithCompilerReport = new AnalyzerWithCompilerReport(messageCollector);
         analyzerWithCompilerReport.analyzeAndReport(sources, new Function0<AnalysisResult>() {
             @Override

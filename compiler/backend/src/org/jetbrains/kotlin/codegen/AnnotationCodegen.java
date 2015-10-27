@@ -28,17 +28,12 @@ import org.jetbrains.kotlin.name.FqName;
 import org.jetbrains.kotlin.resolve.AnnotationChecker;
 import org.jetbrains.kotlin.resolve.constants.*;
 import org.jetbrains.kotlin.resolve.constants.StringValue;
-import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilPackage;
-import org.jetbrains.kotlin.types.Flexibility;
-import org.jetbrains.kotlin.types.JetType;
-import org.jetbrains.kotlin.types.TypeUtils;
-import org.jetbrains.kotlin.types.TypesPackage;
+import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt;
+import org.jetbrains.kotlin.types.*;
 import org.jetbrains.org.objectweb.asm.*;
 
 import java.lang.annotation.*;
 import java.util.*;
-
-import static org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilPackage.getClassObjectType;
 
 public abstract class AnnotationCodegen {
 
@@ -67,9 +62,7 @@ public abstract class AnnotationCodegen {
 
     public static final List<JvmFlagAnnotation> METHOD_FLAGS = Arrays.asList(
             new JvmFlagAnnotation("kotlin.jvm.Strictfp", Opcodes.ACC_STRICT),
-            new JvmFlagAnnotation("kotlin.jvm.Synchronized", Opcodes.ACC_SYNCHRONIZED),
-            new JvmFlagAnnotation("kotlin.jvm.native", Opcodes.ACC_NATIVE),
-            new JvmFlagAnnotation("kotlin.external", Opcodes.ACC_NATIVE)
+            new JvmFlagAnnotation("kotlin.jvm.Synchronized", Opcodes.ACC_SYNCHRONIZED)
     );
 
     private static final AnnotationVisitor NO_ANNOTATION_VISITOR = new AnnotationVisitor(Opcodes.ASM5) {};
@@ -164,7 +157,7 @@ public abstract class AnnotationCodegen {
         return false;
     }
 
-    private void generateNullabilityAnnotation(@Nullable JetType type, @NotNull Set<String> annotationDescriptorsAlreadyPresent) {
+    private void generateNullabilityAnnotation(@Nullable KotlinType type, @NotNull Set<String> annotationDescriptorsAlreadyPresent) {
         if (type == null) return;
 
         if (isBareTypeParameterWithNullableUpperBound(type)) {
@@ -175,9 +168,9 @@ public abstract class AnnotationCodegen {
             return;
         }
 
-        if (TypesPackage.isFlexible(type)) {
+        if (FlexibleTypesKt.isFlexible(type)) {
             // A flexible type whose lower bound in not-null and upper bound is nullable, should not be annotated
-            Flexibility flexibility = TypesPackage.flexibility(type);
+            Flexibility flexibility = FlexibleTypesKt.flexibility(type);
 
             if (!TypeUtils.isNullableType(flexibility.getLowerBound()) && TypeUtils.isNullableType(flexibility.getUpperBound())) {
                 AnnotationDescriptor notNull = type.getAnnotations().findAnnotation(JvmAnnotationNames.JETBRAINS_NOT_NULL_ANNOTATION);
@@ -245,7 +238,7 @@ public abstract class AnnotationCodegen {
     }
 
     private void generateDocumentedAnnotation(@NotNull ClassDescriptor classDescriptor, @NotNull Set<String> annotationDescriptorsAlreadyPresent) {
-        boolean documented = DescriptorUtilPackage.isDocumentedAnnotation(classDescriptor);
+        boolean documented = DescriptorUtilsKt.isDocumentedAnnotation(classDescriptor);
         if (!documented) return;
         String descriptor = Type.getType(Documented.class).getDescriptor();
         if (!annotationDescriptorsAlreadyPresent.add(descriptor)) return;
@@ -260,12 +253,12 @@ public abstract class AnnotationCodegen {
         }
     }
 
-    private static boolean isBareTypeParameterWithNullableUpperBound(@NotNull JetType type) {
+    private static boolean isBareTypeParameterWithNullableUpperBound(@NotNull KotlinType type) {
         ClassifierDescriptor classifier = type.getConstructor().getDeclarationDescriptor();
         return !type.isMarkedNullable() && classifier instanceof TypeParameterDescriptor && TypeUtils.hasNullableSuperType(type);
     }
 
-    public void generateAnnotationDefaultValue(@NotNull ConstantValue<?> value, @NotNull JetType expectedType) {
+    public void generateAnnotationDefaultValue(@NotNull ConstantValue<?> value, @NotNull KotlinType expectedType) {
         AnnotationVisitor visitor = visitAnnotation(null, false);  // Parameters are unimportant
         genCompileTimeValue(null, value, visitor);
         visitor.visitEnd();
@@ -425,7 +418,7 @@ public abstract class AnnotationCodegen {
                     for (ConstantValue<?> value : values) {
                         if (value instanceof EnumValue) {
                             ClassDescriptor enumEntry = ((EnumValue) value).getValue();
-                            JetType classObjectType = getClassObjectType(enumEntry);
+                            KotlinType classObjectType = DescriptorUtilsKt.getClassObjectType(enumEntry);
                             if (classObjectType != null) {
                                 if ("java/lang/annotation/ElementType".equals(typeMapper.mapType(classObjectType).getInternalName())) {
                                     result.add(ElementType.valueOf(enumEntry.getName().asString()));
@@ -442,7 +435,7 @@ public abstract class AnnotationCodegen {
 
     @NotNull
     private RetentionPolicy getRetentionPolicy(@NotNull Annotated descriptor) {
-        KotlinRetention retention = DescriptorUtilPackage.getAnnotationRetention(descriptor);
+        KotlinRetention retention = DescriptorUtilsKt.getAnnotationRetention(descriptor);
         if (retention != null) {
             return annotationRetentionMap.get(retention);
         }
@@ -453,7 +446,7 @@ public abstract class AnnotationCodegen {
                 ConstantValue<?> compileTimeConstant = valueArguments.iterator().next();
                 if (compileTimeConstant instanceof EnumValue) {
                     ClassDescriptor enumEntry = ((EnumValue) compileTimeConstant).getValue();
-                    JetType classObjectType = getClassObjectType(enumEntry);
+                    KotlinType classObjectType = DescriptorUtilsKt.getClassObjectType(enumEntry);
                     if (classObjectType != null) {
                         if ("java/lang/annotation/RetentionPolicy".equals(typeMapper.mapType(classObjectType).getInternalName())) {
                             return RetentionPolicy.valueOf(enumEntry.getName().asString());
