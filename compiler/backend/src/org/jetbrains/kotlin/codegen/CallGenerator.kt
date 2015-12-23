@@ -19,7 +19,7 @@ package org.jetbrains.kotlin.codegen
 import org.jetbrains.kotlin.descriptors.ValueParameterDescriptor
 import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall
-import org.jetbrains.kotlin.types.typeUtil.isUnit
+import org.jetbrains.kotlin.codegen.binding.CodegenBinding.*
 import org.jetbrains.org.objectweb.asm.Type
 
 abstract class CallGenerator {
@@ -61,21 +61,8 @@ abstract class CallGenerator {
                 argumentExpression: KtExpression,
                 parameterType: Type,
                 parameterIndex: Int) {
-            val typeMapper = codegen.state.typeMapper
-            val parameterDescriptorType = typeMapper.mapType(valueParameterDescriptor.type)
             val value = codegen.gen(argumentExpression)
-
-            // number coercion for generic call like foo<Long>(-1) where fun <T> foo(value : T)
-            val coercedValue = if (parameterDescriptorType != value.type
-                                   && AsmUtil.isNumberPrimitive(value.type)
-                                   && AsmUtil.isNumberPrimitive(parameterDescriptorType)) {
-                CoercionValue(value, parameterDescriptorType)
-            }
-            else {
-                value
-            }
-
-            coercedValue.put(parameterType, codegen.v)
+            value.put(parameterType, codegen.v)
         }
 
         override fun putCapturedValueOnStack(

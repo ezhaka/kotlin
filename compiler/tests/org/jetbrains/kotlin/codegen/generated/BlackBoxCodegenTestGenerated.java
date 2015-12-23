@@ -4457,6 +4457,39 @@ public class BlackBoxCodegenTestGenerated extends AbstractBlackBoxCodegenTest {
         }
     }
 
+    @TestMetadata("compiler/testData/codegen/box/generic")
+    @TestDataPath("$PROJECT_ROOT")
+    @RunWith(JUnit3RunnerWithInners.class)
+    public static class Generic extends AbstractBlackBoxCodegenTest {
+        public void testAllFilesPresentInGeneric() throws Exception {
+            KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/box/generic"), Pattern.compile("^(.+)\\.kt$"), true);
+        }
+
+        @TestMetadata("binaryExpressionCast.kt")
+        public void testBinaryExpressionCast() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/generic/binaryExpressionCast.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("labeledExpressionCast.kt")
+        public void testLabeledExpressionCast() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/generic/labeledExpressionCast.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("parenthesizedExpressionCast.kt")
+        public void testParenthesizedExpressionCast() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/generic/parenthesizedExpressionCast.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("unaryExpressionCast.kt")
+        public void testUnaryExpressionCast() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/box/generic/unaryExpressionCast.kt");
+            doTest(fileName);
+        }
+    }
+
     @TestMetadata("compiler/testData/codegen/box/increment")
     @TestDataPath("$PROJECT_ROOT")
     @RunWith(JUnit3RunnerWithInners.class)

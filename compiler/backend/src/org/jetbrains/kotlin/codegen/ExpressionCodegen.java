@@ -114,6 +114,7 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
     public final FrameMap myFrameMap;
     private final MethodContext context;
     private final Type returnType;
+    private final ConstPropertiesChecker constPropertiesChecker;
 
     private final CodegenStatementVisitor statementVisitor = new CodegenStatementVisitor(this);
     private final MemberCodegen<?> parentCodegen;
@@ -149,6 +150,7 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
         this.returnType = returnType;
         this.parentCodegen = parentCodegen;
         this.tailRecursionCodegen = new TailRecursionCodegen(context, this, this.v, state);
+        this.constPropertiesChecker = new ConstPropertiesChecker();
     }
 
     static class BlockStackElement {
@@ -2887,6 +2889,12 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
                               expression.getRight(), reference);
         }
         else {
+            ConstantValue<?> compileTimeConstant = getCompileTimeConstant(expression, bindingContext);
+
+            if (compileTimeConstant != null && !this.constPropertiesChecker.containsKotlinConst(expression)) {
+                return StackValue.constant(compileTimeConstant.getValue(), expressionType(expression));
+            }
+
             ResolvedCall<?> resolvedCall = CallUtilKt.getResolvedCallWithAssert(expression, bindingContext);
             FunctionDescriptor descriptor = (FunctionDescriptor) resolvedCall.getResultingDescriptor();
 
@@ -3159,6 +3167,12 @@ public class ExpressionCodegen extends KtVisitor<StackValue, StackValue> impleme
 
     @Override
     public StackValue visitPrefixExpression(@NotNull KtPrefixExpression expression, @NotNull StackValue receiver) {
+        ConstantValue<?> compileTimeConstant = getCompileTimeConstant(expression, bindingContext);
+
+        if (compileTimeConstant != null && !this.constPropertiesChecker.containsKotlinConst(expression)) {
+            return StackValue.constant(compileTimeConstant.getValue(), expressionType(expression));
+        }
+
         DeclarationDescriptor originalOperation = bindingContext.get(REFERENCE_TARGET, expression.getOperationReference());
         ResolvedCall<?> resolvedCall = CallUtilKt.getResolvedCallWithAssert(expression, bindingContext);
         CallableDescriptor op = resolvedCall.getResultingDescriptor();
