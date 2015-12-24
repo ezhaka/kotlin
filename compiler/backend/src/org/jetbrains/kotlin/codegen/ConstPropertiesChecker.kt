@@ -21,11 +21,11 @@ import org.jetbrains.kotlin.psi.*
 class ConstPropertiesChecker {
     fun containsKotlinConst(expression: KtExpression): Boolean {
         var result = false
-        expression.accept(object : KtTreeVisitorVoid() {
-            override fun visitReferenceExpression(expression: KtReferenceExpression) {
-                result = true
-            }
-        })
+//        expression.accept(object : KtTreeVisitorVoid() {
+//            override fun visitReferenceExpression(expression: KtReferenceExpression) {
+//                result = true
+//            }
+//        })
 
         return result
     }
