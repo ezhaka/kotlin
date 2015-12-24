@@ -16,16 +16,22 @@
 
 package org.jetbrains.kotlin.codegen
 
+import com.intellij.psi.tree.IElementType
 import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.KtNodeTypes.*
 
 class ConstPropertiesChecker {
     fun containsKotlinConst(expression: KtExpression): Boolean {
         var result = false
-//        expression.accept(object : KtTreeVisitorVoid() {
-//            override fun visitReferenceExpression(expression: KtReferenceExpression) {
-//                result = true
-//            }
-//        })
+        expression.accept(object : KtTreeVisitorVoid() {
+            override fun visitReferenceExpression(expression: KtReferenceExpression) {
+                if (expression is KtNameReferenceExpression) {
+                    if (expression.elementType == REFERENCE_EXPRESSION) {
+                        result = true
+                    }
+                }
+            }
+        })
 
         return result
     }
