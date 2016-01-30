@@ -28,20 +28,20 @@ import org.jetbrains.kotlin.name.FqName;
 import org.jetbrains.kotlin.name.Name;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
 import org.jetbrains.kotlin.resolve.calls.results.OverloadResolutionResults;
-import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowInfo;
+import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowInfoFactory;
 import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt;
 import org.jetbrains.kotlin.resolve.jvm.platform.JvmPlatform;
 import org.jetbrains.kotlin.resolve.lazy.LazyResolveTestUtil;
 import org.jetbrains.kotlin.resolve.scopes.ImportingScope;
 import org.jetbrains.kotlin.resolve.scopes.LexicalScopeImpl;
 import org.jetbrains.kotlin.resolve.scopes.LexicalScopeKind;
-import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue;
 import org.jetbrains.kotlin.test.KotlinTestUtils;
 import org.jetbrains.kotlin.tests.di.ContainerForTests;
 import org.jetbrains.kotlin.tests.di.InjectionKt;
 import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.types.TypeUtils;
 import org.jetbrains.kotlin.types.expressions.ExpressionTypingContext;
+import org.jetbrains.kotlin.types.expressions.FakeCallKind;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -55,7 +55,7 @@ public class ExpectedResolveDataUtil {
     }
 
     public static Map<String, DeclarationDescriptor> prepareDefaultNameToDescriptors(Project project, KotlinCoreEnvironment environment) {
-        KotlinBuiltIns builtIns = JvmPlatform.INSTANCE$.getBuiltIns();
+        KotlinBuiltIns builtIns = JvmPlatform.INSTANCE.getBuiltIns();
 
         Map<String, DeclarationDescriptor> nameToDescriptor = new HashMap<String, DeclarationDescriptor>();
         nameToDescriptor.put("kotlin::Int.plus(Int)", standardFunction(builtIns.getInt(), "plus", project, builtIns.getIntType()));
@@ -136,7 +136,7 @@ public class ExpectedResolveDataUtil {
         ModuleDescriptorImpl emptyModule = KotlinTestUtils.createEmptyModule();
         ContainerForTests container = InjectionKt.createContainerForTests(project, emptyModule);
         emptyModule.setDependencies(emptyModule);
-        emptyModule.initialize(PackageFragmentProvider.Empty.INSTANCE$);
+        emptyModule.initialize(PackageFragmentProvider.Empty.INSTANCE);
 
         LexicalScopeImpl lexicalScope = new LexicalScopeImpl(ImportingScope.Empty.INSTANCE, classDescriptor, false,
                                                              classDescriptor.getThisAsReceiverParameter(),
@@ -144,10 +144,10 @@ public class ExpectedResolveDataUtil {
 
         ExpressionTypingContext context = ExpressionTypingContext.newContext(
                 new BindingTraceContext(), lexicalScope,
-                DataFlowInfo.EMPTY, TypeUtils.NO_EXPECTED_TYPE);
+                DataFlowInfoFactory.EMPTY, TypeUtils.NO_EXPECTED_TYPE);
 
         OverloadResolutionResults<FunctionDescriptor> functions = container.getFakeCallResolver().resolveFakeCall(
-                context, ReceiverValue.NO_RECEIVER, Name.identifier(name), null, parameterTypes);
+                context, null, Name.identifier(name), null, null, FakeCallKind.OTHER, parameterTypes);
 
         for (ResolvedCall<? extends FunctionDescriptor> resolvedCall : functions.getResultingCalls()) {
             List<ValueParameterDescriptor> unsubstitutedValueParameters = resolvedCall.getResultingDescriptor().getValueParameters();

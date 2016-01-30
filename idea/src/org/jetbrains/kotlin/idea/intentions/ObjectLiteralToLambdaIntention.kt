@@ -17,7 +17,6 @@
 package org.jetbrains.kotlin.idea.intentions
 
 import com.intellij.openapi.editor.Editor
-import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.search.LocalSearchScope
 import com.intellij.psi.search.searches.ReferencesSearch
@@ -34,9 +33,11 @@ import org.jetbrains.kotlin.idea.util.ShortenReferences
 import org.jetbrains.kotlin.lexer.KtTokens
 import org.jetbrains.kotlin.load.java.sam.SingleAbstractMethodUtils
 import org.jetbrains.kotlin.psi.*
-import org.jetbrains.kotlin.psi.psiUtil.*
+import org.jetbrains.kotlin.psi.psiUtil.collectDescendantsOfType
+import org.jetbrains.kotlin.psi.psiUtil.contentRange
+import org.jetbrains.kotlin.psi.psiUtil.endOffset
+import org.jetbrains.kotlin.psi.psiUtil.startOffset
 import org.jetbrains.kotlin.resolve.BindingContext
-import org.jetbrains.kotlin.resolve.bindingContextUtil.getTargetFunction
 import org.jetbrains.kotlin.resolve.calls.callUtil.getCalleeExpressionIfAny
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 import org.jetbrains.kotlin.types.KotlinType
@@ -60,26 +61,34 @@ class ObjectLiteralToLambdaIntention : SelfTargetingRangeIntention<KtObjectLiter
         if (!singleFunction.hasBody()) return null
         if (singleFunction.valueParameters.any { it.name == null }) return null
 
+        val bodyExpression = singleFunction.bodyExpression!!
+
+        // this-reference
+        val thisReferences = bodyExpression.collectDescendantsOfType<KtThisExpression> { it !is KtClassOrObject }
+        for (thisReference in thisReferences) {
+            val context = thisReference.analyze(BodyResolveMode.PARTIAL)
+            val thisDescriptor = context[BindingContext.REFERENCE_TARGET, thisReference.instanceReference]
+            if (thisDescriptor == functionDescriptor.containingDeclaration) {
+                return null
+            }
+        }
+
+        // Recursive call, skip labels
+        if (ReferencesSearch.search(singleFunction, LocalSearchScope(bodyExpression)).any { it.element !is KtLabelReferenceExpression }) {
+            return null
+        }
+
         return TextRange(element.objectDeclaration.getObjectKeyword().startOffset, baseTypeRef.endOffset)
     }
 
-    override fun applyTo(element: KtObjectLiteralExpression, editor: Editor) {
-        applyTo(element)
-    }
-
-    fun applyTo(element: KtObjectLiteralExpression) {
+    override fun applyTo(element: KtObjectLiteralExpression, editor: Editor?) {
         val commentSaver = CommentSaver(element)
 
         val (@Suppress("UNUSED_VARIABLE") baseTypeRef, baseType, singleFunction) = extractData(element)!!
 
-        val RETURN_KEY = Key<Unit>("RETURN_KEY")
+        val returnSaver = ReturnSaver(singleFunction)
 
         val body = singleFunction.bodyExpression!!
-        body.forEachDescendantOfType<KtReturnExpression> {
-            if (it.getTargetFunction(it.analyze(BodyResolveMode.PARTIAL)) == singleFunction) {
-                it.putCopyableUserData(RETURN_KEY, Unit)
-            }
-        }
 
         val factory = KtPsiFactory(element)
         val newExpression = factory.buildExpression {
@@ -89,7 +98,7 @@ class ObjectLiteralToLambdaIntention : SelfTargetingRangeIntention<KtObjectLiter
 
             val parameters = singleFunction.valueParameters
 
-            val needParameters = parameters.any { parameter -> ReferencesSearch.search(parameter, LocalSearchScope(body)).any() }
+            val needParameters = parameters.count() > 1 || parameters.any { parameter -> ReferencesSearch.search(parameter, LocalSearchScope(body)).any() }
             if (needParameters) {
                 parameters.forEachIndexed { index, parameter ->
                     if (index > 0) {
@@ -111,8 +120,6 @@ class ObjectLiteralToLambdaIntention : SelfTargetingRangeIntention<KtObjectLiter
             appendFixedText("}")
         }
 
-        body.forEachDescendantOfType<KtReturnExpression> { it.putCopyableUserData(RETURN_KEY, null) }
-
         val replaced = element.replaced(newExpression)
         commentSaver.restore(replaced, forceAdjustIndent = true/* by some reason lambda body is sometimes not properly indented */)
 
@@ -120,26 +127,8 @@ class ObjectLiteralToLambdaIntention : SelfTargetingRangeIntention<KtObjectLiter
         val callExpression = callee.parent as KtCallExpression
         val functionLiteral = callExpression.lambdaArguments.single().getLambdaExpression()
 
-        val lambdaBody = functionLiteral.bodyExpression!!
-
-        val returnToReplace = functionLiteral.collectDescendantsOfType<KtReturnExpression>() { it.getCopyableUserData(RETURN_KEY) != null }
-
         val returnLabel = callee.getReferencedNameAsName()
-        for (returnExpression in returnToReplace) {
-            val value = returnExpression.returnedExpression
-            val replaceWith = if (value != null && returnExpression.isValueOfBlock(lambdaBody)) {
-                value
-            }
-            else if (value != null) {
-                factory.createExpressionByPattern("return@$0 $1", returnLabel, value)
-            }
-            else {
-                factory.createExpressionByPattern("return@$0", returnLabel)
-            }
-
-            returnExpression.replace(replaceWith)
-
-        }
+        returnSaver.restore(functionLiteral, returnLabel)
 
         val parentCall = ((replaced.parent as? KtValueArgument)
                              ?.parent as? KtValueArgumentList)
@@ -150,32 +139,6 @@ class ObjectLiteralToLambdaIntention : SelfTargetingRangeIntention<KtObjectLiter
         else {
             ShortenReferences.DEFAULT.process(replaced.getContainingKtFile(), replaced.startOffset, callee.endOffset)
         }
-    }
-
-    private fun KtExpression.isValueOfBlock(inBlock: KtBlockExpression): Boolean {
-        val parent = parent
-        when (parent) {
-            inBlock -> {
-                return this == inBlock.statements.last()
-            }
-
-            is KtBlockExpression -> {
-                return isValueOfBlock(parent) && parent.isValueOfBlock(inBlock)
-            }
-
-            is KtContainerNode -> {
-                val owner = parent.parent
-                if (owner is KtIfExpression) {
-                    return (this == owner.then || this == owner.`else`) && owner.isValueOfBlock(inBlock)
-                }
-            }
-
-            is KtWhenEntry -> {
-                return this == parent.expression && (parent.parent as KtWhenExpression).isValueOfBlock(inBlock)
-            }
-        }
-
-        return false
     }
 
     private data class Data(

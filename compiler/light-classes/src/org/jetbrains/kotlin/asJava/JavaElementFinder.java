@@ -25,10 +25,9 @@ import com.intellij.openapi.util.Condition;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.*;
 import com.intellij.psi.search.GlobalSearchScope;
-import com.intellij.psi.util.*;
+import com.intellij.psi.util.PsiUtilCore;
 import com.intellij.util.SmartList;
 import com.intellij.util.containers.ContainerUtil;
-import com.intellij.util.containers.SLRUCache;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.load.java.JvmAbi;
@@ -44,6 +43,8 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
+
+import static org.jetbrains.kotlin.asJava.LightClassUtilsKt.toLightClass;
 
 public class JavaElementFinder extends PsiElementFinder implements KotlinFinderMarker {
 
@@ -62,8 +63,6 @@ public class JavaElementFinder extends PsiElementFinder implements KotlinFinderM
     private final PsiManager psiManager;
     private final LightClassGenerationSupport lightClassGenerationSupport;
 
-    private final CachedValue<SLRUCache<FindClassesRequest, PsiClass[]>> findClassesCache;
-
     public JavaElementFinder(
             @NotNull Project project,
             @NotNull LightClassGenerationSupport lightClassGenerationSupport
@@ -71,25 +70,6 @@ public class JavaElementFinder extends PsiElementFinder implements KotlinFinderM
         this.project = project;
         this.psiManager = PsiManager.getInstance(project);
         this.lightClassGenerationSupport = lightClassGenerationSupport;
-        this.findClassesCache = CachedValuesManager.getManager(project).createCachedValue(
-            new CachedValueProvider<SLRUCache<FindClassesRequest, PsiClass[]>>() {
-                @Nullable
-                @Override
-                public Result<SLRUCache<FindClassesRequest, PsiClass[]>> compute() {
-                    return new Result<SLRUCache<FindClassesRequest, PsiClass[]>>(
-                            new SLRUCache<FindClassesRequest, PsiClass[]>(30, 10) {
-                                @NotNull
-                                @Override
-                                public PsiClass[] createValue(FindClassesRequest key) {
-                                    return doFindClasses(key.fqName, key.scope);
-                                }
-                            },
-                            PsiModificationTracker.OUT_OF_CODE_BLOCK_MODIFICATION_COUNT
-                    );
-                }
-            },
-            false
-        );
     }
 
     @Override
@@ -101,13 +81,6 @@ public class JavaElementFinder extends PsiElementFinder implements KotlinFinderM
     @NotNull
     @Override
     public PsiClass[] findClasses(@NotNull String qualifiedNameString, @NotNull GlobalSearchScope scope) {
-        SLRUCache<FindClassesRequest, PsiClass[]> value = findClassesCache.getValue();
-        synchronized (value) {
-            return value.get(new FindClassesRequest(qualifiedNameString, scope));
-        }
-    }
-
-    private PsiClass[] doFindClasses(String qualifiedNameString, GlobalSearchScope scope) {
         if (!FqNamesUtilKt.isValidJavaFqName(qualifiedNameString)) {
             return PsiClass.EMPTY_ARRAY;
         }
@@ -133,7 +106,7 @@ public class JavaElementFinder extends PsiElementFinder implements KotlinFinderM
 
         for (KtClassOrObject declaration : classOrObjectDeclarations) {
             if (!(declaration instanceof KtEnumEntry)) {
-                PsiClass lightClass = LightClassUtil.INSTANCE$.getPsiClass(declaration);
+                PsiClass lightClass = toLightClass(declaration);
                 if (lightClass != null) {
                     answer.add(lightClass);
                 }
@@ -149,7 +122,7 @@ public class JavaElementFinder extends PsiElementFinder implements KotlinFinderM
         for (KtClassOrObject classOrObject : lightClassGenerationSupport.findClassOrObjectDeclarations(qualifiedName.parent(), scope)) {
             //NOTE: can't filter out more interfaces right away because decompiled declarations do not have member bodies
             if (classOrObject instanceof KtClass && ((KtClass) classOrObject).isInterface()) {
-                PsiClass interfaceClass = LightClassUtil.INSTANCE$.getPsiClass(classOrObject);
+                PsiClass interfaceClass = toLightClass(classOrObject);
                 if (interfaceClass != null) {
                     PsiClass implsClass = interfaceClass.findInnerClassByName(JvmAbi.DEFAULT_IMPLS_CLASS_NAME, false);
                     if (implsClass != null) {
@@ -224,7 +197,7 @@ public class JavaElementFinder extends PsiElementFinder implements KotlinFinderM
 
         Collection<KtClassOrObject> declarations = lightClassGenerationSupport.findClassOrObjectDeclarationsInPackage(packageFQN, scope);
         for (KtClassOrObject declaration : declarations) {
-            PsiClass aClass = LightClassUtil.INSTANCE$.getPsiClass(declaration);
+            PsiClass aClass = toLightClass(declaration);
             if (aClass != null) {
                 answer.add(aClass);
             }
@@ -253,41 +226,6 @@ public class JavaElementFinder extends PsiElementFinder implements KotlinFinderM
                 return psiPackage.getQualifiedName().equals(((KtFile) input).getPackageFqName().asString());
             }
         };
-    }
-
-    private static class FindClassesRequest {
-        private final String fqName;
-        private final GlobalSearchScope scope;
-
-        private FindClassesRequest(@NotNull String fqName, @NotNull GlobalSearchScope scope) {
-            this.fqName = fqName;
-            this.scope = scope;
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (o == null || getClass() != o.getClass()) return false;
-
-            FindClassesRequest request = (FindClassesRequest) o;
-
-            if (!fqName.equals(request.fqName)) return false;
-            if (!scope.equals(request.scope)) return false;
-
-            return true;
-        }
-
-        @Override
-        public int hashCode() {
-            int result = fqName.hashCode();
-            result = 31 * result + (scope.hashCode());
-            return result;
-        }
-
-        @Override
-        public String toString() {
-            return fqName + " in " + scope;
-        }
     }
 
     @NotNull

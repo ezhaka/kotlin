@@ -16,12 +16,7 @@
 
 package kotlin
 
-/**
- * Returns true if the receiver and the [other] object are the same object instance, or if they
- * are both null.
- */
-@Deprecated("This function is deprecated, use === instead", ReplaceWith("this === other"))
-public fun Any?.identityEquals(other: Any?): Boolean // = this === other
+import kotlin.internal.PureReifiable
 
 /**
  * Returns a string representation of the object. Can be called with a null receiver, in which case
@@ -38,4 +33,4 @@ public operator fun String?.plus(other: Any?): String
 /**
  * Returns an array of objects of the given type with the given [size], initialized with null values.
  */
-public fun arrayOfNulls<reified T>(size: Int): Array<T?>
+public fun <reified @PureReifiable T> arrayOfNulls(size: Int): Array<T?>

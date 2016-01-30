@@ -20,6 +20,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.builtins.KotlinBuiltIns;
 import org.jetbrains.kotlin.builtins.ReflectionTypes;
 import org.jetbrains.kotlin.context.GlobalContext;
+import org.jetbrains.kotlin.incremental.components.LookupTracker;
 import org.jetbrains.kotlin.platform.PlatformToKotlinClassMap;
 import org.jetbrains.kotlin.resolve.*;
 import org.jetbrains.kotlin.resolve.calls.CallExpressionResolver;
@@ -55,6 +56,10 @@ public class ExpressionTypingComponents {
     /*package*/ DataFlowAnalyzer dataFlowAnalyzer;
     /*package*/ Iterable<CallChecker> callCheckers;
     /*package*/ IdentifierChecker identifierChecker;
+    /*package*/ DeclarationsCheckerBuilder declarationsCheckerBuilder;
+    /*package*/ LocalVariableResolver localVariableResolver;
+    /*package*/ LookupTracker lookupTracker;
+
 
     @Inject
     public void setGlobalContext(@NotNull GlobalContext globalContext) {
@@ -174,5 +179,20 @@ public class ExpressionTypingComponents {
     @Inject
     public void setCallCheckers(@NotNull Iterable<CallChecker> callCheckers) {
         this.callCheckers = callCheckers;
+    }
+
+    @Inject
+    public void setDeclarationsCheckerBuilder(@NotNull DeclarationsCheckerBuilder declarationsCheckerBuilder) {
+        this.declarationsCheckerBuilder = declarationsCheckerBuilder;
+    }
+
+    @Inject
+    public void setLocalVariableResolver(@NotNull  LocalVariableResolver localVariableResolver) {
+        this.localVariableResolver = localVariableResolver;
+    }
+
+    @Inject
+    public void setLookupTracker(@NotNull LookupTracker lookupTracker) {
+        this.lookupTracker = lookupTracker;
     }
 }

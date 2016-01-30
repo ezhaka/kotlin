@@ -19,15 +19,14 @@ package org.jetbrains.kotlin.psi
 import com.intellij.lang.ASTNode
 import com.intellij.psi.PsiElement
 import org.jetbrains.kotlin.KtNodeType
-import org.jetbrains.kotlin.psi.psiUtil.canPlaceAfterSimpleNameEntry
 
-public abstract class KtExpressionImpl(node: ASTNode) : KtElementImpl(node), KtExpression {
+abstract class KtExpressionImpl(node: ASTNode) : KtElementImpl(node), KtExpression {
 
     override fun <R, D> accept(visitor: KtVisitor<R, D>, data: D) = visitor.visitExpression(this, data)
 
     protected fun findExpressionUnder(type: KtNodeType): KtExpression? {
         val containerNode = findChildByType<KtContainerNode>(type) ?: return null
-        return containerNode.findChildByClass<KtExpression>(javaClass())
+        return containerNode.findChildByClass<KtExpression>(KtExpression::class.java)
     }
 
     override fun replace(newElement: PsiElement): PsiElement {
@@ -36,39 +35,19 @@ public abstract class KtExpressionImpl(node: ASTNode) : KtElementImpl(node), KtE
 
     companion object {
         fun replaceExpression(expression: KtExpression, newElement: PsiElement, rawReplaceHandler: (PsiElement) -> PsiElement): PsiElement {
-            val parent = expression.getParent()
+            val parent = expression.parent
 
             if (newElement is KtExpression) {
-                when {
-                    parent is KtStringTemplateEntryWithExpression &&
-                    newElement is KtStringTemplateExpression &&
-                    // Do not mix raw and non-raw templates
-                    parent.parent.firstChild.text == newElement.firstChild.text -> {
-                        val entriesToAdd = newElement.entries
-                        val templateExpression = parent.parent as KtStringTemplateExpression
-                        if (entriesToAdd.size > 0) {
-                            templateExpression.addRangeBefore(entriesToAdd.first(), entriesToAdd.last(), parent)
-                            val lastNewEntry = parent.prevSibling
-                            val nextElement = parent.nextSibling
-                            if (lastNewEntry is KtSimpleNameStringTemplateEntry &&
-                                lastNewEntry.expression != null &&
-                                !canPlaceAfterSimpleNameEntry(nextElement)) {
-                                lastNewEntry.replace(KtPsiFactory(expression).createBlockStringTemplateEntry(lastNewEntry.expression!!))
-                            }
-                        }
-                        parent.delete()
-                    }
-
-                    parent is KtExpression || parent is KtValueArgument -> {
+                when (parent) {
+                    is KtExpression, is KtValueArgument -> {
                         if (KtPsiUtil.areParenthesesNecessary(newElement, expression, parent as KtElement)) {
                             return rawReplaceHandler(KtPsiFactory(expression).createExpressionByPattern("($0)", newElement))
                         }
                     }
-
-                    parent is KtSimpleNameStringTemplateEntry -> {
+                    is KtSimpleNameStringTemplateEntry -> {
                         if (newElement !is KtSimpleNameExpression) {
                             val newEntry = parent.replace(KtPsiFactory(expression).createBlockStringTemplateEntry(newElement)) as KtBlockStringTemplateEntry
-                            return newEntry.getExpression()!!
+                            return newEntry.expression!!
                         }
                     }
                 }

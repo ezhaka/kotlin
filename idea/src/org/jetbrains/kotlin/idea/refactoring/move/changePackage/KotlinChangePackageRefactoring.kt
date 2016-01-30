@@ -16,52 +16,54 @@
 
 package org.jetbrains.kotlin.idea.refactoring.move.changePackage
 
+import com.intellij.psi.PsiDirectory
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
-import com.intellij.refactoring.PackageWrapper
 import org.jetbrains.kotlin.idea.codeInsight.shorten.runWithElementsToShortenIsEmptyIgnored
-import org.jetbrains.kotlin.idea.refactoring.move.PackageNameInfo
+import org.jetbrains.kotlin.idea.refactoring.move.ContainerChangeInfo
+import org.jetbrains.kotlin.idea.refactoring.move.ContainerInfo
 import org.jetbrains.kotlin.idea.refactoring.move.getInternalReferencesToUpdateOnPackageNameChange
-import org.jetbrains.kotlin.idea.refactoring.move.moveTopLevelDeclarations.KotlinMoveTarget
-import org.jetbrains.kotlin.idea.refactoring.move.moveTopLevelDeclarations.MoveKotlinTopLevelDeclarationsOptions
-import org.jetbrains.kotlin.idea.refactoring.move.moveTopLevelDeclarations.MoveKotlinTopLevelDeclarationsProcessor
-import org.jetbrains.kotlin.idea.refactoring.move.moveTopLevelDeclarations.Mover
+import org.jetbrains.kotlin.idea.refactoring.move.moveDeclarations.*
 import org.jetbrains.kotlin.idea.refactoring.move.postProcessMoveUsages
 import org.jetbrains.kotlin.idea.util.application.executeWriteCommand
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtNamedDeclaration
 
-public class KotlinChangePackageRefactoring(val file: KtFile) {
-    private val project = file.getProject()
+class KotlinChangePackageRefactoring(val file: KtFile) {
+    private val project = file.project
 
     fun run(newFqName: FqName) {
-        val packageDirective = file.getPackageDirective() ?: return
-        val currentFqName = packageDirective.getFqName()
+        val packageDirective = file.packageDirective ?: return
+        val currentFqName = packageDirective.fqName
 
-        val declarationProcessor = MoveKotlinTopLevelDeclarationsProcessor(
+        val declarationProcessor = MoveKotlinDeclarationsProcessor(
                 project,
-                MoveKotlinTopLevelDeclarationsOptions(
-                        elementsToMove = file.getDeclarations().filterIsInstance<KtNamedDeclaration>(),
-                        moveTarget = object: KotlinMoveTarget {
-                            override val packageWrapper = PackageWrapper(file.getManager(), newFqName.asString())
+                MoveDeclarationsDescriptor(
+                        elementsToMove = file.declarations.filterIsInstance<KtNamedDeclaration>(),
+                        moveTarget = object: KotlinDirectoryBasedMoveTarget {
+                            override val targetContainerFqName = newFqName
 
-                            override fun getOrCreateTargetPsi(originalPsi: PsiElement) = originalPsi.getContainingFile()
+                            override val directory: PsiDirectory = file.containingDirectory!!
+
+                            override fun getOrCreateTargetPsi(originalPsi: PsiElement) = originalPsi.containingFile as? KtFile
 
                             override fun getTargetPsiIfExists(originalPsi: PsiElement) = null
 
                             override fun verify(file: PsiFile) = null
                         },
+                        delegate = MoveDeclarationsDelegate.TopLevel,
                         updateInternalReferences = false
                 ),
                 Mover.Idle // we don't need to move any declarations physically
         )
 
         val declarationUsages = declarationProcessor.findUsages().toList()
-        val internalUsages = file.getInternalReferencesToUpdateOnPackageNameChange(PackageNameInfo(currentFqName, newFqName.toUnsafe()))
+        val changeInfo = ContainerChangeInfo(ContainerInfo.Package(currentFqName), ContainerInfo.Package(newFqName))
+        val internalUsages = file.getInternalReferencesToUpdateOnPackageNameChange(changeInfo)
 
         project.executeWriteCommand("Change file's package to '${newFqName.asString()}'") {
-            packageDirective.setFqName(newFqName)
+            packageDirective.fqName = newFqName
             postProcessMoveUsages(internalUsages)
             project.runWithElementsToShortenIsEmptyIgnored { declarationProcessor.execute(declarationUsages) }
         }

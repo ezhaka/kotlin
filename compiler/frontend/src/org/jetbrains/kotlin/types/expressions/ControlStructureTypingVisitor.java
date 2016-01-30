@@ -91,9 +91,12 @@ public class ControlStructureTypingVisitor extends ExpressionTypingVisitor {
     }
 
     public KotlinTypeInfo visitIfExpression(KtIfExpression ifExpression, ExpressionTypingContext contextWithExpectedType, boolean isStatement) {
+        components.dataFlowAnalyzer.recordExpectedType(contextWithExpectedType.trace, ifExpression, contextWithExpectedType.expectedType);
+
         ExpressionTypingContext context = contextWithExpectedType.replaceExpectedType(NO_EXPECTED_TYPE);
         KtExpression condition = ifExpression.getCondition();
         DataFlowInfo conditionDataFlowInfo = checkCondition(context.scope, condition, context);
+        boolean loopBreakContinuePossibleInCondition = condition != null && containsJumpOutOfLoop(condition, context);
 
         KtExpression elseBranch = ifExpression.getElse();
         KtExpression thenBranch = ifExpression.getThen();
@@ -106,29 +109,24 @@ public class ControlStructureTypingVisitor extends ExpressionTypingVisitor {
         if (elseBranch == null) {
             if (thenBranch != null) {
                 KotlinTypeInfo result = getTypeInfoWhenOnlyOneBranchIsPresent(
-                        thenBranch, thenScope, thenInfo, elseInfo, contextWithExpectedType, ifExpression, isStatement);
+                        thenBranch, thenScope, thenInfo, elseInfo, contextWithExpectedType, ifExpression);
                 // If jump was possible, take condition check info as the jump info
                 return result.getJumpOutPossible()
                        ? result.replaceJumpOutPossible(true).replaceJumpFlowInfo(conditionDataFlowInfo)
                        : result;
             }
-            return TypeInfoFactoryKt.createTypeInfo(components.dataFlowAnalyzer.checkImplicitCast(
-                                                                 components.builtIns.getUnitType(), ifExpression,
-                                                                 contextWithExpectedType, isStatement
-                                                         ),
-                                                    thenInfo.or(elseInfo)
-            );
+            return TypeInfoFactoryKt.createTypeInfo(components.builtIns.getUnitType(), thenInfo.or(elseInfo));
         }
         if (thenBranch == null) {
             return getTypeInfoWhenOnlyOneBranchIsPresent(
-                    elseBranch, elseScope, elseInfo, thenInfo, contextWithExpectedType, ifExpression, isStatement);
+                    elseBranch, elseScope, elseInfo, thenInfo, contextWithExpectedType, ifExpression);
         }
         KtPsiFactory psiFactory = KtPsiFactoryKt.KtPsiFactory(ifExpression);
         KtBlockExpression thenBlock = psiFactory.wrapInABlockWrapper(thenBranch);
         KtBlockExpression elseBlock = psiFactory.wrapInABlockWrapper(elseBranch);
         Call callForIf = createCallForSpecialConstruction(ifExpression, ifExpression, Lists.newArrayList(thenBlock, elseBlock));
         MutableDataFlowInfoForArguments dataFlowInfoForArguments =
-                    createDataFlowInfoForArgumentsForIfCall(callForIf, thenInfo, elseInfo);
+                    createDataFlowInfoForArgumentsForIfCall(callForIf, conditionDataFlowInfo, thenInfo, elseInfo);
         ResolvedCall<FunctionDescriptor> resolvedCall = components.controlStructureTypingUtils.resolveSpecialConstructionAsCall(
                 callForIf, ResolveConstruct.IF, Lists.newArrayList("thenBranch", "elseBranch"),
                 Lists.newArrayList(false, false),
@@ -137,45 +135,56 @@ public class ControlStructureTypingVisitor extends ExpressionTypingVisitor {
         BindingContext bindingContext = context.trace.getBindingContext();
         KotlinTypeInfo thenTypeInfo = BindingContextUtils.getRecordedTypeInfo(thenBranch, bindingContext);
         KotlinTypeInfo elseTypeInfo = BindingContextUtils.getRecordedTypeInfo(elseBranch, bindingContext);
-        assert thenTypeInfo != null : "'Then' branch of if expression  was not processed: " + ifExpression;
-        assert elseTypeInfo != null : "'Else' branch of if expression  was not processed: " + ifExpression;
+        assert thenTypeInfo != null || elseTypeInfo != null : "Both branches of if expression were not processed: " + ifExpression.getText();
 
         KotlinType resultType = resolvedCall.getResultingDescriptor().getReturnType();
-        KotlinType thenType = thenTypeInfo.getType();
-        KotlinType elseType = elseTypeInfo.getType();
-        DataFlowInfo thenDataFlowInfo = thenTypeInfo.getDataFlowInfo();
-        DataFlowInfo elseDataFlowInfo = elseTypeInfo.getDataFlowInfo();
-        if (resultType != null && thenType != null && elseType != null) {
-            DataFlowValue resultValue = DataFlowValueFactory.createDataFlowValue(ifExpression, resultType, context);
-            DataFlowValue thenValue = DataFlowValueFactory.createDataFlowValue(thenBranch, thenType, context);
-            thenDataFlowInfo = thenDataFlowInfo.assign(resultValue, thenValue);
-            DataFlowValue elseValue = DataFlowValueFactory.createDataFlowValue(elseBranch, elseType, context);
-            elseDataFlowInfo = elseDataFlowInfo.assign(resultValue, elseValue);
-        }
-
-        boolean loopBreakContinuePossible = thenTypeInfo.getJumpOutPossible() || elseTypeInfo.getJumpOutPossible();
-
-        boolean jumpInThen = thenType != null && KotlinBuiltIns.isNothing(thenType);
-        boolean jumpInElse = elseType != null && KotlinBuiltIns.isNothing(elseType);
-
+        boolean loopBreakContinuePossible = loopBreakContinuePossibleInCondition;
         DataFlowInfo resultDataFlowInfo;
-        if (thenType == null && elseType == null) {
-            resultDataFlowInfo = thenDataFlowInfo.or(elseDataFlowInfo);
+
+        if (elseTypeInfo == null) {
+            loopBreakContinuePossible |= thenTypeInfo.getJumpOutPossible();
+            resultDataFlowInfo = thenTypeInfo.getDataFlowInfo();
         }
-        else if (thenType == null || (jumpInThen && !jumpInElse)) {
-            resultDataFlowInfo = elseDataFlowInfo;
-        }
-        else if (elseType == null || (jumpInElse && !jumpInThen)) {
-            resultDataFlowInfo = thenDataFlowInfo;
+        else if (thenTypeInfo == null) {
+            loopBreakContinuePossible |= elseTypeInfo.getJumpOutPossible();
+            resultDataFlowInfo = elseTypeInfo.getDataFlowInfo();
         }
         else {
-            resultDataFlowInfo = thenDataFlowInfo.or(elseDataFlowInfo);
-        }
+            KotlinType thenType = thenTypeInfo.getType();
+            KotlinType elseType = elseTypeInfo.getType();
+            DataFlowInfo thenDataFlowInfo = thenTypeInfo.getDataFlowInfo();
+            DataFlowInfo elseDataFlowInfo = elseTypeInfo.getDataFlowInfo();
+            if (resultType != null && thenType != null && elseType != null) {
+                DataFlowValue resultValue = DataFlowValueFactory.createDataFlowValue(ifExpression, resultType, context);
+                DataFlowValue thenValue = DataFlowValueFactory.createDataFlowValue(thenBranch, thenType, context);
+                thenDataFlowInfo = thenDataFlowInfo.assign(resultValue, thenValue);
+                DataFlowValue elseValue = DataFlowValueFactory.createDataFlowValue(elseBranch, elseType, context);
+                elseDataFlowInfo = elseDataFlowInfo.assign(resultValue, elseValue);
+            }
 
+            loopBreakContinuePossible |= thenTypeInfo.getJumpOutPossible() || elseTypeInfo.getJumpOutPossible();
+
+            boolean jumpInThen = thenType != null && KotlinBuiltIns.isNothing(thenType);
+            boolean jumpInElse = elseType != null && KotlinBuiltIns.isNothing(elseType);
+
+            if (thenType == null && elseType == null) {
+                resultDataFlowInfo = thenDataFlowInfo.or(elseDataFlowInfo);
+            }
+            else if (thenType == null || (jumpInThen && !jumpInElse)) {
+                resultDataFlowInfo = elseDataFlowInfo;
+            }
+            else if (elseType == null || (jumpInElse && !jumpInThen)) {
+                resultDataFlowInfo = thenDataFlowInfo;
+            }
+            else {
+                resultDataFlowInfo = thenDataFlowInfo.or(elseDataFlowInfo);
+            }
+        }
         // If break or continue was possible, take condition check info as the jump info
-        return TypeInfoFactoryKt
-                .createTypeInfo(components.dataFlowAnalyzer.checkImplicitCast(resultType, ifExpression, contextWithExpectedType, isStatement),
-                                resultDataFlowInfo, loopBreakContinuePossible, conditionDataFlowInfo);
+        return TypeInfoFactoryKt.createTypeInfo(
+                components.dataFlowAnalyzer.checkType(resultType, ifExpression, contextWithExpectedType),
+                resultDataFlowInfo, loopBreakContinuePossible,
+                loopBreakContinuePossibleInCondition ? context.dataFlowInfo : conditionDataFlowInfo);
     }
 
     @NotNull
@@ -185,8 +194,7 @@ public class ControlStructureTypingVisitor extends ExpressionTypingVisitor {
             @NotNull DataFlowInfo presentInfo,
             @NotNull DataFlowInfo otherInfo,
             @NotNull ExpressionTypingContext context,
-            @NotNull KtIfExpression ifExpression,
-            boolean isStatement
+            @NotNull KtIfExpression ifExpression
     ) {
         ExpressionTypingContext newContext = context.replaceDataFlowInfo(presentInfo).replaceExpectedType(NO_EXPECTED_TYPE)
                 .replaceContextDependency(INDEPENDENT);
@@ -199,15 +207,10 @@ public class ControlStructureTypingVisitor extends ExpressionTypingVisitor {
         } else {
             dataFlowInfo = typeInfo.getDataFlowInfo().or(otherInfo);
         }
-        return components.dataFlowAnalyzer.checkImplicitCast(
-                components.dataFlowAnalyzer.checkType(
-                        typeInfo.replaceType(components.builtIns.getUnitType()),
-                        ifExpression,
-                        context
-                ),
+        return components.dataFlowAnalyzer.checkType(
+                typeInfo.replaceType(components.builtIns.getUnitType()),
                 ifExpression,
-                context,
-                isStatement
+                context
         ).replaceDataFlowInfo(dataFlowInfo);
     }
 
@@ -263,16 +266,17 @@ public class ControlStructureTypingVisitor extends ExpressionTypingVisitor {
                 .replaceDataFlowInfo(dataFlowInfo);
     }
 
-    private boolean containsJumpOutOfLoop(final KtLoopExpression loopExpression, final ExpressionTypingContext context) {
+    private boolean containsJumpOutOfLoop(@NotNull final KtExpression expression, final ExpressionTypingContext context) {
         final boolean[] result = new boolean[1];
         result[0] = false;
         //todo breaks in inline function literals
-        loopExpression.accept(new KtTreeVisitor<List<KtLoopExpression>>() {
+        expression.accept(new KtTreeVisitor<List<KtLoopExpression>>() {
             @Override
             public Void visitBreakExpression(@NotNull KtBreakExpression breakExpression, List<KtLoopExpression> outerLoops) {
                 KtSimpleNameExpression targetLabel = breakExpression.getTargetLabel();
                 PsiElement element = targetLabel != null ? context.trace.get(LABEL_TARGET, targetLabel) : null;
-                if (element == loopExpression || (targetLabel == null && outerLoops.get(outerLoops.size() - 1) == loopExpression)) {
+                if (outerLoops.isEmpty() || element == expression ||
+                    (targetLabel == null && outerLoops.get(outerLoops.size() - 1) == expression)) {
                     result[0] = true;
                 }
                 return null;
@@ -297,7 +301,9 @@ public class ControlStructureTypingVisitor extends ExpressionTypingVisitor {
                 newOuterLoops.add(loopExpression);
                 return super.visitLoopExpression(loopExpression, newOuterLoops);
             }
-        }, Lists.newArrayList(loopExpression));
+        }, expression instanceof KtLoopExpression
+           ? Lists.newArrayList((KtLoopExpression) expression)
+           : Lists.<KtLoopExpression>newArrayList());
 
         return result[0];
     }
@@ -474,14 +480,16 @@ public class ControlStructureTypingVisitor extends ExpressionTypingVisitor {
         List<KtCatchClause> catchClauses = expression.getCatchClauses();
         KtFinallySection finallyBlock = expression.getFinallyBlock();
         List<KotlinType> types = new ArrayList<KotlinType>();
+        boolean nothingInAllCatchBranches = true;
         for (KtCatchClause catchClause : catchClauses) {
             KtParameter catchParameter = catchClause.getCatchParameter();
             KtExpression catchBody = catchClause.getCatchBody();
+            boolean nothingInCatchBranch = false;
             if (catchParameter != null) {
                 components.identifierChecker.checkDeclaration(catchParameter, context.trace);
                 ModifiersChecker.ModifiersCheckingProcedure modifiersChecking = components.modifiersChecker.withTrace(context.trace);
                 modifiersChecking.checkParameterHasNoValOrVar(catchParameter, VAL_OR_VAR_ON_CATCH_PARAMETER);
-                ModifierCheckerCore.INSTANCE$.check(catchParameter, context.trace, null);
+                ModifierCheckerCore.INSTANCE.check(catchParameter, context.trace, null);
 
                 VariableDescriptor variableDescriptor = components.descriptorResolver.resolveLocalVariableDescriptor(
                         context.scope, catchParameter, context.trace);
@@ -498,18 +506,28 @@ public class ControlStructureTypingVisitor extends ExpressionTypingVisitor {
                     KotlinType type = facade.getTypeInfo(catchBody, context.replaceScope(catchScope)).getType();
                     if (type != null) {
                         types.add(type);
+                        if (KotlinBuiltIns.isNothing(type)) {
+                            nothingInCatchBranch = true;
+                        }
                     }
                 }
+            }
+            if (!nothingInCatchBranch) {
+                nothingInAllCatchBranches =  false;
             }
         }
 
         KotlinTypeInfo result = TypeInfoFactoryKt.noTypeInfo(context);
+        KotlinTypeInfo tryResult = facade.getTypeInfo(tryBlock, context);
         if (finallyBlock != null) {
             result = facade.getTypeInfo(finallyBlock.getFinalExpression(),
                                         context.replaceExpectedType(NO_EXPECTED_TYPE));
         }
+        else if (nothingInAllCatchBranches) {
+            result = tryResult;
+        }
 
-        KotlinType type = facade.getTypeInfo(tryBlock, context).getType();
+        KotlinType type = tryResult.getType();
         if (type != null) {
             types.add(type);
         }

@@ -3,51 +3,33 @@ package kotlin
 import java.util.*
 
 /**
- * Returns an array with the specified [size], where each element is calculated by calling the specified
- * [init] function. The `init` function returns an array element given its index.
- */
-// TODO: @library("arrayFromFun")
-public inline fun <reified T> Array(size: Int, init: (Int) -> T): Array<T> {
-    val result = arrayOfNulls<T>(size)
-
-    for (i in 0..size - 1) {
-        result[i] = init(i)
-    }
-
-    return result as Array<T>
-}
-
-/**
  * Returns an empty array of the specified type [T].
  */
 public inline fun <reified T> emptyArray(): Array<T> = arrayOfNulls<T>(0) as Array<T>
 
-
 @library
 public fun <T> arrayOf(vararg elements: T): Array<T> = noImpl
 
-// "constructors" for primitive types array
+@library
+public fun doubleArrayOf(vararg elements: Double): DoubleArray = noImpl
 
 @library
-public fun doubleArrayOf(vararg elements: Double): DoubleArray    = noImpl
+public fun floatArrayOf(vararg elements: Float): FloatArray = noImpl
 
 @library
-public fun floatArrayOf(vararg elements: Float): FloatArray       = noImpl
+public fun longArrayOf(vararg elements: Long): LongArray = noImpl
 
 @library
-public fun longArrayOf(vararg elements: Long): LongArray          = noImpl
+public fun intArrayOf(vararg elements: Int): IntArray = noImpl
 
 @library
-public fun intArrayOf(vararg elements: Int): IntArray             = noImpl
+public fun charArrayOf(vararg elements: Char): CharArray = noImpl
 
 @library
-public fun charArrayOf(vararg elements: Char): CharArray          = noImpl
+public fun shortArrayOf(vararg elements: Short): ShortArray = noImpl
 
 @library
-public fun shortArrayOf(vararg elements: Short): ShortArray       = noImpl
-
-@library
-public fun byteArrayOf(vararg elements: Byte): ByteArray          = noImpl
+public fun byteArrayOf(vararg elements: Byte): ByteArray = noImpl
 
 @library
 public fun booleanArrayOf(vararg elements: Boolean): BooleanArray = noImpl
@@ -87,7 +69,7 @@ internal fun arrayCopyResize(source: dynamic, newSize: Int, defaultValue: Any?):
 
 internal fun <T> arrayPlusCollection(array: dynamic, collection: Collection<T>): dynamic {
     val result = array.slice(0)
-    result.length += collection.size()
+    result.length += collection.size
     var index: Int = array.length
     for (element in collection) result[index++] = element
     return result

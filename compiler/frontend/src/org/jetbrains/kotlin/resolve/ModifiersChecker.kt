@@ -34,7 +34,7 @@ import org.jetbrains.kotlin.psi.KtModifierList
 import org.jetbrains.kotlin.psi.KtModifierListOwner
 import java.util.*
 
-public object ModifierCheckerCore {
+object ModifierCheckerCore {
     private enum class Compatibility {
         // modifier pair is compatible: ok (default)
         COMPATIBLE,
@@ -146,6 +146,8 @@ public object ModifierCheckerCore {
         // private is compatible with open / abstract only for classes
         result += compatibilityForClassesRegister(PRIVATE_KEYWORD, OPEN_KEYWORD)
         result += compatibilityForClassesRegister(PRIVATE_KEYWORD, ABSTRACT_KEYWORD)
+
+        result += incompatibilityRegister(CROSSINLINE_KEYWORD, NOINLINE_KEYWORD)
         return result
     }
 
@@ -286,7 +288,7 @@ public object ModifierCheckerCore {
         }
     }
 
-    public fun check(listOwner: KtModifierListOwner, trace: BindingTrace, descriptor: DeclarationDescriptor?) {
+    fun check(listOwner: KtModifierListOwner, trace: BindingTrace, descriptor: DeclarationDescriptor?) {
         if (listOwner is KtDeclarationWithBody) {
             // JetFunction or JetPropertyAccessor
             for (parameter in listOwner.valueParameters) {
@@ -295,7 +297,7 @@ public object ModifierCheckerCore {
                 }
             }
         }
-        val actualTargets = AnnotationChecker.getDeclarationSiteActualTargetList(listOwner, descriptor as? ClassDescriptor)
+        val actualTargets = AnnotationChecker.getDeclarationSiteActualTargetList(listOwner, descriptor as? ClassDescriptor, trace)
         val list = listOwner.modifierList ?: return
         checkModifierList(list, trace, descriptor?.containingDeclaration, actualTargets)
     }

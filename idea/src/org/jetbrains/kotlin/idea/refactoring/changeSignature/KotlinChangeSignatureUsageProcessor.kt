@@ -47,8 +47,8 @@ import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptorIfAny
 import org.jetbrains.kotlin.idea.codeInsight.DescriptorToSourceUtilsIde
 import org.jetbrains.kotlin.idea.codeInsight.KotlinFileReferencesResolver
 import org.jetbrains.kotlin.idea.core.compareDescriptors
-import org.jetbrains.kotlin.idea.core.refactoring.createTempCopy
-import org.jetbrains.kotlin.idea.core.refactoring.isTrueJavaMethod
+import org.jetbrains.kotlin.idea.refactoring.createTempCopy
+import org.jetbrains.kotlin.idea.refactoring.isTrueJavaMethod
 import org.jetbrains.kotlin.idea.refactoring.changeSignature.usages.*
 import org.jetbrains.kotlin.idea.refactoring.getBodyScope
 import org.jetbrains.kotlin.idea.refactoring.getContainingScope
@@ -64,10 +64,7 @@ import org.jetbrains.kotlin.kdoc.psi.impl.KDocName
 import org.jetbrains.kotlin.load.java.descriptors.JavaClassDescriptor
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.*
-import org.jetbrains.kotlin.psi.psiUtil.getNonStrictParentOfType
-import org.jetbrains.kotlin.psi.psiUtil.getParentOfTypeAndBranch
-import org.jetbrains.kotlin.psi.psiUtil.getValueParameters
-import org.jetbrains.kotlin.psi.psiUtil.isAncestor
+import org.jetbrains.kotlin.psi.psiUtil.*
 import org.jetbrains.kotlin.psi.typeRefHelpers.setReceiverTypeReference
 import org.jetbrains.kotlin.renderer.DescriptorRenderer
 import org.jetbrains.kotlin.resolve.BindingContext
@@ -77,6 +74,7 @@ import org.jetbrains.kotlin.resolve.calls.tasks.ExplicitReceiverKind
 import org.jetbrains.kotlin.resolve.lazy.BodyResolveMode
 import org.jetbrains.kotlin.resolve.scopes.receivers.ImplicitReceiver
 import org.jetbrains.kotlin.resolve.source.getPsi
+import org.jetbrains.kotlin.util.OperatorNameConventions
 import org.jetbrains.kotlin.utils.addToStdlib.firstIsInstanceOrNull
 import java.util.*
 
@@ -91,8 +89,7 @@ class KotlinChangeSignatureUsageProcessor : ChangeSignatureUsageProcessor {
             methodDescriptor: KotlinMethodDescriptor
     ) : KotlinChangeInfo(methodDescriptor = methodDescriptor,
                          name = "",
-                         newReturnType = null,
-                         newReturnTypeText = "",
+                         newReturnTypeInfo = KotlinTypeInfo(true),
                          newVisibility = Visibilities.DEFAULT_VISIBILITY,
                          parameterInfos = emptyList<KotlinParameterInfo>(),
                          receiver = null,
@@ -193,7 +190,7 @@ class KotlinChangeSignatureUsageProcessor : ChangeSignatureUsageProcessor {
                         if (receiver is ImplicitReceiver) {
                             result.add(KotlinImplicitThisUsage(callElement, receiver.declarationDescriptor))
                         }
-                        else if (!receiver.exists()) {
+                        else if (receiver == null) {
                             result.add(
                                     object : UnresolvableCollisionUsageInfo(callElement, null) {
                                         override fun getDescription(): String {
@@ -269,20 +266,40 @@ class KotlinChangeSignatureUsageProcessor : ChangeSignatureUsageProcessor {
 
         val newReceiverInfo = changeInfo.receiverParameterInfo
 
-        for (parameterInfo in changeInfo.newParameters) {
+        val isDataClass = functionPsi is KtPrimaryConstructor && (functionPsi.getContainingClassOrObject() as? KtClass)?.isData() ?: false
+
+        for ((i, parameterInfo) in changeInfo.newParameters.withIndex()) {
             if (parameterInfo.oldIndex >= 0 && parameterInfo.oldIndex < oldParameters.size) {
                 val oldParam = oldParameters[parameterInfo.oldIndex]
                 val oldParamName = oldParam.name
 
-                if (parameterInfo == newReceiverInfo || (oldParamName != null && oldParamName != parameterInfo.name)) {
+                if (parameterInfo == newReceiverInfo ||
+                    (oldParamName != null && oldParamName != parameterInfo.name) ||
+                    isDataClass && i != parameterInfo.oldIndex) {
                     for (reference in ReferencesSearch.search(oldParam, oldParam.useScope)) {
                         val element = reference.element
 
+                        if (isDataClass &&
+                            element is KtSimpleNameExpression &&
+                            (element.parent as? KtCallExpression)?.calleeExpression == element &&
+                            element.getReferencedName() != parameterInfo.name &&
+                            OperatorNameConventions.COMPONENT_REGEX.matches(element.getReferencedName())) {
+                            result.add(KotlinDataClassComponentUsage(element, "component${i + 1}"))
+                        }
                         // Usages in named arguments of the calls usage will be changed when the function call is changed
-                        if ((element is KtSimpleNameExpression || element is KDocName) && element.parent !is KtValueArgumentName) {
+                        else if ((element is KtSimpleNameExpression || element is KDocName) && element.parent !is KtValueArgumentName) {
                             result.add(KotlinParameterUsage(element as KtElement, parameterInfo, functionUsageInfo))
                         }
                     }
+                }
+            }
+        }
+
+        if (isDataClass) {
+            (functionPsi as KtPrimaryConstructor).valueParameters.firstOrNull()?.let {
+                ReferencesSearch.search(it).mapNotNullTo(result) {
+                    val destructuringDeclaration = it.element as? KtDestructuringDeclaration ?: return@mapNotNullTo null
+                    KotlinComponentUsageInDestructuring(destructuringDeclaration)
                 }
             }
         }
@@ -369,10 +386,7 @@ class KotlinChangeSignatureUsageProcessor : ChangeSignatureUsageProcessor {
                             return null
                         }
 
-                        var receiverValue = resolvedCall.extensionReceiver
-                        if (!receiverValue.exists()) {
-                            receiverValue = resolvedCall.dispatchReceiver
-                        }
+                        val receiverValue = resolvedCall.extensionReceiver ?: resolvedCall.dispatchReceiver
                         if (receiverValue is ImplicitReceiver) {
                             processImplicitThis(resolvedCall.call.callElement, receiverValue)
                         }
@@ -588,7 +602,7 @@ class KotlinChangeSignatureUsageProcessor : ChangeSignatureUsageProcessor {
             caller: KtNamedDeclaration,
             callerDescriptor: DeclarationDescriptor) {
         val valueParameters = caller.getValueParameters()
-        val existingParameters = valueParameters.toMapBy { it.name }
+        val existingParameters = valueParameters.associateBy { it.name }
         val signature = IdeDescriptorRenderers.SOURCE_CODE_SHORT_NAMES_IN_TYPES.render(callerDescriptor)
         for (parameterInfo in changeInfo.getNonReceiverParameters()) {
             if (!(parameterInfo.isNewParameter)) continue
@@ -667,13 +681,13 @@ class KotlinChangeSignatureUsageProcessor : ChangeSignatureUsageProcessor {
         if (newReceiverInfo != null && (callable is KtNamedFunction) && callable.bodyExpression != null) {
             val noReceiverRefToContext = KotlinFileReferencesResolver.resolve(callable, true, true).filter {
                 val resolvedCall = it.key.getResolvedCall(it.value)
-                resolvedCall != null && !resolvedCall.dispatchReceiver.exists() && !resolvedCall.extensionReceiver.exists()
+                resolvedCall != null && resolvedCall.dispatchReceiver == null && resolvedCall.extensionReceiver == null
             }
 
             val psiFactory = KtPsiFactory(callable.project)
             val tempFile = (callable.containingFile as KtFile).createTempCopy()
             val functionWithReceiver = tempFile.findElementAt(callable.textOffset)?.getNonStrictParentOfType<KtNamedFunction>() ?: return
-            val receiverTypeRef = psiFactory.createType(newReceiverInfo.currentTypeText)
+            val receiverTypeRef = psiFactory.createType(newReceiverInfo.currentTypeInfo.render())
             functionWithReceiver.setReceiverTypeReference(receiverTypeRef)
             val newContext = functionWithReceiver.bodyExpression!!.analyze(BodyResolveMode.FULL)
 
@@ -684,7 +698,7 @@ class KotlinChangeSignatureUsageProcessor : ChangeSignatureUsageProcessor {
                         .findElementAt(originalRef.textOffset - originalOffset)
                         ?.getNonStrictParentOfType<KtReferenceExpression>()
                 val newResolvedCall = newRef.getResolvedCall(newContext)
-                if (newResolvedCall == null || newResolvedCall.extensionReceiver.exists() || newResolvedCall.dispatchReceiver.exists()) {
+                if (newResolvedCall == null || newResolvedCall.extensionReceiver != null || newResolvedCall.dispatchReceiver != null) {
                     val descriptor = originalRef.getResolvedCall(originalContext)!!.candidateDescriptor
                     val declaration = DescriptorToSourceUtilsIde.getAnyDeclaration(callable.project, descriptor)
                     val prefix = if (declaration != null) RefactoringUIUtil.getDescription(declaration, true) else originalRef.text
@@ -817,9 +831,8 @@ class KotlinChangeSignatureUsageProcessor : ChangeSignatureUsageProcessor {
             val descriptorWrapper = usages.firstIsInstanceOrNull<OriginalJavaMethodDescriptorWrapper>()
             if (descriptorWrapper == null || descriptorWrapper.originalJavaMethodDescriptor != null) return true
 
-            val methodDescriptor = method.getJavaMethodDescriptor()
-            assert(methodDescriptor != null)
-            descriptorWrapper.originalJavaMethodDescriptor = KotlinChangeSignatureData(methodDescriptor!!, method, listOf(methodDescriptor))
+            val methodDescriptor = method.getJavaMethodDescriptor() ?: return false
+            descriptorWrapper.originalJavaMethodDescriptor = KotlinChangeSignatureData(methodDescriptor, method, listOf(methodDescriptor))
 
             // This change info is used as a placeholder before primary method update
             // It gets replaced with real change info afterwards

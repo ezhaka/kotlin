@@ -6,8 +6,7 @@ fun mapping(): List<GenericFunction> {
     val templates = arrayListOf<GenericFunction>()
 
     templates add f("withIndex()") {
-        deprecate(Strings) { forBinaryCompatibility }
-        include(CharSequences, Strings)
+        include(CharSequences)
         doc {  f -> "Returns a ${if (f == Sequences) f.mapResult else "lazy [Iterable]"} of [IndexedValue] for each ${f.element} of the original ${f.collection}." }
         returns("Iterable<IndexedValue<T>>")
         body {
@@ -41,8 +40,7 @@ fun mapping(): List<GenericFunction> {
         body(ArraysOfObjects, ArraysOfPrimitives) {
             "return mapIndexedTo(ArrayList<R>(size), transform)"
         }
-        deprecate(Strings) { forBinaryCompatibility }
-        body(CharSequences, Strings) {
+        body(CharSequences) {
             "return mapIndexedTo(ArrayList<R>(length), transform)"
         }
         inline(false, Sequences)
@@ -69,8 +67,7 @@ fun mapping(): List<GenericFunction> {
         body(ArraysOfObjects, ArraysOfPrimitives, Maps) {
             "return mapTo(ArrayList<R>(size), transform)"
         }
-        deprecate(Strings) { forBinaryCompatibility }
-        body(CharSequences, Strings) {
+        body(CharSequences) {
             "return mapTo(ArrayList<R>(length), transform)"
         }
 
@@ -149,8 +146,7 @@ fun mapping(): List<GenericFunction> {
                 return destination
             """
         }
-        deprecate(Strings) { forBinaryCompatibility }
-        include(Maps, CharSequences, Strings)
+        include(Maps, CharSequences)
     }
 
     templates add f("mapIndexedTo(destination: C, transform: (Int, T) -> R)") {
@@ -174,9 +170,7 @@ fun mapping(): List<GenericFunction> {
                 return destination
             """
         }
-        deprecate(Strings) { forBinaryCompatibility }
-        deprecate(Maps) { Deprecation("Use entries.mapIndexedTo instead.", replaceWith = "this.entries.mapIndexedTo(destination, transform)") }
-        include(Maps, CharSequences, Strings)
+        include(CharSequences)
     }
 
     templates add f("mapNotNullTo(destination: C, transform: (T) -> R?)") {
@@ -231,8 +225,7 @@ fun mapping(): List<GenericFunction> {
         body {
             "return flatMapTo(ArrayList<R>(), transform)"
         }
-        deprecate(Strings) { forBinaryCompatibility }
-        include(Maps, CharSequences, Strings)
+        include(Maps, CharSequences)
     }
 
     templates add f("flatMap(transform: (T) -> Sequence<R>)") {
@@ -261,8 +254,7 @@ fun mapping(): List<GenericFunction> {
                 return destination
             """
         }
-        deprecate(Strings) { forBinaryCompatibility }
-        include(Maps, CharSequences, Strings)
+        include(Maps, CharSequences)
     }
 
     templates add f("flatMapTo(destination: C, transform: (T) -> Sequence<R>)") {
@@ -284,35 +276,98 @@ fun mapping(): List<GenericFunction> {
         }
     }
 
-    templates add f("groupBy(selector: (T) -> K)") {
+    templates add f("groupBy(keySelector: (T) -> K)") {
         inline(true)
 
-        deprecate(Strings) { forBinaryCompatibility }
-        include(CharSequences, Strings)
-        doc { f -> "Returns a map of the ${f.element.pluralize()} in original ${f.collection} grouped by the key returned by the given [selector] function." }
+        include(CharSequences)
+        doc { f ->
+            """
+            Groups ${f.element.pluralize()} of the original ${f.collection} by the key returned by the given [keySelector] function
+            applied to each ${f.element} and returns a map where each group key is associated with a list of corresponding ${f.element.pluralize()}.
+            @sample test.collections.CollectionTest.groupBy
+            """
+        }
         typeParam("K")
         returns("Map<K, List<T>>")
-        body { "return groupByTo(LinkedHashMap<K, MutableList<T>>(), selector)" }
+        body { "return groupByTo(LinkedHashMap<K, MutableList<T>>(), keySelector)" }
     }
 
-    templates add f("groupByTo(map: MutableMap<K, MutableList<T>>, selector: (T) -> K)") {
+    templates add f("groupByTo(destination: M, keySelector: (T) -> K)") {
         inline(true)
 
-        deprecate(Strings) { forBinaryCompatibility }
-        include(CharSequences, Strings)
+        include(CharSequences)
         typeParam("K")
-        doc { f -> "Appends ${f.element.pluralize()} from original ${f.collection} grouped by the key returned by the given [selector] function to the given [map]." }
-        returns("Map<K, MutableList<T>>")
+        typeParam("M : MutableMap<in K, MutableList<T>>")
+        doc { f ->
+            """
+            Groups ${f.element.pluralize()} of the original ${f.collection} by the key returned by the given [keySelector] function
+            applied to each ${f.element} and puts to the [destination] map each group key associated with a list of corresponding ${f.element.pluralize()}.
+
+            @return The [destination] map.
+            @sample test.collections.CollectionTest.groupBy
+            """
+        }
+        returns("M")
         body {
             """
                 for (element in this) {
-                    val key = selector(element)
-                    val list = map.getOrPut(key) { ArrayList<T>() }
+                    val key = keySelector(element)
+                    val list = destination.getOrPut(key) { ArrayList<T>() }
                     list.add(element)
                 }
-                return map
+                return destination
             """
         }
     }
+
+    templates add f("groupBy(keySelector: (T) -> K, valueTransform: (T) -> V)") {
+        inline(true)
+
+        include(CharSequences)
+        doc { f ->
+            """
+            Groups values returned by the [valueTransform] function applied to each ${f.element} of the original ${f.collection}
+            by the key returned by the given [keySelector] function applied to the ${f.element}
+            and returns a map where each group key is associated with a list of corresponding values.
+            @sample test.collections.CollectionTest.groupByKeysAndValues
+            """
+        }
+        typeParam("K")
+        typeParam("V")
+        returns("Map<K, List<V>>")
+        body { "return groupByTo(LinkedHashMap<K, MutableList<V>>(), keySelector, valueTransform)" }
+    }
+
+
+    templates add f("groupByTo(destination: M, keySelector: (T) -> K, valueTransform: (T) -> V)") {
+        inline(true)
+
+        include(CharSequences)
+        typeParam("K")
+        typeParam("V")
+        typeParam("M : MutableMap<in K, MutableList<V>>")
+
+        doc { f ->
+            """
+            Groups values returned by the [valueTransform] function applied to each ${f.element} of the original ${f.collection}
+            by the key returned by the given [keySelector] function applied to the ${f.element}
+            and puts to the [destination] map each group key associated with a list of corresponding values.
+            @return The [destination] map.
+            @sample test.collections.CollectionTest.groupByKeysAndValues
+            """
+        }
+        returns("M")
+        body {
+            """
+                for (element in this) {
+                    val key = keySelector(element)
+                    val list = destination.getOrPut(key) { ArrayList<V>() }
+                    list.add(valueTransform(element))
+                }
+                return destination
+            """
+        }
+    }
+
     return templates
 }

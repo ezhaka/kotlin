@@ -22,12 +22,12 @@ import com.intellij.openapi.module.Module
 import com.intellij.openapi.roots.ModifiableModelsProvider
 import com.intellij.openapi.roots.ModifiableRootModel
 import org.jetbrains.kotlin.idea.KotlinIcons
-import org.jetbrains.kotlin.idea.versions.KotlinRuntimeLibraryUtil
+import org.jetbrains.kotlin.idea.versions.bundledRuntimeVersion
 import org.jetbrains.plugins.gradle.frameworkSupport.BuildScriptDataBuilder
 import org.jetbrains.plugins.gradle.frameworkSupport.GradleFrameworkSupportProvider
 import javax.swing.Icon
 
-public class GradleKotlinJavaFrameworkSupportProvider() : GradleFrameworkSupportProvider() {
+class GradleKotlinJavaFrameworkSupportProvider() : GradleFrameworkSupportProvider() {
     override fun getFrameworkType(): FrameworkTypeEx = object : FrameworkTypeEx("KOTLIN") {
         override fun getIcon(): Icon = KotlinIcons.FILE
 
@@ -40,10 +40,9 @@ public class GradleKotlinJavaFrameworkSupportProvider() : GradleFrameworkSupport
                             rootModel: ModifiableRootModel,
                             modifiableModelsProvider: ModifiableModelsProvider,
                             buildScriptData: BuildScriptDataBuilder) {
-        var kotlinVersion = KotlinRuntimeLibraryUtil.bundledRuntimeVersion()
+        var kotlinVersion = bundledRuntimeVersion()
         if (kotlinVersion == "@snapshot@") {
             kotlinVersion = "0.1-SNAPSHOT"
-            buildScriptData.addBuildscriptRepositoriesDefinition("mavenCentral()")
 
             val snapshotRepository = KotlinWithGradleConfigurator.SNAPSHOT_REPOSITORY.replace('\n', ' ')
             buildScriptData.addBuildscriptRepositoriesDefinition(snapshotRepository)
@@ -54,6 +53,8 @@ public class GradleKotlinJavaFrameworkSupportProvider() : GradleFrameworkSupport
 
         buildScriptData
                 .addPluginDefinition(KotlinGradleModuleConfigurator.APPLY_KOTLIN)
+
+                .addBuildscriptRepositoriesDefinition("mavenCentral()")
 
                 // TODO: once IDEA-148110 is fixed, define kotlin_version property in buildscript
                 .addDependencyNotation(KotlinWithGradleConfigurator.LIBRARY.replace("\$kotlin_version", kotlinVersion))

@@ -33,7 +33,6 @@ import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils
 import org.jetbrains.kotlin.resolve.jvm.diagnostics.*
 import org.jetbrains.kotlin.resolve.scopes.DescriptorKindFilter
-import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue
 import org.jetbrains.kotlin.utils.addIfNotNull
 import java.util.*
 
@@ -52,7 +51,8 @@ class BuilderFactoryForDuplicateSignatureDiagnostics(
 ) : SignatureCollectingClassBuilderFactory(builderFactory) {
 
     // Avoid errors when some classes are not loaded for some reason
-    private val typeMapper = JetTypeMapper(bindingContext, ClassBuilderMode.LIGHT_CLASSES, fileClassesProvider, incrementalCache, moduleName)
+    private val typeMapper = JetTypeMapper(bindingContext, ClassBuilderMode.LIGHT_CLASSES, fileClassesProvider, incrementalCache,
+                                           IncompatibleClassTracker.DoNothing, moduleName)
     private val reportDiagnosticsTasks = ArrayList<() -> Unit>()
 
     fun reportDiagnostics() {
@@ -121,17 +121,17 @@ class BuilderFactoryForDuplicateSignatureDiagnostics(
             var ownNonFakeCount = 0
             for (origin in origins) {
                 val member = origin.descriptor as? CallableMemberDescriptor?
-                if (member != null && member.containingDeclaration == classOrigin.descriptor && member.getKind() != FAKE_OVERRIDE) {
+                if (member != null && member.containingDeclaration == classOrigin.descriptor && member.kind != FAKE_OVERRIDE) {
                     ownNonFakeCount++
                     // If there's more than one real element, the clashing signature is already reported.
                     // Only clashes between fake overrides are interesting here
                     if (ownNonFakeCount > 1) continue@signatures
 
-                    if (member.getKind() != DELEGATION) {
+                    if (member.kind != DELEGATION) {
                         // Delegates don't have declarations in the code
                         memberElement = origin.element ?: DescriptorToSourceUtils.descriptorToDeclaration(member)
                         if (memberElement == null && member is PropertyAccessorDescriptor) {
-                            memberElement = DescriptorToSourceUtils.descriptorToDeclaration(member.getCorrespondingProperty())
+                            memberElement = DescriptorToSourceUtils.descriptorToDeclaration(member.correspondingProperty)
                         }
                     }
                 }
@@ -155,18 +155,18 @@ class BuilderFactoryForDuplicateSignatureDiagnostics(
 
         fun processMember(member: DeclarationDescriptor?) {
             // a member of super is not visible: no override
-            if (member is DeclarationDescriptorWithVisibility && member.getVisibility() == Visibilities.INVISIBLE_FAKE) return
+            if (member is DeclarationDescriptorWithVisibility && member.visibility == Visibilities.INVISIBLE_FAKE) return
             // if a signature clashes with a SAM-adapter or something like that, there's no harm
             if (member is CallableMemberDescriptor && isOrOverridesSamAdapter(member)) return
 
             if (member is PropertyDescriptor) {
-                processMember(member.getGetter())
-                processMember(member.getSetter())
+                processMember(member.getter)
+                processMember(member.setter)
             }
             else if (member is FunctionDescriptor) {
                 val methodSignature = typeMapper.mapSignature(member)
                 val rawSignature = RawSignature(
-                        methodSignature.getAsmMethod().getName()!!, methodSignature.getAsmMethod().getDescriptor()!!, MemberKind.METHOD)
+                        methodSignature.asmMethod.name!!, methodSignature.asmMethod.descriptor!!, MemberKind.METHOD)
                 groupedBySignature.putValue(rawSignature, OtherOrigin(member))
             }
         }
@@ -175,7 +175,7 @@ class BuilderFactoryForDuplicateSignatureDiagnostics(
         descriptor.getParentJavaStaticClassScope()?.run {
             getContributedDescriptors(DescriptorKindFilter.FUNCTIONS)
                     .filter {
-                        it is FunctionDescriptor && Visibilities.isVisible(ReceiverValue.IRRELEVANT_RECEIVER, it, descriptor)
+                        it is FunctionDescriptor && Visibilities.isVisibleWithIrrelevantReceiver(it, descriptor)
                     }
                     .forEach(::processMember)
         }
@@ -186,7 +186,7 @@ class BuilderFactoryForDuplicateSignatureDiagnostics(
     private fun isOrOverridesSamAdapter(descriptor: CallableMemberDescriptor): Boolean {
         if (descriptor is SamAdapterDescriptor<*>) return true
 
-        return descriptor.getKind() == CallableMemberDescriptor.Kind.FAKE_OVERRIDE
-                && descriptor.getOverriddenDescriptors().all { isOrOverridesSamAdapter(it) }
+        return descriptor.kind == CallableMemberDescriptor.Kind.FAKE_OVERRIDE
+                && descriptor.overriddenDescriptors.all { isOrOverridesSamAdapter(it) }
     }
 }

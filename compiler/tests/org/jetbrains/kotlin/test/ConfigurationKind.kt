@@ -16,11 +16,13 @@
 
 package org.jetbrains.kotlin.test
 
-public enum class ConfigurationKind(
-        public val withRuntime: Boolean,
-        public val withReflection: Boolean
+enum class ConfigurationKind(
+        val withRuntime: Boolean = false,
+        val withMockRuntime: Boolean = false,
+        val withReflection: Boolean = false
 ) {
-    JDK_ONLY(withRuntime = false, withReflection = false),
-    NO_KOTLIN_REFLECT(withRuntime = true, withReflection = false),
+    JDK_ONLY(),
+    MOCK_RUNTIME(withMockRuntime = true),
+    NO_KOTLIN_REFLECT(withRuntime = true),
     ALL(withRuntime = true, withReflection = true),
 }

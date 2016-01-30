@@ -18,7 +18,9 @@ package org.jetbrains.kotlin.resolve.calls;
 
 import com.google.common.collect.Lists;
 import com.intellij.openapi.util.Condition;
+import com.intellij.psi.PsiElement;
 import com.intellij.util.containers.ContainerUtil;
+import kotlin.Pair;
 import kotlin.Unit;
 import kotlin.jvm.functions.Function0;
 import org.jetbrains.annotations.NotNull;
@@ -32,6 +34,7 @@ import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.resolve.*;
 import org.jetbrains.kotlin.resolve.bindingContextUtil.BindingContextUtilsKt;
 import org.jetbrains.kotlin.resolve.calls.callResolverUtil.CallResolverUtilKt;
+import org.jetbrains.kotlin.resolve.calls.callResolverUtil.ResolveArgumentsMode;
 import org.jetbrains.kotlin.resolve.calls.callUtil.CallUtilKt;
 import org.jetbrains.kotlin.resolve.calls.checkers.CallChecker;
 import org.jetbrains.kotlin.resolve.calls.context.*;
@@ -50,7 +53,6 @@ import org.jetbrains.kotlin.resolve.descriptorUtil.DescriptorUtilsKt;
 import org.jetbrains.kotlin.resolve.lazy.ForceResolveUtil;
 import org.jetbrains.kotlin.resolve.scopes.LexicalScope;
 import org.jetbrains.kotlin.resolve.scopes.receivers.ExpressionReceiver;
-import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue;
 import org.jetbrains.kotlin.types.KotlinType;
 import org.jetbrains.kotlin.types.TypeSubstitutor;
 import org.jetbrains.kotlin.types.expressions.ExpressionTypingContext;
@@ -287,7 +289,7 @@ public class CallResolver {
         return resolveFunctionCall(
                 BasicCallResolutionContext.create(
                         trace, scope, call, expectedType, dataFlowInfo, ContextDependency.INDEPENDENT, CheckArgumentTypesMode.CHECK_VALUE_ARGUMENTS,
-                        CallChecker.DoNothing.INSTANCE$, isAnnotationContext
+                        CallChecker.DoNothing.INSTANCE, isAnnotationContext
                 )
         );
     }
@@ -351,7 +353,7 @@ public class CallResolver {
             @NotNull BasicCallResolutionContext context,
             @NotNull KtConstructorCalleeExpression expression
     ) {
-        assert !context.call.getExplicitReceiver().exists() :
+        assert context.call.getExplicitReceiver() == null :
                 "Constructor can't be invoked with explicit receiver: " + context.call.getCallElement().getText();
 
         context.trace.record(BindingContext.LEXICAL_SCOPE, context.call.getCallElement(), context.scope);
@@ -371,14 +373,20 @@ public class CallResolver {
             context.trace.report(NOT_A_CLASS.on(expression));
             return checkArgumentTypesAndFail(context);
         }
+
         ClassDescriptor classDescriptor = (ClassDescriptor) declarationDescriptor;
+
         Collection<ConstructorDescriptor> constructors = classDescriptor.getConstructors();
         if (constructors.isEmpty()) {
             context.trace.report(NO_CONSTRUCTOR.on(CallUtilKt.getValueArgumentListOrElement(context.call)));
             return checkArgumentTypesAndFail(context);
         }
-        Collection<ResolutionCandidate<CallableDescriptor>> candidates =
-                taskPrioritizer.<CallableDescriptor>convertWithImpliedThisAndNoReceiver(context.scope, constructors, context.call);
+
+        Pair<Collection<ResolutionCandidate<CallableDescriptor>>, BasicCallResolutionContext> candidatesAndContext =
+                prepareCandidatesAndContextForConstructorCall(constructedType, context);
+
+        Collection<ResolutionCandidate<CallableDescriptor>> candidates = candidatesAndContext.getFirst();
+        context = candidatesAndContext.getSecond();
 
         return computeTasksFromCandidatesAndResolvedCall(context, functionReference, candidates, CallTransformer.FUNCTION_CALL_TRANSFORMER);
     }
@@ -387,17 +395,17 @@ public class CallResolver {
     public OverloadResolutionResults<FunctionDescriptor> resolveConstructorDelegationCall(
             @NotNull BindingTrace trace, @NotNull LexicalScope scope, @NotNull DataFlowInfo dataFlowInfo,
             @NotNull ConstructorDescriptor constructorDescriptor,
-            @NotNull KtConstructorDelegationCall call, @NotNull CallChecker callChecker
+            @NotNull KtConstructorDelegationCall call
     ) {
         // Method returns `null` when there is nothing to resolve in trivial cases like `null` call expression or
         // when super call should be conventional enum constructor and super call should be empty
 
         BasicCallResolutionContext context = BasicCallResolutionContext.create(
                 trace, scope,
-                CallMaker.makeCall(ReceiverValue.NO_RECEIVER, null, call),
+                CallMaker.makeCall(null, null, call),
                 NO_EXPECTED_TYPE,
                 dataFlowInfo, ContextDependency.INDEPENDENT, CheckArgumentTypesMode.CHECK_VALUE_ARGUMENTS,
-                callChecker, false);
+                CallChecker.DoNothing.INSTANCE, false);
 
         if (call.getCalleeExpression() == null) return checkArgumentTypesAndFail(context);
 
@@ -449,28 +457,68 @@ public class CallResolver {
             return checkArgumentTypesAndFail(context);
         }
 
-        List<ResolutionCandidate<CallableDescriptor>> candidates = Lists.newArrayList();
-        ReceiverValue constructorDispatchReceiver = !delegateClassDescriptor.isInner() ? ReceiverValue.NO_RECEIVER :
-                                                    ((ClassDescriptor) delegateClassDescriptor.getContainingDeclaration()).
-                                                            getThisAsReceiverParameter().getValue();
 
-        KotlinType expectedType = isThisCall ?
+        KotlinType superType = isThisCall ?
                                   calleeConstructor.getContainingDeclaration().getDefaultType() :
                                   DescriptorUtils.getSuperClassType(currentClassDescriptor);
 
-        TypeSubstitutor knownTypeParametersSubstitutor = TypeSubstitutor.create(expectedType);
-        for (CallableDescriptor descriptor : constructors) {
-            candidates.add(ResolutionCandidate.create(
-                    context.call, descriptor, constructorDispatchReceiver, ReceiverValue.NO_RECEIVER,
-                    ExplicitReceiverKind.NO_EXPLICIT_RECEIVER,
-                    knownTypeParametersSubstitutor));
-        }
+        Pair<Collection<ResolutionCandidate<CallableDescriptor>>, BasicCallResolutionContext> candidatesAndContext =
+                prepareCandidatesAndContextForConstructorCall(superType, context);
+        Collection<ResolutionCandidate<CallableDescriptor>> candidates = candidatesAndContext.getFirst();
+        context = candidatesAndContext.getSecond();
 
         TracingStrategy tracing = call.isImplicit() ?
                                   new TracingStrategyForImplicitConstructorDelegationCall(call, context.call) :
                                   TracingStrategyImpl.create(calleeExpression, context.call);
 
+        PsiElement reportOn = call.isImplicit() ? call : calleeExpression;
+
+        if (delegateClassDescriptor.isInner()
+                && !DescriptorResolver.checkHasOuterClassInstance(context.scope, context.trace, reportOn,
+                                                                  (ClassDescriptor) delegateClassDescriptor.getContainingDeclaration())) {
+            return checkArgumentTypesAndFail(context);
+        }
+
         return computeTasksFromCandidatesAndResolvedCall(context, candidates, CallTransformer.FUNCTION_CALL_TRANSFORMER, tracing);
+    }
+
+    @NotNull
+    private
+    Pair<Collection<ResolutionCandidate<CallableDescriptor>>, BasicCallResolutionContext> prepareCandidatesAndContextForConstructorCall(
+            @NotNull KotlinType superType,
+            @NotNull BasicCallResolutionContext context
+    ) {
+        if (!(superType.getConstructor().getDeclarationDescriptor() instanceof ClassDescriptor)) {
+            return new Pair<Collection<ResolutionCandidate<CallableDescriptor>>, BasicCallResolutionContext>(
+                    Collections.<ResolutionCandidate<CallableDescriptor>>emptyList(), context);
+        }
+
+        ClassDescriptor superClass = (ClassDescriptor) superType.getConstructor().getDeclarationDescriptor();
+
+        // If any constructor has type parameter (currently it only can be true for ones from Java), try to infer arguments for them
+        // Otherwise use NO_EXPECTED_TYPE and knownTypeParametersSubstitutor
+        boolean anyConstructorHasDeclaredTypeParameters =
+                anyConstructorHasDeclaredTypeParameters(superType.getConstructor().getDeclarationDescriptor());
+
+        TypeSubstitutor knownTypeParametersSubstitutor = anyConstructorHasDeclaredTypeParameters ? null : TypeSubstitutor.create(superType);
+        if (anyConstructorHasDeclaredTypeParameters) {
+            context = context.replaceExpectedType(superType);
+        }
+
+        Collection<ResolutionCandidate<CallableDescriptor>> candidates =
+                taskPrioritizer.<CallableDescriptor>convertWithImpliedThisAndNoReceiver(
+                        context.scope, superClass.getConstructors(), context.call, knownTypeParametersSubstitutor);
+
+        return new Pair<Collection<ResolutionCandidate<CallableDescriptor>>, BasicCallResolutionContext>(candidates, context);
+    }
+
+    private static boolean anyConstructorHasDeclaredTypeParameters(@Nullable ClassifierDescriptor classDescriptor) {
+        if (!(classDescriptor instanceof ClassDescriptor)) return false;
+        for (ConstructorDescriptor constructor : ((ClassDescriptor) classDescriptor).getConstructors()) {
+            if (constructor.getTypeParameters().size() > constructor.getContainingDeclaration().getDeclaredTypeParameters().size()) return true;
+        }
+
+        return false;
     }
 
     public OverloadResolutionResults<FunctionDescriptor> resolveCallWithKnownCandidate(
@@ -574,7 +622,7 @@ public class CallResolver {
     }
 
     private <D extends CallableDescriptor> OverloadResolutionResultsImpl<D> checkArgumentTypesAndFail(BasicCallResolutionContext context) {
-        argumentTypeResolver.checkTypesWithNoCallee(context);
+        argumentTypeResolver.checkTypesWithNoCallee(context, ResolveArgumentsMode.RESOLVE_FUNCTION_ARGUMENTS);
         return OverloadResolutionResultsImpl.nameNotFound();
     }
 
@@ -721,7 +769,7 @@ public class CallResolver {
                         candidateResolver.performResolutionForCandidateCall(context, task.checkArguments);
                         candidateResolutionContexts.add(context);
                     }
-                    return Unit.INSTANCE$;
+                    return Unit.INSTANCE;
                 }
             });
         }

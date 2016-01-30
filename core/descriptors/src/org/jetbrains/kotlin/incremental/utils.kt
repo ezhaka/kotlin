@@ -23,19 +23,21 @@ import org.jetbrains.kotlin.incremental.components.*
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.resolve.descriptorUtil.fqNameUnsafe
 
-public fun LookupTracker.record(from: LookupLocation, scopeOwner: DeclarationDescriptor, name: Name) {
+fun LookupTracker.record(from: LookupLocation, scopeOwner: DeclarationDescriptor, name: Name) {
     if (this == LookupTracker.DO_NOTHING || from is NoLookupLocation) return
 
     val location = from.location ?: return
 
-    val scopeKind =
-            when (scopeOwner) {
-                is ClassifierDescriptor -> ScopeKind.CLASSIFIER
-                is PackageFragmentDescriptor -> ScopeKind.PACKAGE
-                else -> throw AssertionError("Unexpected containing declaration type: ${scopeOwner.javaClass}")
-            }
+    val scopeKind = getScopeKind(scopeOwner) ?:
+                    throw AssertionError("Unexpected containing declaration type: ${scopeOwner.javaClass}")
 
     val position = if (requiresPosition) location.position else Position.NO_POSITION
 
     record(location.filePath, position, scopeOwner.fqNameUnsafe.asString(), scopeKind, name.asString())
+}
+
+fun getScopeKind(scopeOwner: DeclarationDescriptor) = when (scopeOwner) {
+    is ClassifierDescriptor -> ScopeKind.CLASSIFIER
+    is PackageFragmentDescriptor -> ScopeKind.PACKAGE
+    else -> null
 }

@@ -20,7 +20,7 @@ import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.resolve.constants.NullValue
 import org.jetbrains.kotlin.types.KotlinType
 
-public open class KotlinSerializerExtensionBase(private val protocol: SerializerExtensionProtocol) : SerializerExtension() {
+open class KotlinSerializerExtensionBase(private val protocol: SerializerExtensionProtocol) : SerializerExtension() {
     private val stringTable = StringTableImpl()
     private val annotationSerializer = AnnotationSerializer(stringTable)
 
@@ -69,6 +69,12 @@ public open class KotlinSerializerExtensionBase(private val protocol: Serializer
     override fun serializeType(type: KotlinType, proto: ProtoBuf.Type.Builder) {
         for (annotation in type.annotations) {
             proto.addExtension(protocol.typeAnnotation, annotationSerializer.serializeAnnotation(annotation))
+        }
+    }
+
+    override fun serializeTypeParameter(typeParameter: TypeParameterDescriptor, proto: ProtoBuf.TypeParameter.Builder) {
+        for (annotation in typeParameter.annotations) {
+            proto.addExtension(protocol.typeParameterAnnotation, annotationSerializer.serializeAnnotation(annotation))
         }
     }
 }

@@ -107,6 +107,18 @@ public class BlackBoxWithJavaCodegenTestGenerated extends AbstractBlackBoxCodege
         doTestWithJava(fileName);
     }
 
+    @TestMetadata("invariantArgumentsNoWildcard")
+    public void testInvariantArgumentsNoWildcard() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/boxWithJava/invariantArgumentsNoWildcard/");
+        doTestWithJava(fileName);
+    }
+
+    @TestMetadata("invokeOnSyntheticProperty")
+    public void testInvokeOnSyntheticProperty() throws Exception {
+        String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/boxWithJava/invokeOnSyntheticProperty/");
+        doTestWithJava(fileName);
+    }
+
     @TestMetadata("jvmName")
     public void testJvmName() throws Exception {
         String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/boxWithJava/jvmName/");
@@ -541,6 +553,18 @@ public class BlackBoxWithJavaCodegenTestGenerated extends AbstractBlackBoxCodege
             doTestWithJava(fileName);
         }
 
+        @TestMetadata("protectedJavaProperty")
+        public void testProtectedJavaProperty() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/boxWithJava/properties/protectedJavaProperty/");
+            doTestWithJava(fileName);
+        }
+
+        @TestMetadata("protectedJavaPropertyInCompanion")
+        public void testProtectedJavaPropertyInCompanion() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/boxWithJava/properties/protectedJavaPropertyInCompanion/");
+            doTestWithJava(fileName);
+        }
+
         @TestMetadata("substituteJavaSuperField")
         public void testSubstituteJavaSuperField() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/boxWithJava/properties/substituteJavaSuperField/");
@@ -555,6 +579,12 @@ public class BlackBoxWithJavaCodegenTestGenerated extends AbstractBlackBoxCodege
     public static class Reflection extends AbstractBlackBoxCodegenTest {
         public void testAllFilesPresentInReflection() throws Exception {
             KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("compiler/testData/codegen/boxWithJava/reflection"), Pattern.compile("^([^\\.]+)$"), true);
+        }
+
+        @TestMetadata("annotationsOnJavaMembers")
+        public void testAnnotationsOnJavaMembers() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("compiler/testData/codegen/boxWithJava/reflection/annotationsOnJavaMembers/");
+            doTestWithJava(fileName);
         }
 
         @TestMetadata("callInstanceJavaMethod")

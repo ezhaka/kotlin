@@ -29,7 +29,7 @@ import org.jetbrains.kotlin.resolve.jvm.diagnostics.JvmDeclarationOrigin
 import org.jetbrains.org.objectweb.asm.*
 import org.jetbrains.org.objectweb.asm.commons.InstructionAdapter
 
-public class AndroidOnDestroyClassBuilderInterceptorExtension : ClassBuilderInterceptorExtension {
+class AndroidOnDestroyClassBuilderInterceptorExtension : ClassBuilderInterceptorExtension {
 
     override fun interceptClassBuilderFactory(
             interceptedFactory: ClassBuilderFactory,
@@ -39,7 +39,10 @@ public class AndroidOnDestroyClassBuilderInterceptorExtension : ClassBuilderInte
         return AndroidOnDestroyClassBuilderFactory(interceptedFactory, bindingContext)
     }
 
-    private inner class AndroidOnDestroyClassBuilderFactory(private val delegateFactory: ClassBuilderFactory, val bindingContext: BindingContext) : ClassBuilderFactory {
+    private inner class AndroidOnDestroyClassBuilderFactory(
+            private val delegateFactory: ClassBuilderFactory,
+            val bindingContext: BindingContext
+    ) : ClassBuilderFactory {
 
         override fun newClassBuilder(origin: JvmDeclarationOrigin): ClassBuilder {
             return AndroidOnDestroyCollectorClassBuilder(delegateFactory.newClassBuilder(origin), bindingContext)
@@ -94,11 +97,17 @@ public class AndroidOnDestroyClassBuilderInterceptorExtension : ClassBuilderInte
                 exceptions: Array<out String>?
         ): MethodVisitor {
             return object : MethodVisitor(Opcodes.ASM5, super.newMethod(origin, access, name, desc, signature, exceptions)) {
-                override fun visitCode() {
-                    super.visitCode()
+                override fun visitInsn(opcode: Int) {
+                    if (opcode == Opcodes.RETURN) {
+                        generateClearCacheMethodCall()
+                    }
 
+                    super.visitInsn(opcode)
+                }
+
+                private fun generateClearCacheMethodCall() {
                     if (name != AndroidExpressionCodegenExtension.ON_DESTROY_METHOD_NAME || currentClass == null) return
-                    if (Type.getArgumentTypes(desc).size() != 0) return
+                    if (Type.getArgumentTypes(desc).size != 0) return
                     if (Type.getReturnType(desc) != Type.VOID_TYPE) return
 
                     val classType = currentClassName?.let { Type.getObjectType(it) } ?: return

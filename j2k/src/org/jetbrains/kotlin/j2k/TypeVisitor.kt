@@ -22,8 +22,9 @@ import com.intellij.psi.impl.source.PsiClassReferenceType
 import org.jetbrains.kotlin.j2k.ast.*
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.resolve.jvm.JvmPrimitiveType
+import org.jetbrains.kotlin.builtins.KotlinBuiltIns.FQ_NAMES as BUILTIN_NAMES
 
-private val PRIMITIVE_TYPES_NAMES = JvmPrimitiveType.values().map { it.getJavaKeywordName() }
+private val PRIMITIVE_TYPES_NAMES = JvmPrimitiveType.values().map { it.javaKeywordName }
 
 class TypeVisitor(
         private val converter: Converter,
@@ -38,7 +39,7 @@ class TypeVisitor(
     override fun visitType(type: PsiType) = ErrorType()
 
     override fun visitPrimitiveType(primitiveType: PsiPrimitiveType): Type {
-        val name = primitiveType.getCanonicalText()
+        val name = primitiveType.canonicalText
         return if (name == "void") {
             UnitType()
         }
@@ -54,7 +55,7 @@ class TypeVisitor(
     }
 
     override fun visitArrayType(arrayType: PsiArrayType): Type {
-        return ArrayType(typeConverter.convertType(arrayType.getComponentType(), inAnnotationType = inAnnotationType), Nullability.Default, converter.settings)
+        return ArrayType(typeConverter.convertType(arrayType.componentType, inAnnotationType = inAnnotationType), Nullability.Default, converter.settings)
     }
 
     override fun visitClassType(classType: PsiClassType): Type {
@@ -68,7 +69,7 @@ class TypeVisitor(
 
         val psiClass = classType.resolve()
         if (psiClass != null) {
-            val javaClassName = psiClass.getQualifiedName()
+            val javaClassName = psiClass.qualifiedName
             val kotlinClassName = (if (mutability.isMutable(converter.settings)) toKotlinMutableTypesMap[javaClassName] else null)
                                   ?: toKotlinTypesMap[javaClassName]
             if (kotlinClassName != null) {
@@ -77,35 +78,35 @@ class TypeVisitor(
 
             if (inAnnotationType && javaClassName == "java.lang.Class") {
                 val fqName = FqName("kotlin.reflect.KClass")
-                val identifier = Identifier(fqName.shortName().getIdentifier(), imports = listOf(fqName)).assignNoPrototype()
+                val identifier = Identifier(fqName.shortName().identifier, imports = listOf(fqName)).assignNoPrototype()
                 return ReferenceElement(identifier, typeArgs).assignNoPrototype()
             }
         }
 
         if (classType is PsiClassReferenceType) {
-            return converter.convertCodeReferenceElement(classType.getReference(), hasExternalQualifier = false, typeArgsConverted = typeArgs)
+            return converter.convertCodeReferenceElement(classType.reference, hasExternalQualifier = false, typeArgsConverted = typeArgs)
         }
 
-        return ReferenceElement(Identifier(classType.getClassName() ?: "").assignNoPrototype(), typeArgs).assignNoPrototype()
+        return ReferenceElement(Identifier(classType.className ?: "").assignNoPrototype(), typeArgs).assignNoPrototype()
     }
 
     private fun getShortName(className: String): String = className.substringAfterLast('.', className)
 
     private fun convertTypeArgs(classType: PsiClassType): List<Type> {
-        if (classType.getParameterCount() == 0) {
+        if (classType.parameterCount == 0) {
             return createTypeArgsForRawTypeUsage(classType, Mutability.Default)
         }
         else {
-            return typeConverter.convertTypes(classType.getParameters())
+            return typeConverter.convertTypes(classType.parameters)
         }
     }
 
     private fun createTypeArgsForRawTypeUsage(classType: PsiClassType, mutability: Mutability): List<Type> {
         if (classType is PsiClassReferenceType) {
-            val targetClass = classType.getReference().resolve() as? PsiClass
+            val targetClass = classType.reference.resolve() as? PsiClass
             if (targetClass != null) {
-                return targetClass.getTypeParameters().map {
-                    val superType = it.getSuperTypes().first() // there must be at least one super type always
+                return targetClass.typeParameters.map {
+                    val superType = it.superTypes.first() // there must be at least one super type always
                     typeConverter.convertType(superType, Nullability.Default, mutability, inAnnotationType).assignNoPrototype()
                 }
             }
@@ -115,40 +116,46 @@ class TypeVisitor(
 
     override fun visitWildcardType(wildcardType: PsiWildcardType): Type {
         return when {
-            wildcardType.isExtends() -> OutProjectionType(typeConverter.convertType(wildcardType.getExtendsBound()))
-            wildcardType.isSuper() -> InProjectionType(typeConverter.convertType(wildcardType.getSuperBound()))
+            wildcardType.isExtends -> OutProjectionType(typeConverter.convertType(wildcardType.extendsBound))
+            wildcardType.isSuper -> InProjectionType(typeConverter.convertType(wildcardType.superBound))
             else -> StarProjectionType()
         }
     }
 
     override fun visitEllipsisType(ellipsisType: PsiEllipsisType): Type {
-        return VarArgType(typeConverter.convertType(ellipsisType.getComponentType(), inAnnotationType = inAnnotationType))
+        return VarArgType(typeConverter.convertType(ellipsisType.componentType, inAnnotationType = inAnnotationType))
     }
 
     companion object {
         private val toKotlinTypesMap: Map<String, String> = mapOf(
-                CommonClassNames.JAVA_LANG_OBJECT to "kotlin.Any",
-                CommonClassNames.JAVA_LANG_BYTE to "kotlin.Byte",
-                CommonClassNames.JAVA_LANG_CHARACTER to "kotlin.Char",
-                CommonClassNames.JAVA_LANG_DOUBLE to "kotlin.Double",
-                CommonClassNames.JAVA_LANG_FLOAT to "kotlin.Float",
-                CommonClassNames.JAVA_LANG_INTEGER to "kotlin.Int",
-                CommonClassNames.JAVA_LANG_LONG to "kotlin.Long",
-                CommonClassNames.JAVA_LANG_SHORT to "kotlin.Short",
-                CommonClassNames.JAVA_LANG_BOOLEAN to "kotlin.Boolean",
-                CommonClassNames.JAVA_LANG_ITERABLE to "kotlin.Iterable",
-                CommonClassNames.JAVA_UTIL_ITERATOR to "kotlin.Iterator",
-                CommonClassNames.JAVA_UTIL_LIST to "kotlin.List",
-                CommonClassNames.JAVA_UTIL_COLLECTION to "kotlin.Collection",
-                CommonClassNames.JAVA_UTIL_SET to "kotlin.Set",
-                CommonClassNames.JAVA_UTIL_MAP to "kotlin.Map"
+                CommonClassNames.JAVA_LANG_OBJECT to BUILTIN_NAMES.any.asString(),
+                CommonClassNames.JAVA_LANG_BYTE to BUILTIN_NAMES._byte.asString(),
+                CommonClassNames.JAVA_LANG_CHARACTER to BUILTIN_NAMES._char.asString(),
+                CommonClassNames.JAVA_LANG_DOUBLE to BUILTIN_NAMES._double.asString(),
+                CommonClassNames.JAVA_LANG_FLOAT to BUILTIN_NAMES._float.asString(),
+                CommonClassNames.JAVA_LANG_INTEGER to BUILTIN_NAMES._int.asString(),
+                CommonClassNames.JAVA_LANG_LONG to BUILTIN_NAMES._long.asString(),
+                CommonClassNames.JAVA_LANG_SHORT to BUILTIN_NAMES._short.asString(),
+                CommonClassNames.JAVA_LANG_BOOLEAN to BUILTIN_NAMES._boolean.asString(),
+                CommonClassNames.JAVA_LANG_ITERABLE to BUILTIN_NAMES.iterable.asString(),
+                CommonClassNames.JAVA_UTIL_ITERATOR to BUILTIN_NAMES.iterator.asString(),
+                CommonClassNames.JAVA_UTIL_LIST to BUILTIN_NAMES.list.asString(),
+                CommonClassNames.JAVA_UTIL_COLLECTION to BUILTIN_NAMES.collection.asString(),
+                CommonClassNames.JAVA_UTIL_SET to BUILTIN_NAMES.set.asString(),
+                CommonClassNames.JAVA_UTIL_MAP to BUILTIN_NAMES.map.asString(),
+                CommonClassNames.JAVA_UTIL_MAP_ENTRY to BUILTIN_NAMES.mapEntry.asString(),
+                java.util.ListIterator::class.java.canonicalName to BUILTIN_NAMES.listIterator.asString()
+
         )
 
-        public val toKotlinMutableTypesMap: Map<String, String> = mapOf(
-                CommonClassNames.JAVA_UTIL_LIST to "kotlin.MutableList",
-                CommonClassNames.JAVA_UTIL_COLLECTION to "kotlin.MutableCollection",
-                CommonClassNames.JAVA_UTIL_SET to "kotlin.MutableSet",
-                CommonClassNames.JAVA_UTIL_MAP to "kotlin.MutableMap"
+        val toKotlinMutableTypesMap: Map<String, String> = mapOf(
+                CommonClassNames.JAVA_UTIL_ITERATOR to BUILTIN_NAMES.mutableIterator.asString(),
+                CommonClassNames.JAVA_UTIL_LIST to BUILTIN_NAMES.mutableList.asString(),
+                CommonClassNames.JAVA_UTIL_COLLECTION to BUILTIN_NAMES.mutableCollection.asString(),
+                CommonClassNames.JAVA_UTIL_SET to BUILTIN_NAMES.mutableSet.asString(),
+                CommonClassNames.JAVA_UTIL_MAP to BUILTIN_NAMES.mutableMap.asString(),
+                CommonClassNames.JAVA_UTIL_MAP_ENTRY to BUILTIN_NAMES.mutableMapEntry.asString(),
+                java.util.ListIterator::class.java.canonicalName to BUILTIN_NAMES.mutableListIterator.asString()
         )
     }
 }

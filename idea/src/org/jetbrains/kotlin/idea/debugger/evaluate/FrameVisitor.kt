@@ -42,7 +42,7 @@ class FrameVisitor(context: EvaluationContextImpl) {
         val OBJECT_TYPE = Type.getType(Any::class.java)
     }
 
-    public fun findValue(name: String, asmType: Type?, checkType: Boolean, failIfNotFound: Boolean): Value? {
+    fun findValue(name: String, asmType: Type?, checkType: Boolean, failIfNotFound: Boolean): Value? {
         if (frame == null) return null
 
         try {
@@ -56,9 +56,11 @@ class FrameVisitor(context: EvaluationContextImpl) {
                 else -> {
                     if (isInsideInlineFunctionBody(frame.visibleVariables())) {
                         val number = numberOfInlinedFunctions(frame.visibleVariables())
-                        val inlineFunVar = findLocalVariableForInlineArgument(name, number, asmType, true)
-                        if (inlineFunVar != null) {
-                            return inlineFunVar
+                        for (inlineFunctionIndex in number downTo 1) {
+                            val inlineFunVar = findLocalVariableForInlineArgument(name, inlineFunctionIndex, asmType, true)
+                            if (inlineFunVar != null) {
+                                return inlineFunVar
+                            }
                         }
                     }
 

@@ -22,12 +22,12 @@ import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiFileFactory
 import com.intellij.psi.PsiJavaFile
 
-public object JavaToKotlinTranslator {
+object JavaToKotlinTranslator {
     private fun createFile(text: String, project: Project): PsiFile? {
         return PsiFileFactory.getInstance(project).createFileFromText("test.java", JavaLanguage.INSTANCE, text)
     }
 
-    public fun prettify(code: String?): String {
+    fun prettify(code: String?): String {
         if (code == null) {
             return ""
         }
@@ -42,10 +42,10 @@ public object JavaToKotlinTranslator {
                 .trim()
     }
 
-    public fun generateKotlinCode(javaCode: String, project: Project): String {
+    fun generateKotlinCode(javaCode: String, project: Project): String {
         val file = createFile(javaCode, project)
         if (file is PsiJavaFile) {
-            val converter = JavaToKotlinConverter(file.getProject(), ConverterSettings.defaultSettings, EmptyJavaToKotlinServices)
+            val converter = JavaToKotlinConverter(file.project, ConverterSettings.defaultSettings, EmptyJavaToKotlinServices)
             return prettify(converter.elementsToKotlin(listOf(file)).results.single()!!.text) //TODO: imports
         }
         return ""
@@ -53,6 +53,6 @@ public object JavaToKotlinTranslator {
 }
 
 //used in Kotlin Web Demo
-public fun translateToKotlin(code: String, project: Project): String {
+fun translateToKotlin(code: String, project: Project): String {
     return JavaToKotlinTranslator.generateKotlinCode(code, project)
 }

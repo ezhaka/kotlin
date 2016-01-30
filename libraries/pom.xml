@@ -61,8 +61,8 @@
 
     <distributionManagement>
         <repository>
-            <id>sonatype-nexus-snapshots</id>
-            <url>http://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+            <id>${deploy-repo}</id>
+            <url>${deploy-url}</url>
         </repository>
         <snapshotRepository>
             <id>sonatype-nexus-staging</id>
@@ -73,8 +73,6 @@
     <modules>
         <module>tools/kotlin-compiler</module>
         <module>tools/kotlin-compiler-embeddable</module>
-        <module>tools/kotlin-jdk-annotations</module>
-        <module>tools/kotlin-android-sdk-annotations</module>
         <module>tools/kotlin-maven-plugin</module>
 
         <module>tools/runtime</module>
@@ -97,7 +95,7 @@
         <module>tools/kotlin-js-tests</module>
         <module>tools/kotlin-js-tests-junit</module>
 
-        <module>kunit</module>
+        <module>kotlin.test</module>
 
         <module>examples/kotlin-java-example</module>
         <module>examples/js-example</module>
@@ -228,6 +226,16 @@
                 </executions>
             </plugin>
 
+            <plugin>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 

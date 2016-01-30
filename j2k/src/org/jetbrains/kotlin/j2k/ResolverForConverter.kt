@@ -16,11 +16,11 @@
 
 package org.jetbrains.kotlin.j2k
 
-import org.jetbrains.kotlin.psi.KtDeclaration
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
+import org.jetbrains.kotlin.psi.KtDeclaration
 
-public interface ResolverForConverter {
-    public fun resolveToDescriptor(declaration: KtDeclaration): DeclarationDescriptor?
+interface ResolverForConverter {
+    fun resolveToDescriptor(declaration: KtDeclaration): DeclarationDescriptor?
 }
 
 object EmptyResolverForConverter : ResolverForConverter {

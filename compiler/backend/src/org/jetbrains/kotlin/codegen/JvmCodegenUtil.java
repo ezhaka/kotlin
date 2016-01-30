@@ -18,9 +18,9 @@ package org.jetbrains.kotlin.codegen;
 
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
-import kotlin.CollectionsKt;
-import kotlin.StringsKt;
+import kotlin.collections.CollectionsKt;
 import kotlin.jvm.functions.Function1;
+import kotlin.text.StringsKt;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.codegen.binding.CalculatedClosure;
@@ -28,11 +28,10 @@ import org.jetbrains.kotlin.codegen.context.CodegenContext;
 import org.jetbrains.kotlin.codegen.context.FacadePartWithSourceFile;
 import org.jetbrains.kotlin.codegen.context.MethodContext;
 import org.jetbrains.kotlin.codegen.context.RootContext;
-import org.jetbrains.kotlin.codegen.state.GenerationState;
 import org.jetbrains.kotlin.codegen.state.JetTypeMapper;
 import org.jetbrains.kotlin.descriptors.*;
-import org.jetbrains.kotlin.load.java.JvmAbi;
 import org.jetbrains.kotlin.load.java.JvmAnnotationNames;
+import org.jetbrains.kotlin.load.kotlin.JvmMetadataVersion;
 import org.jetbrains.kotlin.load.kotlin.ModuleMapping;
 import org.jetbrains.kotlin.load.kotlin.ModuleVisibilityUtilsKt;
 import org.jetbrains.kotlin.psi.KtFile;
@@ -50,6 +49,7 @@ import java.io.File;
 
 import static org.jetbrains.kotlin.descriptors.Modality.ABSTRACT;
 import static org.jetbrains.kotlin.descriptors.Modality.FINAL;
+import static org.jetbrains.kotlin.resolve.jvm.annotations.AnnotationUtilKt.hasJvmFieldAnnotation;
 
 public class JvmCodegenUtil {
 
@@ -130,16 +130,21 @@ public class JvmCodegenUtil {
         );
     }
 
+    public static boolean isConstOrHasJvmFieldAnnotation(@NotNull PropertyDescriptor propertyDescriptor) {
+        return propertyDescriptor.isConst() || hasJvmFieldAnnotation(propertyDescriptor);
+    }
+
     public static boolean couldUseDirectAccessToProperty(
             @NotNull PropertyDescriptor property,
             boolean forGetter,
             boolean isDelegated,
-            @NotNull MethodContext context
+            @NotNull MethodContext contextBeforeInline
     ) {
         if (JetTypeMapper.isAccessor(property)) return false;
 
+        CodegenContext context = contextBeforeInline.getFirstCrossInlineOrNonInlineContext();
         // Inline functions can't use direct access because a field may not be visible at the call site
-        if (context.isInlineFunction()) {
+        if (context.isInlineMethodContext()) {
             return false;
         }
 
@@ -164,7 +169,7 @@ public class JvmCodegenUtil {
         return Visibilities.isPrivate(property.getVisibility()) || accessor.getModality() == FINAL;
     }
 
-    private static boolean isDebuggerContext(@NotNull MethodContext context) {
+    private static boolean isDebuggerContext(@NotNull CodegenContext context) {
         KtFile file = DescriptorToSourceUtils.getContainingFile(context.getContextDescriptor());
         return file != null && CodeFragmentUtilKt.getSuppressDiagnosticsInDebugMode(file);
     }
@@ -217,16 +222,6 @@ public class JvmCodegenUtil {
     }
 
     public static void writeAbiVersion(@NotNull AnnotationVisitor av) {
-        av.visit(JvmAnnotationNames.VERSION_FIELD_NAME, JvmAbi.VERSION.toArray());
-
-        // TODO: drop after some time
-        av.visit(JvmAnnotationNames.OLD_ABI_VERSION_FIELD_NAME, 32);
-    }
-
-    public static void writeModuleName(@NotNull AnnotationVisitor av, @NotNull GenerationState state) {
-        String name = state.getModuleName();
-        if (!name.equals(JvmAbi.DEFAULT_MODULE_NAME)) {
-            av.visit(JvmAnnotationNames.MODULE_NAME_FIELD_NAME, name);
-        }
+        av.visit(JvmAnnotationNames.VERSION_FIELD_NAME, JvmMetadataVersion.INSTANCE.toArray());
     }
 }

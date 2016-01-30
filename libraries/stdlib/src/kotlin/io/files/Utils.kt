@@ -46,66 +46,10 @@ public fun createTempFile(prefix: String = "tmp", suffix: String? = null, direct
 }
 
 /**
- * Returns this if this file is a directory, or the parent if it is a file inside a directory.
- */
-@Deprecated("This property has unclear semantics and will be removed soon.")
-public val File.directory: File
-    get() = if (isDirectory()) this else parentFile!!
-
-/**
- * Returns parent of this abstract path name, or `null` if it has no parent.
- */
-@Deprecated("Use 'parentFile' property instead.", ReplaceWith("parentFile"), DeprecationLevel.ERROR)
-public val File.parent: File?
-    get() = parentFile
-
-/**
  * Returns the extension of this file (not including the dot), or an empty string if it doesn't have one.
  */
 public val File.extension: String
     get() = name.substringAfterLast('.', "")
-
-/**
- * Replaces all separators in the string used to separate directories with system ones and returns the resulting string.
- *
- * @return the pathname with system separators.
- */
-@Deprecated("Use File.path instead", ReplaceWith("File(this).path", "java.io.File"))
-public fun String.separatorsToSystem(): String {
-    val otherSep = if (File.separator == "/") "\\" else "/"
-    return replace(otherSep, File.separator)
-}
-
-/**
- * Replaces all path separators in the string with system ones and returns the resulting string.
- *
- * @return the pathname with system separators.
- */
-@Deprecated("This function is deprecated")
-public fun String.pathSeparatorsToSystem(): String {
-    val otherSep = if (File.pathSeparator == ":") ";" else ":"
-    return replace(otherSep, File.pathSeparator)
-}
-
-/**
- * Replaces path and directories separators with corresponding system ones and returns the resulting string.
- *
- * @return the pathname with system separators.
- */
-@Deprecated("This function is deprecated")
-public fun String.allSeparatorsToSystem(): String {
-    return separatorsToSystem().pathSeparatorsToSystem()
-}
-
-/**
- * Returns a pathname of this file with all path separators replaced with File.pathSeparator.
- *
- * @return the pathname with system separators.
- */
-@Deprecated("File has already system separators.")
-public fun File.separatorsToSystem(): String {
-    return toString().separatorsToSystem()
-}
 
 /**
  * Returns [path] of this File using the invariant separator '/' to
@@ -119,20 +63,6 @@ public val File.invariantSeparatorsPath: String
  */
 public val File.nameWithoutExtension: String
     get() = name.substringBeforeLast(".")
-
-/**
- * Calculates the relative path for this file from [base] file.
- * Note that the [base] file is treated as a directory.
- * If this file matches the [base] file, then an empty string will be returned.
- *
- * @return relative path from [base] to this.
-*
- * @throws IllegalArgumentException if this and base paths have different roots.
- */
-@Deprecated("This function will change return type to File soon. Use toRelativeString instead.", ReplaceWith("toRelativeString(base)"))
-public fun File.relativeTo(base: File): String
-        = toRelativeString(base)
-
 
 /**
  * Calculates the relative path for this file from [base] file.
@@ -155,8 +85,10 @@ public fun File.toRelativeString(base: File): String
  *
  * @throws IllegalArgumentException if this and base paths have different roots.
  */
-@Deprecated("This function will be renamed to relativeTo soon.")
-public fun File.relativeToFile(base: File): File = File(this.relativeTo(base))
+public fun File.relativeTo(base: File): File = File(this.toRelativeString(base))
+
+@Deprecated("Use relativeTo instead.", ReplaceWith("this.relativeTo(base)"), level = DeprecationLevel.ERROR)
+public fun File.relativeToFile(base: File): File = File(this.toRelativeString(base))
 
 
 /**
@@ -225,68 +157,54 @@ private fun File.toRelativeStringOrNull(base: File): String? {
     return res.toString()
 }
 
-/**
- * Calculates the relative path for this file from [descendant] file.
- * Note that the [descendant] file is treated as a directory.
- * If this file matches the [descendant] directory or does not belong to it,
- * then an empty string will be returned.
- */
-@Deprecated("Use relativeTo() function instead")
-public fun File.relativePath(descendant: File): String {
-    val prefix = directory.canonicalPath
-    val answer = descendant.canonicalPath
-    return if (answer.startsWith(prefix)) {
-        val prefixSize = prefix.length
-        if (answer.length > prefixSize) {
-            answer.substring(prefixSize + 1)
-        } else ""
-    } else {
-        answer
-    }
-}
 
 /**
- * Copies this file to the given output [dst], returning the number of bytes copied.
+ * Copies this file to the given [target] file.
  *
- * If some directories on a way to the [dst] are missing, then they will be created.
- * If the [dst] file already exists, then this function will fail unless [overwrite] argument is set to `true`.
- * Otherwise this file overwrites [dst] if it's a file to, or is written into [dst] if it's a directory.
+ * If some directories on a way to the [target] are missing, then they will be created.
+ * If the [target] file already exists, this function will fail unless [overwrite] argument is set to `true`.
  *
- * Note: this function fails if you call it on a directory.
- * If you want to copy directories, use 'copyRecursively' function instead.
+ * When [overwrite] is `true` and [target] is a directory, it is replaced only if it is empty.
+ *
+ * If this file is a directory, it is copied without its content, i.e. an empty [target] directory is created.
+ * If you want to copy directory including its contents, use [copyRecursively].
  *
  * @param overwrite `true` if destination overwrite is allowed.
  * @param bufferSize the buffer size to use when copying.
- * @return the number of bytes copied
+ * @return the [target] file.
  * @throws NoSuchFileException if the source file doesn't exist.
  * @throws FileAlreadyExistsException if the destination file already exists and 'rewrite' argument is set to `false`.
  * @throws IOException if any errors occur while copying.
  */
-public fun File.copyTo(dst: File, overwrite: Boolean = false, bufferSize: Int = defaultBufferSize): Long {
-    if (!exists()) {
+public fun File.copyTo(target: File, overwrite: Boolean = false, bufferSize: Int = DEFAULT_BUFFER_SIZE): File {
+    if (!this.exists()) {
         throw NoSuchFileException(file = this, reason = "The source file doesn't exist")
-    } else if (isDirectory()) {
-        throw IllegalArgumentException("Use copyRecursively to copy a directory $this")
-    } else if (dst.exists()) {
-        if (!overwrite) {
+    }
+
+    if (target.exists()) {
+        val stillExists = if (!overwrite) true else !target.delete()
+
+        if (stillExists) {
             throw FileAlreadyExistsException(file = this,
-                    other = dst,
+                    other = target,
                     reason = "The destination file already exists")
-        } else if (dst.isDirectory() && dst.listFiles().any()) {
-            // In this case file should be copied *into* this directory,
-            // no matter whether it is empty or not
-            return copyTo(dst.resolve(name), overwrite, bufferSize)
         }
     }
-    dst.getParentFile()?.mkdirs()
-    dst.delete()
-    val input = FileInputStream(this)
-    return input.use<FileInputStream, Long> {
-        val output = FileOutputStream(dst)
-        output.use<FileOutputStream, Long> {
-            input.copyTo(output, bufferSize)
+
+    if (this.isDirectory) {
+        if (!target.mkdirs())
+            throw FileSystemException(file = this, other = target, reason = "Failed to create target directory")
+    } else {
+        target.parentFile?.mkdirs()
+
+        this.inputStream().use { input ->
+            target.outputStream().use { output ->
+                input.copyTo(output, bufferSize)
+            }
         }
     }
+
+    return target
 }
 
 /**
@@ -305,7 +223,7 @@ public enum class OnErrorAction {
 private class TerminateException(file: File) : FileSystemException(file) {}
 
 /**
- * Copies this file with all its children to the specified destination [dst] path.
+ * Copies this file with all its children to the specified destination [target] path.
  * If some directories on the way to the destination are missing, then they will be created.
  *
  * If any errors occur during the copying, then further actions will depend on the result of the call
@@ -318,11 +236,13 @@ private class TerminateException(file: File) : FileSystemException(file) {}
  * AccessDeniedException - if there was an attempt to open a directory that didn't succeed.
  * IOException - if some problems occur when copying.
  *
+ * @param overwrite `true` if it is allowed to overwrite existing destination files and directories.
  * @return `false` if the copying was terminated, `true` otherwise.
 *
 * Note that if this function fails, then partial copying may have taken place.
  */
-public fun File.copyRecursively(dst: File,
+public fun File.copyRecursively(target: File,
+                                overwrite: Boolean = false,
                                 onError: (File, IOException) -> OnErrorAction =
                                 { file, exception -> throw exception }
 ): Boolean {
@@ -332,23 +252,36 @@ public fun File.copyRecursively(dst: File,
     }
     try {
         // We cannot break for loop from inside a lambda, so we have to use an exception here
-        for (src in walkTopDown().fail { f, e -> if (onError(f, e) == OnErrorAction.TERMINATE) throw TerminateException(f) }) {
+        for (src in walkTopDown().onFail { f, e -> if (onError(f, e) == OnErrorAction.TERMINATE) throw TerminateException(f) }) {
             if (!src.exists()) {
                 if (onError(src, NoSuchFileException(file = src, reason = "The source file doesn't exist")) ==
                         OnErrorAction.TERMINATE)
                     return false
             } else {
-                val relPath = src.relativeTo(this)
-                val dstFile = File(dst, relPath)
-                if (dstFile.exists() && !(src.isDirectory() && dstFile.isDirectory())) {
-                    if (onError(dstFile, FileAlreadyExistsException(file = src,
-                            other = dstFile,
-                            reason = "The destination file already exists")) == OnErrorAction.TERMINATE)
-                        return false
-                } else if (src.isDirectory()) {
+                val relPath = src.toRelativeString(this)
+                val dstFile = File(target, relPath)
+                if (dstFile.exists() && !(src.isDirectory && dstFile.isDirectory)) {
+                    val stillExists = if (!overwrite) true else {
+                        if (dstFile.isDirectory)
+                            !dstFile.deleteRecursively()
+                        else
+                            !dstFile.delete()
+                    }
+
+                    if (stillExists) {
+                        if (onError(dstFile, FileAlreadyExistsException(file = src,
+                                    other = dstFile,
+                                    reason = "The destination file already exists")) == OnErrorAction.TERMINATE)
+                                return false
+
+                        continue
+                    }
+                }
+
+                if (src.isDirectory) {
                     dstFile.mkdirs()
                 } else {
-                    if (src.copyTo(dstFile, true) != src.length()) {
+                    if (src.copyTo(dstFile, overwrite).length() != src.length()) {
                         if (onError(src, IOException("src.length() != dst.length()")) == OnErrorAction.TERMINATE)
                             return false
                     }
@@ -367,13 +300,7 @@ public fun File.copyRecursively(dst: File,
  *
  * @return `true` if the file or directory is successfully deleted, `false` otherwise.
  */
-public fun File.deleteRecursively(): Boolean = walkBottomUp().fold(exists(), { res, it -> it.delete() && res })
-
-/**
- * Returns an array of files and directories in the directory that match the specified [filter]
- * or `null` if this file does not denote a directory.
- */
-public fun File.listFiles(filter: (file: File) -> Boolean): Array<File>? = listFiles(FileFilter(filter))
+public fun File.deleteRecursively(): Boolean = walkBottomUp().fold(true, { res, it -> (it.delete() || !it.exists()) && res })
 
 /**
  * Determines whether this file belongs to the same root as [other]

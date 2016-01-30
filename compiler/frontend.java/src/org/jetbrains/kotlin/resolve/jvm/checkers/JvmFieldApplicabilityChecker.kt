@@ -21,6 +21,7 @@ import org.jetbrains.kotlin.diagnostics.DiagnosticSink
 import org.jetbrains.kotlin.fileClasses.JvmFileClassUtil
 import org.jetbrains.kotlin.fileClasses.isInsideJvmMultifileClassFile
 import org.jetbrains.kotlin.psi.KtDeclaration
+import org.jetbrains.kotlin.psi.KtProperty
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.DeclarationChecker
 import org.jetbrains.kotlin.resolve.DescriptorToSourceUtils
@@ -32,17 +33,16 @@ import org.jetbrains.kotlin.resolve.jvm.diagnostics.ErrorsJvm
 
 class JvmFieldApplicabilityChecker : DeclarationChecker {
 
-    enum class Problem(val errorMessage: String) {
-        NOT_A_PROPERTY("JvmField can only be applied to a property"),
+    internal enum class Problem(val errorMessage: String) {
         NOT_FINAL("JvmField can only be applied to final property"),
         PRIVATE("JvmField has no effect on a private property"),
         CUSTOM_ACCESSOR("JvmField cannot be applied to a property with a custom accessor"),
-        NO_BACKING_FIELD("JvmField can only be applied to a property with backing field"),
         OVERRIDES("JvmField cannot be applied to a property that overrides some other property"),
         LATEINIT("JvmField cannot be applied to lateinit property"),
         CONST("JvmField cannot be applied to const property"),
         INSIDE_COMPANION_OF_INTERFACE("JvmField cannot be applied to a property defined in companion object of interface"),
-        TOP_LEVEL_PROPERTY_OF_MULTIFILE_FACADE("JvmField cannot be applied to top level property of a file annotated with ${JvmFileClassUtil.JVM_MULTIFILE_CLASS_SHORT}")
+        TOP_LEVEL_PROPERTY_OF_MULTIFILE_FACADE("JvmField cannot be applied to top level property of a file annotated with ${JvmFileClassUtil.JVM_MULTIFILE_CLASS_SHORT}"),
+        DELEGATE("JvmField cannot be applied to delegated property")
     }
 
     override fun check(
@@ -54,10 +54,12 @@ class JvmFieldApplicabilityChecker : DeclarationChecker {
         val annotation = descriptor.findJvmFieldAnnotation() ?: return
 
         val problem = when {
-            descriptor !is PropertyDescriptor -> NOT_A_PROPERTY
+            // First two cases just prevent duplication of WRONG_ANNOTATION_TARGET
+            descriptor !is PropertyDescriptor -> return
+            declaration is KtProperty && declaration.hasDelegate() -> DELEGATE
+            !descriptor.hasBackingField(bindingContext) -> return
             descriptor.isOverridable -> NOT_FINAL
             Visibilities.isPrivate(descriptor.visibility) -> PRIVATE
-            !descriptor.hasBackingField(bindingContext) -> NO_BACKING_FIELD
             descriptor.hasCustomAccessor() -> CUSTOM_ACCESSOR
             descriptor.overriddenDescriptors.isNotEmpty() -> OVERRIDES
             descriptor.isLateInit -> LATEINIT

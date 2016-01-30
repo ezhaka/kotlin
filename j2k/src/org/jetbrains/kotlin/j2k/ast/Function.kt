@@ -42,7 +42,7 @@ class Function(
     override val parameterList: ParameterList
         get() = super.parameterList!!
 
-    protected override fun presentationModifiers(): Modifiers {
+    override fun presentationModifiers(): Modifiers {
         var modifiers = this.modifiers
         if (isInInterface) {
             modifiers = modifiers.without(Modifier.ABSTRACT)
@@ -75,4 +75,15 @@ class Function(
             builder append " " append body
         }
     }
+}
+
+class AnonymousFunction(
+        returnType: Type,
+        typeParameterList: TypeParameterList,
+        parameterList: ParameterList,
+        body: DeferredElement<Block>?
+): Expression() {
+    private val function = Function(Identifier.Empty, Annotations.Empty, Modifiers.Empty, returnType, typeParameterList, parameterList, body, false)
+
+    override fun generateCode(builder: CodeBuilder) = function.generateCode(builder)
 }

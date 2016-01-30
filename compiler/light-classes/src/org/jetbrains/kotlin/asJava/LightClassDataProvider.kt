@@ -31,7 +31,6 @@ import com.intellij.psi.impl.compiled.ClsFileImpl
 import com.intellij.psi.impl.java.stubs.PsiJavaFileStub
 import com.intellij.psi.impl.java.stubs.impl.PsiJavaFileStubImpl
 import com.intellij.psi.search.GlobalSearchScope
-import com.intellij.psi.stubs.PsiClassHolderFileStub
 import com.intellij.psi.stubs.StubElement
 import com.intellij.psi.util.CachedValueProvider
 import com.intellij.psi.util.PsiModificationTracker
@@ -70,10 +69,15 @@ abstract class LightClassDataProvider<T : WithFileStubAndExtraDiagnostics>(
     abstract val isLocal: Boolean
 
     override fun compute(): CachedValueProvider.Result<T>? {
+        return CachedValueProvider.Result.create(
+                computeLightClassData(),
+                if (isLocal) PsiModificationTracker.MODIFICATION_COUNT else PsiModificationTracker.OUT_OF_CODE_BLOCK_MODIFICATION_COUNT
+        )
+    }
+
+    private fun computeLightClassData(): T {
         val packageFqName = packageFqName
         val files = files
-
-        checkForBuiltIns(packageFqName, files)
 
         val context = getContext(files)
 
@@ -112,6 +116,7 @@ abstract class LightClassDataProvider<T : WithFileStubAndExtraDiagnostics>(
             }
 
             ServiceManager.getService(project, StubComputationTracker::class.java)?.onStubComputed(javaFileStub)
+            return createLightClassData(javaFileStub, bindingContext, state.collectedExtraJvmDiagnostics)
         }
         catch (e: ProcessCanceledException) {
             throw e
@@ -120,11 +125,6 @@ abstract class LightClassDataProvider<T : WithFileStubAndExtraDiagnostics>(
             logErrorWithOSInfo(e, packageFqName, null)
             throw e
         }
-
-        return CachedValueProvider.Result.create(
-                createLightClassData(javaFileStub, bindingContext, state.collectedExtraJvmDiagnostics),
-                if (isLocal) PsiModificationTracker.MODIFICATION_COUNT else PsiModificationTracker.OUT_OF_CODE_BLOCK_MODIFICATION_COUNT
-        )
     }
 
     private fun createJavaFileStub(packageFqName: FqName, files: Collection<KtFile>): PsiJavaFileStub {
@@ -135,18 +135,14 @@ abstract class LightClassDataProvider<T : WithFileStubAndExtraDiagnostics>(
 
         val virtualFile = getRepresentativeVirtualFile(files)
         val fakeFile = object : ClsFileImpl(ClassFileViewProvider(manager, virtualFile)) {
-            override fun getStub(): PsiClassHolderFileStub<*> {
-                return javaFileStub
-            }
+            override fun getStub() = javaFileStub
 
-            override fun getPackageName(): String {
-                return packageFqName.asString()
-            }
+            override fun getPackageName() = packageFqName.asString()
+
+            override fun isPhysical() = false
         }
 
-        fakeFile.isPhysical = false
-
-        javaFileStub.setPsi(fakeFile)
+        javaFileStub.psi = fakeFile
         return javaFileStub
     }
 
@@ -154,20 +150,10 @@ abstract class LightClassDataProvider<T : WithFileStubAndExtraDiagnostics>(
         return files.firstOrNull()?.virtualFile.sure { "No virtual file for " + files.iterator().next() }
     }
 
-    private fun checkForBuiltIns(fqName: FqName, files: Collection<KtFile>) {
-        for (file in files) {
-            if (LightClassUtil.belongsToKotlinBuiltIns(file)) {
-                // We may not fail later due to some luck, but generating JetLightClasses for built-ins is a bad idea anyways
-                // If it fails later, there will be an exception logged
-                logErrorWithOSInfo(null, fqName, file.virtualFile)
-            }
-        }
-    }
-
     private fun logErrorWithOSInfo(cause: Throwable?, fqName: FqName, virtualFile: VirtualFile?) {
         val path = if (virtualFile == null) "<null>" else virtualFile.path
         LOG.error(
-                "Could not generate LightClass for $fqName declared in $path\nbuilt-ins dir URL is ${LightClassUtil.builtInsDirUrl}\n" +
+                "Could not generate LightClass for $fqName declared in $path\n" +
                 "System: ${SystemInfo.OS_NAME} ${SystemInfo.OS_VERSION} Java Runtime: ${SystemInfo.JAVA_RUNTIME_VERSION}",
                 cause
         )
@@ -179,7 +165,7 @@ abstract class LightClassDataProvider<T : WithFileStubAndExtraDiagnostics>(
 }
 
 class LightClassDataProviderForClassOrObject(private val classOrObject: KtClassOrObject) :
-        LightClassDataProvider<OutermostKotlinClassLightClassData>(classOrObject.project) {
+        LightClassDataProvider<WithFileStubAndExtraDiagnostics>(classOrObject.project) {
 
     private val file: KtFile
         get() = classOrObject.getContainingKtFile()
@@ -193,10 +179,8 @@ class LightClassDataProviderForClassOrObject(private val classOrObject: KtClassO
     override fun createLightClassData(
             javaFileStub: PsiJavaFileStub,
             bindingContext: BindingContext,
-            extraDiagnostics: Diagnostics): OutermostKotlinClassLightClassData {
-        val classDescriptor = bindingContext.get(BindingContext.CLASS, classOrObject) ?: return OutermostKotlinClassLightClassData(
-                javaFileStub, extraDiagnostics, FqName.ROOT, classOrObject,
-                emptyMap<KtClassOrObject, InnerKotlinClassLightClassData>())
+            extraDiagnostics: Diagnostics): WithFileStubAndExtraDiagnostics {
+        val classDescriptor = bindingContext.get(BindingContext.CLASS, classOrObject) ?: return InvalidLightClassData
 
         val fqName = predictClassFqName(bindingContext, classDescriptor)
         val allInnerClasses = CodegenBinding.getAllInnerClasses(bindingContext, classDescriptor)

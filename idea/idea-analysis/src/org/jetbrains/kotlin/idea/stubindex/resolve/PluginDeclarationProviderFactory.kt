@@ -25,7 +25,7 @@ import org.jetbrains.kotlin.resolve.lazy.data.KtClassLikeInfo
 import org.jetbrains.kotlin.resolve.lazy.declarations.*
 import org.jetbrains.kotlin.storage.StorageManager
 
-public class PluginDeclarationProviderFactory(
+class PluginDeclarationProviderFactory(
         private val project: Project,
         private val indexedFilesScope: GlobalSearchScope,
         private val storageManager: StorageManager,
@@ -57,5 +57,25 @@ public class PluginDeclarationProviderFactory(
     override fun diagnoseMissingPackageFragment(file: KtFile) {
         throw IllegalStateException("Cannot find package fragment for file ${file.name} with package ${file.packageFqName}, " +
                                     "vFile ${file.virtualFile}, nonIndexed ${file in nonIndexedFiles}")
+    }
+
+    // trying to diagnose org.jetbrains.kotlin.resolve.lazy.NoDescriptorForDeclarationException in completion
+    private val onCreationDebugInfo = debugInfo()
+
+    fun debugToString(): String {
+        return "PluginDeclarationProviderFactory\nOn failure:\n${debugInfo()}On creation:\n$onCreationDebugInfo"
+    }
+
+    private fun debugInfo(): String {
+        if (nonIndexedFiles.isEmpty()) return "-no synthetic files-\n"
+
+        return buildString {
+            nonIndexedFiles.forEach {
+                append(it.name)
+                append(" isPhysical=${it.isPhysical}")
+                append(" modStamp=${it.modificationStamp}")
+                appendln()
+            }
+        }
     }
 }

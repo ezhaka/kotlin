@@ -17,12 +17,12 @@
 package org.jetbrains.kotlin.parsing;
 
 import com.intellij.lang.PsiBuilder;
+import com.intellij.lang.WhitespacesBinders;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.psi.tree.IElementType;
 import com.intellij.psi.tree.TokenSet;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.jetbrains.kotlin.KtNodeType;
 import org.jetbrains.kotlin.lexer.KtKeywordToken;
 import org.jetbrains.kotlin.lexer.KtTokens;
 
@@ -64,7 +64,8 @@ public class KotlinParsing extends AbstractKotlinParsing {
             TokenSet.orSet(TokenSet.create(IDENTIFIER, LBRACKET), MODIFIER_KEYWORDS);
     private static final TokenSet SOFT_KEYWORDS_AT_MEMBER_START = TokenSet.create(CONSTRUCTOR_KEYWORD, INIT_KEYWORD);
     private static final TokenSet ANNOTATION_TARGETS = TokenSet.create(
-            FILE_KEYWORD, FIELD_KEYWORD, GET_KEYWORD, SET_KEYWORD, PROPERTY_KEYWORD, RECEIVER_KEYWORD, PARAM_KEYWORD, SETPARAM_KEYWORD);
+            FILE_KEYWORD, FIELD_KEYWORD, GET_KEYWORD, SET_KEYWORD, PROPERTY_KEYWORD,
+            RECEIVER_KEYWORD, PARAM_KEYWORD, SETPARAM_KEYWORD, DELEGATE_KEYWORD);
 
     static KotlinParsing createForTopLevel(SemanticWhitespaceAwarePsiBuilder builder) {
         KotlinParsing jetParsing = new KotlinParsing(builder);
@@ -112,7 +113,21 @@ public class KotlinParsing extends AbstractKotlinParsing {
             parseTopLevelDeclaration();
         }
 
+        checkUnclosedBlockComment();
         fileMarker.done(KT_FILE);
+    }
+
+    private void checkUnclosedBlockComment() {
+        if (TokenSet.create(BLOCK_COMMENT, DOC_COMMENT).contains(myBuilder.rawLookup(-1))) {
+            int startOffset = myBuilder.rawTokenTypeStart(-1);
+            int endOffset = myBuilder.rawTokenTypeStart(0);
+            CharSequence tokenChars = myBuilder.getOriginalText().subSequence(startOffset, endOffset);
+            if (!(tokenChars.length() > 2 && tokenChars.subSequence(tokenChars.length() - 2, tokenChars.length()).toString().equals("*/"))) {
+                PsiBuilder.Marker marker = myBuilder.mark();
+                marker.error("Unclosed comment");
+                marker.setCustomEdgeTokenBinders(WhitespacesBinders.GREEDY_RIGHT_BINDER, null);
+            }
+        }
     }
 
     void parseTypeCodeFragment() {
@@ -171,7 +186,7 @@ public class KotlinParsing extends AbstractKotlinParsing {
 
     private void checkForUnexpectedSymbols() {
         while (!eof()) {
-            errorAndAdvance("unexpected symbol");
+            errorAndAdvance("Unexpected symbol");
         }
     }
 
@@ -217,7 +232,7 @@ public class KotlinParsing extends AbstractKotlinParsing {
             packageDirective = mark();
             packageDirective.done(PACKAGE_DIRECTIVE);
             // this is necessary to allow comments at the start of the file to be bound to the first declaration
-            packageDirective.setCustomEdgeTokenBinders(DoNotBindAnything.INSTANCE$, null);
+            packageDirective.setCustomEdgeTokenBinders(DoNotBindAnything.INSTANCE, null);
         }
 
         parseImportDirectives();
@@ -347,7 +362,7 @@ public class KotlinParsing extends AbstractKotlinParsing {
         }
         consumeIf(SEMICOLON);
         importDirective.done(IMPORT_DIRECTIVE);
-        importDirective.setCustomEdgeTokenBinders(null, TrailingCommentsBinder.INSTANCE$);
+        importDirective.setCustomEdgeTokenBinders(null, TrailingCommentsBinder.INSTANCE);
     }
 
     private boolean closeImportWithErrorIfNewline(PsiBuilder.Marker importDirective, String errorMessage) {
@@ -363,7 +378,7 @@ public class KotlinParsing extends AbstractKotlinParsing {
         PsiBuilder.Marker importList = mark();
         if (!at(IMPORT_KEYWORD)) {
             // this is necessary to allow comments at the start of the file to be bound to the first declaration
-            importList.setCustomEdgeTokenBinders(DoNotBindAnything.INSTANCE$, null);
+            importList.setCustomEdgeTokenBinders(DoNotBindAnything.INSTANCE, null);
         }
         while (at(IMPORT_KEYWORD)) {
             parseImportDirective();
@@ -407,9 +422,11 @@ public class KotlinParsing extends AbstractKotlinParsing {
         else if (keywordToken == VAL_KEYWORD || keywordToken == VAR_KEYWORD) {
             declType = parseProperty();
         }
+        /*
         else if (keywordToken == TYPE_ALIAS_KEYWORD) {
             declType = parseTypeAlias();
         }
+        */
         else if (keywordToken == OBJECT_KEYWORD) {
             parseObject(NameParsingMode.REQUIRED, true);
             declType = OBJECT_DECLARATION;
@@ -1068,9 +1085,11 @@ public class KotlinParsing extends AbstractKotlinParsing {
         else if (keywordToken == VAL_KEYWORD || keywordToken == VAR_KEYWORD) {
             declType = parseProperty();
         }
+        /*
         else if (keywordToken == TYPE_ALIAS_KEYWORD) {
             declType = parseTypeAlias();
         }
+        */
         else if (keywordToken == OBJECT_KEYWORD) {
             parseObject(isDefault ? NameParsingMode.ALLOWED : NameParsingMode.REQUIRED, true);
             declType = OBJECT_DECLARATION;
@@ -1173,6 +1192,7 @@ public class KotlinParsing extends AbstractKotlinParsing {
      *   : modifiers "typealias" SimpleName (typeParameters typeConstraints)? "=" type
      *   ;
      */
+    /*
     KtNodeType parseTypeAlias() {
         assert _at(TYPE_ALIAS_KEYWORD);
 
@@ -1192,6 +1212,7 @@ public class KotlinParsing extends AbstractKotlinParsing {
 
         return TYPEDEF;
     }
+    */
 
     /*
      * variableDeclarationEntry

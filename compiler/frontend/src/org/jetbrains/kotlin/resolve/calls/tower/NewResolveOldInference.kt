@@ -26,6 +26,7 @@ import org.jetbrains.kotlin.resolve.TemporaryBindingTrace
 import org.jetbrains.kotlin.resolve.calls.CallResolver
 import org.jetbrains.kotlin.resolve.calls.CallTransformer
 import org.jetbrains.kotlin.resolve.calls.CandidateResolver
+import org.jetbrains.kotlin.resolve.calls.callResolverUtil.getUnaryPlusOrMinusOperatorFunctionName
 import org.jetbrains.kotlin.resolve.calls.callResolverUtil.isConventionCall
 import org.jetbrains.kotlin.resolve.calls.callResolverUtil.isInfixCall
 import org.jetbrains.kotlin.resolve.calls.callUtil.createLookupLocation
@@ -43,6 +44,7 @@ import org.jetbrains.kotlin.resolve.calls.tasks.ExplicitReceiverKind
 import org.jetbrains.kotlin.resolve.calls.tasks.TracingStrategy
 import org.jetbrains.kotlin.resolve.calls.tasks.TracingStrategyForInvoke
 import org.jetbrains.kotlin.resolve.isHiddenInResolution
+import org.jetbrains.kotlin.resolve.scopes.SyntheticScopes
 import org.jetbrains.kotlin.resolve.scopes.receivers.*
 import org.jetbrains.kotlin.types.DeferredType
 import org.jetbrains.kotlin.types.ErrorUtils
@@ -52,10 +54,11 @@ import org.jetbrains.kotlin.utils.addToStdlib.check
 import org.jetbrains.kotlin.utils.sure
 
 class NewResolveOldInference(
-        val candidateResolver: CandidateResolver,
-        val towerResolver: TowerResolver,
-        val resolutionResultsHandler: ResolutionResultsHandler,
-        val dynamicCallableDescriptors: DynamicCallableDescriptors
+        private val candidateResolver: CandidateResolver,
+        private val towerResolver: TowerResolver,
+        private val resolutionResultsHandler: ResolutionResultsHandler,
+        private val dynamicCallableDescriptors: DynamicCallableDescriptors,
+        private val syntheticScopes: SyntheticScopes
 ) {
 
     fun runResolve(
@@ -64,34 +67,14 @@ class NewResolveOldInference(
             kind: CallResolver.ResolveKind,
             tracing: TracingStrategy
     ): OverloadResolutionResultsImpl<*> {
-        val explicitReceiver = context.call.explicitReceiver.check { it.exists() }
+        val explicitReceiver = context.call.explicitReceiver
 
         val dynamicScope = dynamicCallableDescriptors.createDynamicDescriptorScope(context.call, context.scope.ownerDescriptor)
-        val scopeTower = ScopeTowerImpl(context, dynamicScope, context.call.createLookupLocation())
+        val scopeTower = ScopeTowerImpl(context, dynamicScope, syntheticScopes, context.call.createLookupLocation())
 
         val baseContext = Context(scopeTower, name, context, tracing)
 
-        val processor =
-            when (kind) {
-                CallResolver.ResolveKind.VARIABLE -> createVariableProcessor(baseContext, explicitReceiver)
-                CallResolver.ResolveKind.FUNCTION -> createFunctionTowerProcessor(baseContext, explicitReceiver)
-                CallResolver.ResolveKind.CALLABLE_REFERENCE -> CompositeScopeTowerProcessor(
-                        createFunctionProcessor(baseContext, explicitReceiver),
-                        createVariableProcessor(baseContext, explicitReceiver)
-                )
-                CallResolver.ResolveKind.INVOKE -> {
-                    // todo
-                    val call = (context.call as? CallTransformer.CallForImplicitInvoke).sure {
-                        "Call should be CallForImplicitInvoke, but it is: ${context.call}"
-                    }
-                    createProcessorWithReceiverValueOrEmpty(explicitReceiver) {
-                        createCallTowerProcessorForExplicitInvoke(baseContext, call.dispatchReceiver, it)
-                    }
-                }
-                CallResolver.ResolveKind.GIVEN_CANDIDATES -> {
-                    throw UnsupportedOperationException("Kind $kind unsupported yet")
-                }
-            }
+        var processor = createResolveProcessor(kind, explicitReceiver, context, baseContext)
 
         if (context.collectAllCandidates) {
             val allCandidates = towerResolver.collectAllCandidates(baseContext, processor)
@@ -99,9 +82,45 @@ class NewResolveOldInference(
             result.allCandidates = allCandidates.map { it.resolvedCall as MutableResolvedCall<CallableDescriptor> }
             return result
         }
+        // Temporary fix for code migration (unaryPlus()/unaryMinus())
+        val unaryConventionName = getUnaryPlusOrMinusOperatorFunctionName(context.call)
+        if (unaryConventionName != null) {
+            val deprecatedName = if (name == OperatorNameConventions.UNARY_PLUS)
+                OperatorNameConventions.PLUS
+            else
+                OperatorNameConventions.MINUS
+            val otherBaseContext = Context(scopeTower, deprecatedName, context, tracing)
+            processor = CompositeScopeTowerProcessor(processor, createResolveProcessor(kind, explicitReceiver, context, otherBaseContext))
+        }
 
         val candidates = towerResolver.runResolve(baseContext, processor, useOrder = kind != CallResolver.ResolveKind.CALLABLE_REFERENCE)
         return convertToOverloadResults(candidates, tracing, context)
+    }
+
+    private fun createResolveProcessor(
+            kind: CallResolver.ResolveKind,
+            explicitReceiver : Receiver?,
+            context: BasicCallResolutionContext,
+            baseContext: Context)
+            = when (kind) {
+        CallResolver.ResolveKind.VARIABLE -> createVariableProcessor(baseContext, explicitReceiver)
+        CallResolver.ResolveKind.FUNCTION -> createFunctionTowerProcessor(baseContext, explicitReceiver)
+        CallResolver.ResolveKind.CALLABLE_REFERENCE -> CompositeScopeTowerProcessor(
+                createFunctionProcessor(baseContext, explicitReceiver),
+                createVariableProcessor(baseContext, explicitReceiver)
+        )
+        CallResolver.ResolveKind.INVOKE -> {
+            // todo
+            val call = (context.call as? CallTransformer.CallForImplicitInvoke).sure {
+                "Call should be CallForImplicitInvoke, but it is: ${context.call}"
+            }
+            createProcessorWithReceiverValueOrEmpty(explicitReceiver) {
+                createCallTowerProcessorForExplicitInvoke(baseContext, call.dispatchReceiver, it)
+            }
+        }
+        CallResolver.ResolveKind.GIVEN_CANDIDATES -> {
+            throw UnsupportedOperationException("Kind $kind unsupported yet")
+        }
     }
 
     private fun createProcessorWithReceiverValueOrEmpty(
@@ -190,7 +209,7 @@ class NewResolveOldInference(
             val candidateTrace = TemporaryBindingTrace.create(basicCallContext.trace, "Context for resolve candidate")
             val candidateCall = ResolvedCallImpl(
                     basicCallContext.call, towerCandidate.descriptor,
-                    towerCandidate.dispatchReceiver ?: ReceiverValue.NO_RECEIVER, extensionReceiver ?: ReceiverValue.NO_RECEIVER,
+                    towerCandidate.dispatchReceiver, extensionReceiver,
                     explicitReceiverKind, null, candidateTrace, tracing,
                     basicCallContext.dataFlowInfoForArguments // todo may be we should create new mutable info for arguments
             )
@@ -207,7 +226,7 @@ class NewResolveOldInference(
 
             val callCandidateResolutionContext = CallCandidateResolutionContext.create(
                     candidateCall, basicCallContext, candidateTrace, tracing, basicCallContext.call,
-                    ReceiverValue.NO_RECEIVER, CandidateResolveMode.FULLY // todo
+                    null, CandidateResolveMode.FULLY // todo
             )
             candidateResolver.performResolutionForCandidateCall(callCandidateResolutionContext, basicCallContext.checkArguments) // todo
 
@@ -219,6 +238,9 @@ class NewResolveOldInference(
 
         private fun checkInfixAndOperator(call: Call, descriptor: CallableDescriptor): List<ResolutionDiagnostic> {
             if (descriptor !is FunctionDescriptor || ErrorUtils.isError(descriptor)) return emptyList()
+            if (descriptor.name != name && (name == OperatorNameConventions.UNARY_PLUS || name == OperatorNameConventions.UNARY_MINUS)) {
+                return listOf(DeprecatedUnaryPlusAsPlus)
+            }
 
             val conventionError = if (isConventionCall(call) && !descriptor.isOperator) InvokeConventionCallNoOperatorModifier else null
             val infixError = if (isInfixCall(call) && !descriptor.isInfix) InfixCallNoInfixModifier else null
@@ -268,13 +290,15 @@ class NewResolveOldInference(
             tracing.bindReference(variable.resolvedCall.trace, variable.resolvedCall)
             // todo hacks
             val functionCall = CallTransformer.CallForImplicitInvoke(
-                    basicCallContext.call.explicitReceiver.check { useExplicitReceiver } ?: ReceiverValue.NO_RECEIVER,
+                    basicCallContext.call.explicitReceiver?.check { useExplicitReceiver },
                     variableReceiver, basicCallContext.call)
             val tracingForInvoke = TracingStrategyForInvoke(calleeExpression, functionCall, variableReceiver.type)
             val basicCallResolutionContext = basicCallContext.replaceBindingTrace(variable.resolvedCall.trace)
                     .replaceCall(functionCall)
                     .replaceContextDependency(ContextDependency.DEPENDENT) // todo
-            val newContext = Context(scopeTower, OperatorNameConventions.INVOKE, basicCallResolutionContext, tracingForInvoke)
+
+            val newScopeTower = ScopeTowerImpl(basicCallResolutionContext, scopeTower.dynamicScope, scopeTower.syntheticScopes, scopeTower.location)
+            val newContext = Context(newScopeTower, OperatorNameConventions.INVOKE, basicCallResolutionContext, tracingForInvoke)
 
             return variableReceiver to newContext
         }

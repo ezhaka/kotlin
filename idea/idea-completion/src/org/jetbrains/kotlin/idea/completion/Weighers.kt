@@ -112,8 +112,8 @@ object KindWeigher : LookupElementWeigher("kotlin.kind") {
         packages
     }
 
-    override fun weigh(element: LookupElement): Weight {
-        val o = element.getObject()
+    override fun weigh(element: LookupElement): Comparable<*> {
+        val o = element.`object`
 
         return when (o) {
             is PackageLookupObject -> Weight.packages
@@ -144,7 +144,7 @@ object VariableOrFunctionWeigher : LookupElementWeigher("kotlin.variableOrFuncti
         function
     }
 
-    override fun weigh(element: LookupElement): Weight? {
+    override fun weigh(element: LookupElement): Comparable<*>? {
         val descriptor = (element.`object` as? DeclarationLookupObject)?.descriptor ?: return null
         return when (descriptor) {
             is VariableDescriptor -> Weight.variable
@@ -156,7 +156,7 @@ object VariableOrFunctionWeigher : LookupElementWeigher("kotlin.variableOrFuncti
 
 object DeprecatedWeigher : LookupElementWeigher("kotlin.deprecated") {
     override fun weigh(element: LookupElement): Int {
-        val o = element.getObject() as? DeclarationLookupObject ?: return 0
+        val o = element.`object` as? DeclarationLookupObject ?: return 0
         return if (o.isDeprecated) 1 else 0
     }
 }
@@ -169,7 +169,7 @@ object PreferMatchingItemWeigher : LookupElementWeigher("kotlin.preferMatching",
         notExactMatch
     }
 
-    override fun weigh(element: LookupElement, context: WeighingContext): Weight {
+    override fun weigh(element: LookupElement, context: WeighingContext): Comparable<*> {
         val prefix = context.itemPattern(element)
         if (element.lookupString != prefix) {
             return Weight.notExactMatch

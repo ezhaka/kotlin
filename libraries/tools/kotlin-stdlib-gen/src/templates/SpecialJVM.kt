@@ -5,6 +5,13 @@ import templates.Family.*
 fun specialJVM(): List<GenericFunction> {
     val templates = arrayListOf<GenericFunction>()
 
+    templates add f("plusElement(element: T)") {
+        only(InvariantArraysOfObjects)
+        returns("SELF")
+        doc { "Returns an array containing all elements of the original array and then the given [element]." }
+        body { "return plus(element)" }
+    }
+
     templates add f("plus(element: T)") {
         operator(true)
 
@@ -57,20 +64,18 @@ fun specialJVM(): List<GenericFunction> {
 
 
     templates add f("copyOfRange(fromIndex: Int, toIndex: Int)") {
-        only(ArraysOfObjects, InvariantArraysOfObjects, ArraysOfPrimitives)
+        only(InvariantArraysOfObjects, ArraysOfPrimitives)
         doc { "Returns new array which is a copy of range of original array." }
         returns("SELF")
-        annotations(InvariantArraysOfObjects) { """@JvmName("mutableCopyOfRange")"""}
         body {
             "return Arrays.copyOfRange(this, fromIndex, toIndex)"
         }
     }
 
     templates add f("copyOf()") {
-        only(ArraysOfObjects, InvariantArraysOfObjects, ArraysOfPrimitives)
+        only(InvariantArraysOfObjects, ArraysOfPrimitives)
         doc { "Returns new array which is a copy of the original array." }
         returns("SELF")
-        annotations(InvariantArraysOfObjects) { """@JvmName("mutableCopyOf")"""}
         body {
             "return Arrays.copyOf(this, size)"
         }
@@ -78,15 +83,13 @@ fun specialJVM(): List<GenericFunction> {
 
     // This overload can cause nulls if array size is expanding, hence different return overload
     templates add f("copyOf(newSize: Int)") {
-        only(ArraysOfObjects, InvariantArraysOfObjects, ArraysOfPrimitives)
+        only(InvariantArraysOfObjects, ArraysOfPrimitives)
         doc { "Returns new array which is a copy of the original array." }
         returns("SELF")
+        returns(InvariantArraysOfObjects) { "Array<T?>" }
         body {
             "return Arrays.copyOf(this, newSize)"
         }
-        returns(ArraysOfObjects) { "Array<out T?>" }
-        returns(InvariantArraysOfObjects) { "Array<T?>" }
-        annotations(InvariantArraysOfObjects) { """@JvmName("mutableCopyOf")"""}
     }
 
     templates add f("fill(element: T, fromIndex: Int = 0, toIndex: Int = size)") {

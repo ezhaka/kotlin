@@ -18,23 +18,23 @@ package org.jetbrains.kotlin.j2k.usageProcessing
 
 import com.intellij.psi.*
 
-public class MethodIntoObjectProcessing(private val method: PsiMethod, private val objectName: String) : UsageProcessing {
+class MethodIntoObjectProcessing(private val method: PsiMethod, private val objectName: String) : UsageProcessing {
     override val targetElement: PsiElement get() = method
 
     override val convertedCodeProcessor: ConvertedCodeProcessor? get() = null
 
     override val javaCodeProcessor = object: ExternalCodeProcessor {
         override fun processUsage(reference: PsiReference): Array<PsiReference>? {
-            val refExpr = reference.getElement() as? PsiReferenceExpression ?: return null
-            val qualifier = refExpr.getQualifierExpression()
-            val factory = PsiElementFactory.SERVICE.getInstance(method.getProject())
+            val refExpr = reference.element as? PsiReferenceExpression ?: return null
+            val qualifier = refExpr.qualifierExpression
+            val factory = PsiElementFactory.SERVICE.getInstance(method.project)
             if (qualifier != null) {
-                val newQualifier = factory.createExpressionFromText(qualifier.getText() + "." + objectName, null)
+                val newQualifier = factory.createExpressionFromText(qualifier.text + "." + objectName, null)
                 qualifier.replace(newQualifier)
                 return arrayOf(reference)
             }
             else {
-                var qualifiedExpr = factory.createExpressionFromText(objectName + "." + refExpr.getText(), null) as PsiReferenceExpression
+                var qualifiedExpr = factory.createExpressionFromText(objectName + "." + refExpr.text, null) as PsiReferenceExpression
                 qualifiedExpr = refExpr.replace(qualifiedExpr) as PsiReferenceExpression
                 return arrayOf(qualifiedExpr)
             }
