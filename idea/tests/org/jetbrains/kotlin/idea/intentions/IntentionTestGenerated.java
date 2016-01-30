@@ -4964,6 +4964,21 @@ public class IntentionTestGenerated extends AbstractIntentionTest {
             }
         }
 
+        @TestMetadata("idea/testData/intentions/declarations/createSubclassAction")
+        @TestDataPath("$PROJECT_ROOT")
+        @RunWith(JUnit3RunnerWithInners.class)
+        public static class CreateSubclassAction extends AbstractIntentionTest {
+            public void testAllFilesPresentInCreateSubclassAction() throws Exception {
+                KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("idea/testData/intentions/declarations/createSubclassAction"), Pattern.compile("^([\\w\\-_]+)\\.kt$"), true);
+            }
+
+            @TestMetadata("emptyInterface.kt")
+            public void testEmptyInterface() throws Exception {
+                String fileName = KotlinTestUtils.navigationMetadata("idea/testData/intentions/declarations/createSubclassAction/emptyInterface.kt");
+                doTest(fileName);
+            }
+        }
+
         @TestMetadata("idea/testData/intentions/declarations/split")
         @TestDataPath("$PROJECT_ROOT")
         @RunWith(JUnit3RunnerWithInners.class)
