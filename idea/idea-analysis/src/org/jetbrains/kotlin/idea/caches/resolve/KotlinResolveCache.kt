@@ -23,7 +23,6 @@ import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiElement
 import com.intellij.psi.util.PsiTreeUtil
 import org.jetbrains.kotlin.analyzer.AnalysisResult
-import org.jetbrains.kotlin.asJava.LightClassUtil
 import org.jetbrains.kotlin.container.ComponentProvider
 import org.jetbrains.kotlin.container.get
 import org.jetbrains.kotlin.context.GlobalContext
@@ -61,7 +60,7 @@ internal class PerFileAnalysisCache(val file: KtFile, val componentProvider: Com
             descendantsOfCurrent.add(current)
         }
 
-        cache.keySet().removeAll(toRemove)
+        cache.keys.removeAll(toRemove)
 
         return result
     }
@@ -85,7 +84,7 @@ internal class PerFileAnalysisCache(val file: KtFile, val componentProvider: Com
     }
 
     private fun analyze(analyzableElement: KtElement): AnalysisResult {
-        val project = analyzableElement.getProject()
+        val project = analyzableElement.project
         if (DumbService.isDumb(project)) {
             return AnalysisResult.EMPTY
         }
@@ -110,18 +109,18 @@ internal class PerFileAnalysisCache(val file: KtFile, val componentProvider: Com
 
 private object KotlinResolveDataProvider {
     private val topmostElementTypes = arrayOf<Class<out PsiElement?>?>(
-            javaClass<KtNamedFunction>(),
-            javaClass<KtAnonymousInitializer>(),
-            javaClass<KtProperty>(),
-            javaClass<KtImportDirective>(),
-            javaClass<KtPackageDirective>(),
-            javaClass<KtCodeFragment>(),
+            KtNamedFunction::class.java,
+            KtAnonymousInitializer::class.java,
+            KtProperty::class.java,
+            KtImportDirective::class.java,
+            KtPackageDirective::class.java,
+            KtCodeFragment::class.java,
             // TODO: Non-analyzable so far, add more granular analysis
-            javaClass<KtAnnotationEntry>(),
-            javaClass<KtTypeConstraint>(),
-            javaClass<KtSuperTypeList>(),
-            javaClass<KtTypeParameter>(),
-            javaClass<KtParameter>()
+            KtAnnotationEntry::class.java,
+            KtTypeConstraint::class.java,
+            KtSuperTypeList::class.java,
+            KtTypeParameter::class.java,
+            KtParameter::class.java
     )
 
     fun findAnalyzableParent(element: KtElement): KtElement {
@@ -135,12 +134,12 @@ private object KotlinResolveDataProvider {
             is KtTypeConstraint,
             is KtSuperTypeList,
             is KtTypeParameter,
-            is KtParameter -> PsiTreeUtil.getParentOfType(topmostElement, javaClass<KtClassOrObject>(), javaClass<KtCallableDeclaration>())
+            is KtParameter -> PsiTreeUtil.getParentOfType(topmostElement, KtClassOrObject::class.java, KtCallableDeclaration::class.java)
             else -> topmostElement
         }
         return analyzableElement
                     // if none of the above worked, take the outermost declaration
-                    ?: PsiTreeUtil.getTopmostParentOfType(element, javaClass<KtDeclaration>())
+                    ?: PsiTreeUtil.getTopmostParentOfType(element, KtDeclaration::class.java)
                     // if even that didn't work, take the whole file
                     ?: element.getContainingKtFile()
     }
@@ -153,13 +152,13 @@ private object KotlinResolveDataProvider {
             }
 
             val file = analyzableElement.getContainingKtFile()
-            if (LightClassUtil.belongsToKotlinBuiltIns(file) || file.getModuleInfo() is LibrarySourceInfo) {
+            if (file.getModuleInfo() is LibrarySourceInfo) {
                 // Library sources: mark file to skip
                 file.putUserData(LibrarySourceHacks.SKIP_TOP_LEVEL_MEMBERS, true)
             }
 
             val resolveSession = componentProvider.get<ResolveSession>()
-            val trace = DelegatingBindingTrace(resolveSession.getBindingContext(), "Trace for resolution of " + analyzableElement)
+            val trace = DelegatingBindingTrace(resolveSession.bindingContext, "Trace for resolution of " + analyzableElement)
 
             val targetPlatform = TargetPlatformDetector.getPlatform(analyzableElement.getContainingKtFile())
 
@@ -177,7 +176,7 @@ private object KotlinResolveDataProvider {
                     listOf(analyzableElement)
             )
             return AnalysisResult.success(
-                    trace.getBindingContext(),
+                    trace.bindingContext,
                     module
             )
         }

@@ -21,7 +21,7 @@ import org.jetbrains.kotlin.diagnostics.rendering.DiagnosticFactoryToRendererMap
 import org.jetbrains.kotlin.diagnostics.rendering.Renderers
 
 private val DIAGNOSTIC_FACTORY_TO_RENDERER by lazy {
-    with(DiagnosticFactoryToRendererMap()) {
+    with(DiagnosticFactoryToRendererMap("JS")) {
 
         put(ErrorsJs.NATIVE_ANNOTATIONS_ALLOWED_ONLY_ON_MEMBER_OR_EXTENSION_FUN,
             "Annotation ''{0}'' is allowed only on member functions of declaration annotated as ''kotlin.js.native'' or on toplevel extension functions", Renderers.RENDER_TYPE)
@@ -42,6 +42,6 @@ private val DIAGNOSTIC_FACTORY_TO_RENDERER by lazy {
     }
 }
 
-public class DefaultErrorMessagesJs : DefaultErrorMessages.Extension {
+class DefaultErrorMessagesJs : DefaultErrorMessages.Extension {
     override fun getMap(): DiagnosticFactoryToRendererMap = DIAGNOSTIC_FACTORY_TO_RENDERER
 }

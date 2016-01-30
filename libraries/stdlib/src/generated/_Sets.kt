@@ -8,6 +8,7 @@ package kotlin.collections
 // See: https://github.com/JetBrains/kotlin/tree/master/libraries/stdlib
 //
 
+import kotlin.comparisons.*
 import java.util.*
 
 import java.util.Collections // TODO: it's temporary while we have java.util.Collections in js
@@ -54,6 +55,13 @@ public operator fun <T> Set<T>.minus(elements: Sequence<T>): Set<T> {
 }
 
 /**
+ * Returns a set containing all elements of the original set except the given [element].
+ */
+public fun <T> Set<T>.minusElement(element: T): Set<T> {
+    return minus(element)
+}
+
+/**
  * Returns a set containing all elements of the original set and then the given [element].
  */
 public operator fun <T> Set<T>.plus(element: T): Set<T> {
@@ -91,5 +99,12 @@ public operator fun <T> Set<T>.plus(elements: Sequence<T>): Set<T> {
     result.addAll(this)
     result.addAll(elements)
     return result
+}
+
+/**
+ * Returns a set containing all elements of the original set and then the given [element].
+ */
+public fun <T> Set<T>.plusElement(element: T): Set<T> {
+    return plus(element)
 }
 

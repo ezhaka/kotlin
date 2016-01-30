@@ -22,6 +22,7 @@ import org.jetbrains.kotlin.incremental.components.NoLookupLocation;
 import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.psi.psiUtil.PsiUtilsKt;
 import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowInfo;
+import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowInfoFactory;
 import org.jetbrains.kotlin.resolve.lazy.descriptors.LazyClassDescriptor;
 import org.jetbrains.kotlin.resolve.lazy.descriptors.LazyScriptDescriptor;
 import org.jetbrains.kotlin.resolve.scopes.LexicalScope;
@@ -60,17 +61,23 @@ public class DeclarationScopeProviderImpl implements DeclarationScopeProvider {
         }
 
         if (parentDeclaration instanceof KtClassOrObject) {
-            KtClassOrObject classOrObject = (KtClassOrObject) parentDeclaration;
-            LazyClassDescriptor classDescriptor = (LazyClassDescriptor) lazyDeclarationResolver.getClassDescriptor(classOrObject, NoLookupLocation.WHEN_GET_DECLARATION_SCOPE);
+            KtClassOrObject parentClassOrObject = (KtClassOrObject) parentDeclaration;
+            LazyClassDescriptor parentClassDescriptor = (LazyClassDescriptor) lazyDeclarationResolver.getClassDescriptor(parentClassOrObject, NoLookupLocation.WHEN_GET_DECLARATION_SCOPE);
+
             if (ktDeclaration instanceof KtAnonymousInitializer || ktDeclaration instanceof KtProperty) {
-                return classDescriptor.getScopeForInitializerResolution();
-            }
-            if (ktDeclaration instanceof KtObjectDeclaration
-                || (ktDeclaration instanceof KtClass && !((KtClass) ktDeclaration).isInner())) {
-                return classDescriptor.getScopeForStaticMemberDeclarationResolution();
+                return parentClassDescriptor.getScopeForInitializerResolution();
             }
 
-            return classDescriptor.getScopeForMemberDeclarationResolution();
+            if (ktDeclaration instanceof KtObjectDeclaration && ((KtObjectDeclaration) ktDeclaration).isCompanion()) {
+                return parentClassDescriptor.getScopeForCompanionObjectHeaderResolution();
+            }
+
+            if (ktDeclaration instanceof KtObjectDeclaration ||
+                ktDeclaration instanceof KtClass && !((KtClass) ktDeclaration).isInner()) {
+                return parentClassDescriptor.getScopeForStaticMemberDeclarationResolution();
+            }
+
+            return parentClassDescriptor.getScopeForMemberDeclarationResolution();
         }
         //TODO: this is not how it works for classes and for exact parity we can try to use the code above
         if (parentDeclaration instanceof KtScript) {
@@ -85,6 +92,6 @@ public class DeclarationScopeProviderImpl implements DeclarationScopeProvider {
     @NotNull
     @Override
     public DataFlowInfo getOuterDataFlowInfoForDeclaration(@NotNull PsiElement elementOfDeclaration) {
-        return DataFlowInfo.EMPTY;
+        return DataFlowInfoFactory.EMPTY;
     }
 }

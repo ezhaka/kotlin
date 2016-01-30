@@ -42,6 +42,12 @@ public class InlineUtil {
         return descriptor instanceof SimpleFunctionDescriptor && getInlineStrategy(descriptor).isInline();
     }
 
+    public static boolean isInlineOrContainingInline(@Nullable DeclarationDescriptor descriptor) {
+        if (isInline(descriptor)) return true;
+        if (descriptor == null) return false;
+        return isInlineOrContainingInline(descriptor.getContainingDeclaration());
+    }
+
     @NotNull
     public static InlineStrategy getInlineStrategy(@NotNull DeclarationDescriptor descriptor) {
         if (descriptor instanceof FunctionDescriptor &&
@@ -89,29 +95,53 @@ public class InlineUtil {
             @NotNull BindingContext bindingContext,
             boolean checkNonLocalReturn
     ) {
-        if (!canBeInlineArgument(argument)) return false;
+        ValueParameterDescriptor descriptor = getInlineArgumentDescriptor(argument, bindingContext);
+        if (descriptor != null) {
+            return !checkNonLocalReturn || allowsNonLocalReturns(descriptor);
+        }
+
+        return false;
+    }
+
+    @Nullable
+    public static ValueParameterDescriptor getInlineArgumentDescriptor(
+            @NotNull KtFunction argument,
+            @NotNull BindingContext bindingContext
+    ) {
+        if (!canBeInlineArgument(argument)) return null;
 
         KtExpression call = KtPsiUtil.getParentCallIfPresent(argument);
-        if (call != null) {
-            ResolvedCall<?> resolvedCall = CallUtilKt.getResolvedCall(call, bindingContext);
-            if (resolvedCall != null && isInline(resolvedCall.getResultingDescriptor())) {
-                ValueArgument valueArgument = CallUtilKt.getValueArgumentForExpression(resolvedCall.getCall(), argument);
-                if (valueArgument != null) {
-                    ArgumentMapping mapping = resolvedCall.getArgumentMapping(valueArgument);
-                    if (mapping instanceof ArgumentMatch) {
-                        ValueParameterDescriptor parameter = ((ArgumentMatch) mapping).getValueParameter();
-                        if (isInlineLambdaParameter(parameter)) {
-                            return !checkNonLocalReturn || allowsNonLocalReturns(parameter);
-                        }
-                    }
-                }
-            }
-        }
-        return false;
+        if (call == null) return null;
+
+        ResolvedCall<?> resolvedCall = CallUtilKt.getResolvedCall(call, bindingContext);
+        if (resolvedCall == null) return null;
+
+        CallableDescriptor descriptor = resolvedCall.getResultingDescriptor();
+        if (!isInline(descriptor) && !isArrayConstructorWithLambda(descriptor)) return null;
+
+        ValueArgument valueArgument = CallUtilKt.getValueArgumentForExpression(resolvedCall.getCall(), argument);
+        if (valueArgument == null) return null;
+
+        ArgumentMapping mapping = resolvedCall.getArgumentMapping(valueArgument);
+        if (!(mapping instanceof ArgumentMatch)) return null;
+
+        ValueParameterDescriptor parameter = ((ArgumentMatch) mapping).getValueParameter();
+        return isInlineLambdaParameter(parameter) ? parameter : null;
     }
 
     public static boolean canBeInlineArgument(@Nullable PsiElement functionalExpression) {
         return functionalExpression instanceof KtFunctionLiteral || functionalExpression instanceof KtNamedFunction;
+    }
+
+    /**
+     * @return true if the descriptor is the constructor of one of 9 array classes (Array&lt;T&gt;, IntArray, FloatArray, ...)
+     * which takes the size and an initializer lambda as parameters. Such constructors are marked as 'inline' but they are not loaded
+     * as such because the 'inline' flag is not stored for constructors in the binary metadata. Therefore we pretend that they are inline
+     */
+    public static boolean isArrayConstructorWithLambda(@NotNull CallableDescriptor descriptor) {
+        return descriptor.getValueParameters().size() == 2 &&
+               descriptor instanceof ConstructorDescriptor &&
+               KotlinBuiltIns.isArrayOrPrimitiveArray(((ConstructorDescriptor) descriptor).getContainingDeclaration());
     }
 
     @Nullable

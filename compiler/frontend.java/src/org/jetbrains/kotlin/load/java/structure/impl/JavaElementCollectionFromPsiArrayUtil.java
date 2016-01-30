@@ -18,7 +18,7 @@ package org.jetbrains.kotlin.load.java.structure.impl;
 
 import com.intellij.psi.*;
 import com.intellij.psi.search.GlobalSearchScope;
-import kotlin.CollectionsKt;
+import kotlin.collections.CollectionsKt;
 import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.load.java.structure.*;
@@ -165,11 +165,6 @@ public class JavaElementCollectionFromPsiArrayUtil {
                 return new JavaPackageImpl(aPackage, scope);
             }
         });
-    }
-
-    @NotNull
-    public static Collection<JavaMethod> methods(@NotNull PsiMethod[] methods) {
-        return convert(methods, Factories.METHODS);
     }
 
     @NotNull

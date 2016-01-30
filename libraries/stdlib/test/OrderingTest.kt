@@ -3,12 +3,15 @@ package test.compare
 import java.util.*
 import kotlin.test.*
 import org.junit.Test
+import kotlin.comparisons.*
 
 data class Item(val name: String, val rating: Int) : Comparable<Item> {
     public override fun compareTo(other: Item): Int {
         return compareValuesBy(this, other, { it.rating }, { it.name })
     }
 }
+
+val STRING_CASE_INSENSITIVE_ORDER: Comparator<String> = compareBy { it: String -> it.toUpperCase() }.thenBy { it.toLowerCase() }.thenBy { it }
 
 class OrderingTest {
     val v1 = Item("wine", 9)
@@ -50,7 +53,7 @@ class OrderingTest {
 
     @Test
     fun sortComparatorThenComparator() {
-        val comparator = comparator<Item> { a, b -> a.name.compareTo(b.name) }.thenComparator { a, b -> a.rating.compareTo(b.rating) }
+        val comparator = Comparator<Item> { a, b -> a.name.compareTo(b.name) }.thenComparator { a, b -> a.rating.compareTo(b.rating) }
 
         val diff = comparator.compare(v1, v2)
         assertTrue(diff > 0)

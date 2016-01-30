@@ -21,8 +21,6 @@ import org.jetbrains.kotlin.test.KotlinLiteFixture
 import org.jetbrains.kotlin.test.KotlinTestUtils
 import org.jetbrains.kotlin.cli.jvm.compiler.KotlinCoreEnvironment
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall
-import org.jetbrains.kotlin.resolve.scopes.receivers.ExpressionReceiver
-import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue
 import java.io.File
 import org.jetbrains.kotlin.resolve.lazy.JvmResolveUtil
 import org.jetbrains.kotlin.resolve.calls.model.ArgumentMapping
@@ -35,28 +33,27 @@ import org.jetbrains.kotlin.psi.KtExpression
 import org.jetbrains.kotlin.resolve.calls.model.VariableAsFunctionResolvedCall
 import org.jetbrains.kotlin.resolve.calls.callUtil.getParentResolvedCall
 import org.jetbrains.kotlin.descriptors.ReceiverParameterDescriptor
-import org.jetbrains.kotlin.resolve.scopes.receivers.ExtensionReceiver
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
-import org.jetbrains.kotlin.resolve.scopes.receivers.ImplicitClassReceiver
 import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
 import org.jetbrains.kotlin.descriptors.CallableDescriptor
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.psi.KtFile
 import com.intellij.psi.PsiElement
+import org.jetbrains.kotlin.resolve.scopes.receivers.*
 
-public abstract class AbstractResolvedCallsTest : KotlinLiteFixture() {
+abstract class AbstractResolvedCallsTest : KotlinLiteFixture() {
     override fun createEnvironment(): KotlinCoreEnvironment = createEnvironmentWithMockJdk(ConfigurationKind.ALL)
 
-    public fun doTest(filePath: String) {
+    fun doTest(filePath: String) {
         val text = KotlinTestUtils.doLoadFile(File(filePath))!!
 
-        val jetFile = KtPsiFactory(getProject()).createFile(text.replace("<caret>", ""))
+        val jetFile = KtPsiFactory(project).createFile(text.replace("<caret>", ""))
         val bindingContext = JvmResolveUtil.analyzeOneFileWithJavaIntegration(jetFile, environment).bindingContext
 
         val (element, cachedCall) = buildCachedCall(bindingContext, jetFile, text)
 
         val resolvedCall = if (cachedCall !is VariableAsFunctionResolvedCall) cachedCall
-            else if ("(" == element?.getText()) cachedCall.functionCall
+            else if ("(" == element?.text) cachedCall.functionCall
             else cachedCall.variableCall
 
         val resolvedCallInfoFileName = FileUtil.getNameWithoutExtension(filePath) + ".txt"
@@ -75,44 +72,45 @@ public abstract class AbstractResolvedCallsTest : KotlinLiteFixture() {
 
 }
 
-private fun ReceiverValue.getText() = when (this) {
-    is ExpressionReceiver -> "${expression.getText()} {${getType()}}"
-    is ImplicitClassReceiver -> "Class{${getType()}}"
-    is ExtensionReceiver -> "${getType()}Ext{${declarationDescriptor.getText()}}"
+private fun Receiver?.getText() = when (this) {
+    is ExpressionReceiver -> "${expression.text} {${type}}"
+    is ImplicitClassReceiver -> "Class{${type}}"
+    is ExtensionReceiver -> "${type}Ext{${declarationDescriptor.getText()}}"
+    null -> "NO_RECEIVER"
     else -> toString()
 }
 
-private fun ValueArgument.getText() = this.getArgumentExpression()?.getText()?.replace("\n", " ") ?: ""
+private fun ValueArgument.getText() = this.getArgumentExpression()?.text?.replace("\n", " ") ?: ""
 
 private fun ArgumentMapping.getText() = when (this) {
     is ArgumentMatch -> {
-        val parameterType = DescriptorRenderer.SHORT_NAMES_IN_TYPES.renderType(valueParameter.getType())
-        "${status.name()}  ${valueParameter.getName()} : ${parameterType} ="
+        val parameterType = DescriptorRenderer.SHORT_NAMES_IN_TYPES.renderType(valueParameter.type)
+        "${status.name}  ${valueParameter.name} : ${parameterType} ="
     }
     else -> "ARGUMENT UNMAPPED: "
 }
 
 private fun DeclarationDescriptor.getText(): String = when (this) {
-    is ReceiverParameterDescriptor -> "${getValue().getText()}::this"
+    is ReceiverParameterDescriptor -> "${value.getText()}::this"
     else -> DescriptorRenderer.COMPACT_WITH_SHORT_TYPES.render(this)
 }
 
 private fun ResolvedCall<*>.renderToText(): String {
-    return StringBuilder {
+    return buildString {
         appendln("Resolved call:")
         appendln()
 
-        if (getCandidateDescriptor() != getResultingDescriptor()) {
-            appendln("Candidate descriptor: ${getCandidateDescriptor()!!.getText()}")
+        if (candidateDescriptor != resultingDescriptor) {
+            appendln("Candidate descriptor: ${candidateDescriptor!!.getText()}")
         }
-        appendln("Resulting descriptor: ${getResultingDescriptor()!!.getText()}")
+        appendln("Resulting descriptor: ${resultingDescriptor!!.getText()}")
         appendln()
 
-        appendln("Explicit receiver kind = ${getExplicitReceiverKind()}")
-        appendln("Dispatch receiver = ${getDispatchReceiver().getText()}")
-        appendln("Extension receiver = ${(getExtensionReceiver() as ReceiverValue).getText()}")
+        appendln("Explicit receiver kind = ${explicitReceiverKind}")
+        appendln("Dispatch receiver = ${dispatchReceiver.getText()}")
+        appendln("Extension receiver = ${extensionReceiver.getText()}")
 
-        val valueArguments = getCall().getValueArguments()
+        val valueArguments = call.valueArguments
         if (!valueArguments.isEmpty()) {
             appendln()
             appendln("Value arguments mapping:")
@@ -125,5 +123,5 @@ private fun ResolvedCall<*>.renderToText(): String {
                 appendln("$argumentMappingText $argumentText")
             }
         }
-    }.toString()
+    }
 }

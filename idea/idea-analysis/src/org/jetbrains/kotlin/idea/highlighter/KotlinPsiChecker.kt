@@ -28,6 +28,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.colors.CodeInsightColors
 import com.intellij.openapi.editor.colors.TextAttributesKey
 import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.MultiRangeReference
 import com.intellij.psi.PsiElement
@@ -44,22 +45,19 @@ import org.jetbrains.kotlin.idea.caches.resolve.analyzeFullyAndGetResult
 import org.jetbrains.kotlin.idea.quickfix.QuickFixes
 import org.jetbrains.kotlin.idea.references.mainReference
 import org.jetbrains.kotlin.idea.util.ProjectRootsUtil
-import org.jetbrains.kotlin.psi.KtCodeFragment
-import org.jetbrains.kotlin.psi.KtFile
-import org.jetbrains.kotlin.psi.KtParameter
-import org.jetbrains.kotlin.psi.KtReferenceExpression
+import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.diagnostics.Diagnostics
 import org.jetbrains.kotlin.utils.singletonOrEmptyList
 import java.lang.reflect.*
 import java.util.*
 
-public open class KotlinPsiChecker : Annotator, HighlightRangeExtension {
+open class KotlinPsiChecker : Annotator, HighlightRangeExtension {
 
     override fun annotate(element: PsiElement, holder: AnnotationHolder) {
-        if (!(ProjectRootsUtil.isInProjectOrLibraryContent(element) || element.getContainingFile() is KtCodeFragment)) return
+        if (!(ProjectRootsUtil.isInProjectOrLibraryContent(element) || element.containingFile is KtCodeFragment)) return
 
-        val file = element.getContainingFile() as KtFile
+        val file = element.containingFile as KtFile
 
         val analysisResult = file.analyzeFullyAndGetResult()
         if (analysisResult.isError()) {
@@ -80,8 +78,17 @@ public open class KotlinPsiChecker : Annotator, HighlightRangeExtension {
     open protected fun shouldSuppressUnusedParameter(parameter: KtParameter): Boolean = false
 
     fun annotateElement(element: PsiElement, holder: AnnotationHolder, diagnostics: Diagnostics) {
-        if (ProjectRootsUtil.isInProjectSource(element) || element.getContainingFile() is KtCodeFragment) {
-            ElementAnnotator(element, holder, { param -> shouldSuppressUnusedParameter(param) }).registerDiagnosticsAnnotations(diagnostics.forElement(element))
+        val diagnosticsForElement = diagnostics.forElement(element)
+
+        if (element is KtNameReferenceExpression) {
+            val unresolved = diagnostics.any { it.factory == Errors.UNRESOLVED_REFERENCE }
+            element.putUserData(UNRESOLVED_KEY, if (unresolved) Unit else null)
+        }
+
+        if (diagnosticsForElement.isEmpty()) return
+
+        if (ProjectRootsUtil.isInProjectSource(element) || element.containingFile is KtCodeFragment) {
+            ElementAnnotator(element, holder, { param -> shouldSuppressUnusedParameter(param) }).registerDiagnosticsAnnotations(diagnosticsForElement)
         }
     }
 
@@ -93,8 +100,12 @@ public open class KotlinPsiChecker : Annotator, HighlightRangeExtension {
                 TypeKindHighlightingVisitor(holder, bindingContext)
         )
 
-        public fun createQuickFixes(diagnostic: Diagnostic): Collection<IntentionAction> =
+        fun createQuickFixes(diagnostic: Diagnostic): Collection<IntentionAction> =
                 createQuickFixes(diagnostic.singletonOrEmptyList())[diagnostic]
+
+        private val UNRESOLVED_KEY = Key<Unit>("KotlinPsiChecker.UNRESOLVED_KEY")
+
+        fun wasUnresolved(element: KtNameReferenceExpression) = element.getUserData(UNRESOLVED_KEY) != null
     }
 }
 
@@ -118,7 +129,7 @@ private fun createQuickFixes(similarDiagnostics: Collection<Diagnostic>): MultiM
     }
 
     for (diagnostic in similarDiagnostics) {
-        actions.putValues(diagnostic, QuickFixes.getInstance().getActions(diagnostic.getFactory()))
+        actions.putValues(diagnostic, QuickFixes.getInstance().getActions(diagnostic.factory))
     }
 
     actions.values().forEach { NoDeclarationDescriptorsChecker.check(it.javaClass) }
@@ -177,9 +188,9 @@ private class ElementAnnotator(private val element: PsiElement,
         if (validDiagnostics.isEmpty()) return
 
         val diagnostic = diagnostics.first()
-        val factory = diagnostic.getFactory()
+        val factory = diagnostic.factory
 
-        assert(diagnostics.all { it.getPsiElement() == element && it.factory == factory })
+        assert(diagnostics.all { it.psiElement == element && it.factory == factory })
 
         val ranges = diagnostic.textRanges
 
@@ -191,7 +202,7 @@ private class ElementAnnotator(private val element: PsiElement,
                         val reference = referenceExpression.mainReference
                         if (reference is MultiRangeReference) {
                             AnnotationPresentationInfo(
-                                    ranges = reference.getRanges().map { it.shiftRight(referenceExpression.getTextOffset()) },
+                                    ranges = reference.ranges.map { it.shiftRight(referenceExpression.textOffset) },
                                     highlightType = ProblemHighlightType.LIKE_UNKNOWN_SYMBOL)
                         }
                         else {
@@ -202,7 +213,7 @@ private class ElementAnnotator(private val element: PsiElement,
                     Errors.ILLEGAL_ESCAPE -> AnnotationPresentationInfo(ranges, textAttributes = KotlinHighlightingColors.INVALID_STRING_ESCAPE)
 
                     Errors.REDECLARATION -> AnnotationPresentationInfo(
-                            ranges = listOf(diagnostic.getTextRanges().first()), nonDefaultMessage = "")
+                            ranges = listOf(diagnostic.textRanges.first()), nonDefaultMessage = "")
 
                     else -> {
                         AnnotationPresentationInfo(
@@ -243,12 +254,12 @@ private class ElementAnnotator(private val element: PsiElement,
 
                 fixes.forEach { annotation.registerFix(it) }
 
-                if (diagnostic.getSeverity() == Severity.WARNING) {
-                    annotation.setProblemGroup(KotlinSuppressableWarningProblemGroup(diagnostic.getFactory()))
+                if (diagnostic.severity == Severity.WARNING) {
+                    annotation.problemGroup = KotlinSuppressableWarningProblemGroup(diagnostic.factory)
 
                     if (fixes.isEmpty()) {
                         // if there are no quick fixes we need to register an EmptyIntentionAction to enable 'suppress' actions
-                        annotation.registerFix(EmptyIntentionAction(diagnostic.getFactory().getName()))
+                        annotation.registerFix(EmptyIntentionAction(diagnostic.factory.name))
                     }
                 }
             }
@@ -262,8 +273,8 @@ private class AnnotationPresentationInfo(
         val highlightType: ProblemHighlightType? = null,
         val textAttributes: TextAttributesKey? = null) {
 
-    public fun create(diagnostic: Diagnostic, range: TextRange, holder: AnnotationHolder): Annotation {
-        val defaultMessage = nonDefaultMessage?: getDefaultMessage(diagnostic)
+    fun create(diagnostic: Diagnostic, range: TextRange, holder: AnnotationHolder): Annotation {
+        val defaultMessage = nonDefaultMessage ?: getDefaultMessage(diagnostic)
 
         val annotation = when (diagnostic.severity) {
             Severity.ERROR -> holder.createErrorAnnotation(range, defaultMessage)
@@ -286,8 +297,8 @@ private class AnnotationPresentationInfo(
 
     private fun getMessage(diagnostic: Diagnostic): String {
         var message = IdeErrorMessages.render(diagnostic)
-        if (KotlinInternalMode.enabled || ApplicationManager.getApplication().isUnitTestMode()) {
-            val factoryName = diagnostic.getFactory().getName()
+        if (KotlinInternalMode.enabled || ApplicationManager.getApplication().isUnitTestMode) {
+            val factoryName = diagnostic.factory.name
             if (message.startsWith("<html>")) {
                 message = "<html>[$factoryName] ${message.substring("<html>".length)}"
             }
@@ -303,8 +314,8 @@ private class AnnotationPresentationInfo(
 
     private fun getDefaultMessage(diagnostic: Diagnostic): String {
         val message = DefaultErrorMessages.render(diagnostic)
-        if (KotlinInternalMode.enabled || ApplicationManager.getApplication().isUnitTestMode()) {
-            return "[${diagnostic.getFactory().getName()}] $message"
+        if (KotlinInternalMode.enabled || ApplicationManager.getApplication().isUnitTestMode) {
+            return "[${diagnostic.factory.name}] $message"
         }
         return message
     }

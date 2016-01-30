@@ -26,7 +26,7 @@ import org.jetbrains.kotlin.idea.util.application.runWriteAction
 import org.jetbrains.kotlin.test.KotlinTestUtils
 import java.io.File
 
-public abstract class AbstractJavaToKotlinConverterTest : LightCodeInsightFixtureTestCase() {
+abstract class AbstractJavaToKotlinConverterTest : LightCodeInsightFixtureTestCase() {
     override fun setUp() {
         super.setUp()
 
@@ -48,7 +48,7 @@ public abstract class AbstractJavaToKotlinConverterTest : LightCodeInsightFixtur
     }
 
     protected fun addFile(file: File, dirName: String): VirtualFile {
-        return addFile(FileUtil.loadFile(file, true), file.getName(), dirName)
+        return addFile(FileUtil.loadFile(file, true), file.name, dirName)
     }
 
     protected fun addFile(text: String, fileName: String, dirName: String): VirtualFile {

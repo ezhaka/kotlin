@@ -19,7 +19,7 @@ package org.jetbrains.kotlin.js.translate.utils;
 import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.util.Function;
 import com.intellij.util.containers.ContainerUtil;
-import kotlin.CollectionsKt;
+import kotlin.collections.CollectionsKt;
 import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.kotlin.backend.common.CodegenUtil;
@@ -86,7 +86,7 @@ public class ManglingUtils {
             ClassDescriptor classDescriptor = (ClassDescriptor) containingDeclaration;
 
             // Use stable mangling when it's inside an overridable declaration to avoid clashing names on inheritance.
-            if (!ModalityKt.isFinal(classDescriptor)) {
+            if (!ModalityKt.isFinalOrEnum(classDescriptor)) {
                 return true;
             }
 

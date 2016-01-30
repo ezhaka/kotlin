@@ -22,9 +22,10 @@ package kotlin
  * @param message the detail message string.
  * @param cause the cause of this throwable.
  */
-public open class Throwable(val message: String? = null, val cause: Throwable? = null) {
-    /**
-     * Prints the stack trace of this throwable to the standard output.
-     */
-    public fun printStackTrace(): Unit
+public open class Throwable(val message: String?, val cause: Throwable?) {
+    constructor(message: String?) : this(message, null)
+
+    constructor(cause: Throwable?) : this(cause?.toString(), cause)
+
+    constructor() : this(null, null)
 }

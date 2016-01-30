@@ -35,6 +35,7 @@ import org.jetbrains.kotlin.compiler.plugin.PluginCliOptionProcessingException
 import org.jetbrains.kotlin.compiler.plugin.cliPluginUsageString
 import org.jetbrains.kotlin.config.*
 import org.jetbrains.kotlin.load.java.JvmAbi
+import org.jetbrains.kotlin.load.kotlin.JvmMetadataVersion
 import org.jetbrains.kotlin.load.kotlin.incremental.components.IncrementalCompilationComponents
 import org.jetbrains.kotlin.script.StandardScriptDefinition
 import org.jetbrains.kotlin.util.PerformanceCounter
@@ -45,7 +46,7 @@ import java.io.File
 import java.lang.management.ManagementFactory
 import java.util.concurrent.TimeUnit
 
-public open class K2JVMCompiler : CLICompiler<K2JVMCompilerArguments>() {
+open class K2JVMCompiler : CLICompiler<K2JVMCompilerArguments>() {
 
     override fun doExecute(arguments: K2JVMCompilerArguments, services: Services, messageCollector: MessageCollector, rootDisposable: Disposable): ExitCode {
         val messageSeverityCollector = MessageSeverityCollector(messageCollector)
@@ -54,18 +55,18 @@ public open class K2JVMCompiler : CLICompiler<K2JVMCompilerArguments>() {
         else
             PathUtil.getKotlinPathsForCompiler()
 
-        messageSeverityCollector.report(CompilerMessageSeverity.LOGGING, "Using Kotlin home directory " + paths.getHomePath(), CompilerMessageLocation.NO_LOCATION)
+        messageSeverityCollector.report(CompilerMessageSeverity.LOGGING, "Using Kotlin home directory " + paths.homePath, CompilerMessageLocation.NO_LOCATION)
         PerformanceCounter.setTimeCounterEnabled(arguments.reportPerf);
 
         val configuration = CompilerConfiguration()
         configuration.put(CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY, messageSeverityCollector)
 
         if (IncrementalCompilation.isEnabled()) {
-            val incrementalCompilationComponents = services.get(javaClass<IncrementalCompilationComponents>())
+            val incrementalCompilationComponents = services.get(IncrementalCompilationComponents::class.java)
             configuration.put(JVMConfigurationKeys.INCREMENTAL_COMPILATION_COMPONENTS, incrementalCompilationComponents)
         }
 
-        val locator = services.get(javaClass<CompilerJarLocator>())
+        val locator = services.get(CompilerJarLocator::class.java)
         configuration.put(JVMConfigurationKeys.COMPILER_JAR_LOCATOR, locator)
 
         try {
@@ -83,12 +84,12 @@ public open class K2JVMCompiler : CLICompiler<K2JVMCompilerArguments>() {
             PluginCliParser.loadPlugins(arguments, configuration)
         }
         catch (e: PluginCliOptionProcessingException) {
-            val message = e.getMessage() + "\n\n" + cliPluginUsageString(e.pluginId, e.options)
+            val message = e.message + "\n\n" + cliPluginUsageString(e.pluginId, e.options)
             messageSeverityCollector.report(CompilerMessageSeverity.ERROR, message, CompilerMessageLocation.NO_LOCATION)
             return INTERNAL_ERROR
         }
         catch (e: CliOptionProcessingException) {
-            messageSeverityCollector.report(CompilerMessageSeverity.ERROR, e.getMessage()!!, CompilerMessageLocation.NO_LOCATION)
+            messageSeverityCollector.report(CompilerMessageSeverity.ERROR, e.message!!, CompilerMessageLocation.NO_LOCATION)
             return INTERNAL_ERROR
         }
         catch (t: Throwable) {
@@ -108,7 +109,7 @@ public open class K2JVMCompiler : CLICompiler<K2JVMCompilerArguments>() {
             for (arg in arguments.freeArgs) {
                 configuration.addKotlinSourceRoot(arg)
                 val file = File(arg)
-                if (file.isDirectory()) {
+                if (file.isDirectory) {
                     configuration.addJavaSourceRoot(file)
                 }
             }
@@ -125,7 +126,10 @@ public open class K2JVMCompiler : CLICompiler<K2JVMCompilerArguments>() {
 
         if (arguments.script) {
             configuration.add(CommonConfigurationKeys.SCRIPT_DEFINITIONS_KEY, StandardScriptDefinition)
-            shouldReportPerf = false
+        }
+
+        if (arguments.skipMetadataVersionCheck) {
+            JvmMetadataVersion.skipCheck = true
         }
 
         putAdvancedOptions(configuration, arguments)
@@ -159,22 +163,22 @@ public open class K2JVMCompiler : CLICompiler<K2JVMCompilerArguments>() {
                     messageSeverityCollector.report(CompilerMessageSeverity.WARNING, "The '-d' option with a directory destination is ignored because '-module' is specified", CompilerMessageLocation.NO_LOCATION)
                 }
 
-                val directory = File(arguments.module).getAbsoluteFile().getParentFile()
+                val directory = File(arguments.module).absoluteFile.parentFile
 
-                val compilerConfiguration = KotlinToJVMBytecodeCompiler.createCompilerConfiguration(configuration, moduleScript.getModules(), directory)
+                val compilerConfiguration = KotlinToJVMBytecodeCompiler.createCompilerConfiguration(configuration, moduleScript.modules, directory)
                 environment = createCoreEnvironment(rootDisposable, compilerConfiguration)
 
                 if (messageSeverityCollector.anyReported(CompilerMessageSeverity.ERROR)) return COMPILATION_ERROR
 
-                KotlinToJVMBytecodeCompiler.compileModules(environment, configuration, moduleScript.getModules(), directory, jar, friendPaths, arguments.includeRuntime)
+                KotlinToJVMBytecodeCompiler.compileModules(environment, configuration, moduleScript.modules, directory, jar, friendPaths, arguments.includeRuntime)
             }
             else if (arguments.script) {
-                val scriptArgs = arguments.freeArgs.subList(1, arguments.freeArgs.size())
+                val scriptArgs = arguments.freeArgs.subList(1, arguments.freeArgs.size)
                 environment = createCoreEnvironment(rootDisposable, configuration)
 
                 if (messageSeverityCollector.anyReported(CompilerMessageSeverity.ERROR)) return COMPILATION_ERROR
 
-                KotlinToJVMBytecodeCompiler.compileAndExecuteScript(configuration, paths, environment, scriptArgs)
+                return KotlinToJVMBytecodeCompiler.compileAndExecuteScript(configuration, paths, environment, scriptArgs)
             }
             else {
                 environment = createCoreEnvironment(rootDisposable, configuration)
@@ -200,7 +204,7 @@ public open class K2JVMCompiler : CLICompiler<K2JVMCompilerArguments>() {
             return OK
         }
         catch (e: CompilationException) {
-            messageSeverityCollector.report(CompilerMessageSeverity.EXCEPTION, OutputMessageUtil.renderException(e), MessageUtil.psiElementToMessageLocation(e.getElement()))
+            messageSeverityCollector.report(CompilerMessageSeverity.EXCEPTION, OutputMessageUtil.renderException(e), MessageUtil.psiElementToMessageLocation(e.element))
             return INTERNAL_ERROR
         }
 
@@ -233,21 +237,21 @@ public open class K2JVMCompiler : CLICompiler<K2JVMCompilerArguments>() {
         // allows to track GC time for each run when repeated compilation is used
         private val elapsedGCTime = hashMapOf<String, Long>()
         private var elapsedJITTime = 0L
-        private var shouldReportPerf = true
 
-        public fun resetInitStartTime() {
+        fun resetInitStartTime() {
             if (initStartNanos == 0L) {
                 initStartNanos = System.nanoTime()
             }
         }
 
-        @JvmStatic
-        public fun main(args: Array<String>) {
+        @JvmStatic fun main(args: Array<String>) {
             CLICompiler.doMain(K2JVMCompiler(), args)
         }
 
-        public fun reportPerf(configuration: CompilerConfiguration, message: String) {
-            if (!shouldReportPerf) return
+        fun reportPerf(configuration: CompilerConfiguration, message: String) {
+            if (!configuration.get(CLIConfigurationKeys.REPORT_PERF, false)) {
+                return
+            }
 
             val collector = configuration[CLIConfigurationKeys.MESSAGE_COLLECTOR_KEY]!!
             collector.report(CompilerMessageSeverity.INFO, "PERF: " + message, CompilerMessageLocation.NO_LOCATION)
@@ -255,17 +259,17 @@ public open class K2JVMCompiler : CLICompiler<K2JVMCompilerArguments>() {
 
         fun reportGCTime(configuration: CompilerConfiguration) {
             ManagementFactory.getGarbageCollectorMXBeans().forEach {
-                val currentTime = it.getCollectionTime()
-                val elapsedTime = elapsedGCTime.getOrElse(it.getName()) { 0 }
+                val currentTime = it.collectionTime
+                val elapsedTime = elapsedGCTime.getOrElse(it.name) { 0 }
                 val time = currentTime - elapsedTime
-                reportPerf(configuration, "GC time for ${it.getName()} is $time ms")
-                elapsedGCTime[it.getName()] = currentTime
+                reportPerf(configuration, "GC time for ${it.name} is $time ms")
+                elapsedGCTime[it.name] = currentTime
             }
         }
 
         fun reportCompilationTime(configuration: CompilerConfiguration) {
             val bean = ManagementFactory.getCompilationMXBean() ?: return
-            val currentTime = bean.getTotalCompilationTime()
+            val currentTime = bean.totalCompilationTime
             reportPerf(configuration, "JIT time is ${currentTime - elapsedJITTime} ms")
             elapsedJITTime = currentTime
         }
@@ -276,6 +280,8 @@ public open class K2JVMCompiler : CLICompiler<K2JVMCompilerArguments>() {
             configuration.put(JVMConfigurationKeys.DISABLE_INLINE, arguments.noInline)
             configuration.put(JVMConfigurationKeys.DISABLE_OPTIMIZATION, arguments.noOptimize)
             configuration.put(JVMConfigurationKeys.MULTIFILE_FACADES_OPEN, arguments.multifileFacadesOpen);
+            configuration.put(CLIConfigurationKeys.ALLOW_KOTLIN_PACKAGE, arguments.allowKotlinPackage);
+            configuration.put(CLIConfigurationKeys.REPORT_PERF, arguments.reportPerf);
         }
 
         private fun getClasspath(paths: KotlinPaths, arguments: K2JVMCompilerArguments): List<File> {
@@ -284,7 +290,7 @@ public open class K2JVMCompiler : CLICompiler<K2JVMCompilerArguments>() {
                 classpath.addAll(arguments.classpath.split(File.pathSeparatorChar).map { File(it) })
             }
             if (!arguments.noStdlib) {
-                classpath.add(paths.getRuntimePath())
+                classpath.add(paths.runtimePath)
             }
             return classpath
         }

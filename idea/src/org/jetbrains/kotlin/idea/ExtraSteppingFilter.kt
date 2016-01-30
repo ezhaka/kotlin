@@ -24,16 +24,16 @@ import com.sun.jdi.request.StepRequest
 import org.jetbrains.kotlin.idea.debugger.KotlinPositionManager
 import org.jetbrains.kotlin.idea.util.application.runReadAction
 
-public class ExtraSteppingFilter : com.intellij.debugger.engine.ExtraSteppingFilter {
+class ExtraSteppingFilter : com.intellij.debugger.engine.ExtraSteppingFilter {
 
     override fun isApplicable(context: SuspendContext?): Boolean {
         if (context == null) {
             return false;
         }
 
-        val debugProcess = context.getDebugProcess()
-        val positionManager = KotlinPositionManager(debugProcess!!)
-        val location = context.getFrameProxy()!!.location()
+        val debugProcess = context.debugProcess ?: return false
+        val positionManager = KotlinPositionManager(debugProcess)
+        val location = context.frameProxy?.location() ?: return false
         return runReadAction {
             shouldFilter(positionManager, location)
         }
@@ -41,7 +41,7 @@ public class ExtraSteppingFilter : com.intellij.debugger.engine.ExtraSteppingFil
 
 
     private fun shouldFilter(positionManager: KotlinPositionManager, location: Location): Boolean {
-        val defaultStrata = location.declaringType().defaultStratum()
+        val defaultStrata = location.declaringType()?.defaultStratum()
         if ("Kotlin" != defaultStrata) {
             return false;
         }
@@ -56,14 +56,16 @@ public class ExtraSteppingFilter : com.intellij.debugger.engine.ExtraSteppingFil
 
         if (sourcePosition == null) return false
 
-        val className = positionManager.classNameForPosition(sourcePosition)?.replace('/', '.') ?: return false
+        val classNames = positionManager.classNamesForPosition(sourcePosition, false).map { it.replace('/', '.') }
 
-        val settings = DebuggerSettings.getInstance()
-        if (settings.TRACING_FILTERS_ENABLED) {
-            for (filter in settings.getSteppingFilters()) {
-                if (filter.isEnabled()) {
-                    if (filter.matches(className)) {
-                        return true;
+        classNames.forEach { className ->
+            val settings = DebuggerSettings.getInstance()
+            if (settings.TRACING_FILTERS_ENABLED) {
+                for (filter in settings.steppingFilters) {
+                    if (filter.isEnabled) {
+                        if (filter.matches(className)) {
+                            return true
+                        }
                     }
                 }
             }

@@ -16,6 +16,7 @@
 
 package org.jetbrains.kotlin.types.expressions;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.intellij.lang.ASTNode;
@@ -24,6 +25,7 @@ import com.intellij.openapi.util.Ref;
 import com.intellij.psi.util.PsiTreeUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.kotlin.builtins.KotlinBuiltIns;
 import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.descriptors.annotations.Annotations;
 import org.jetbrains.kotlin.descriptors.impl.SimpleFunctionDescriptorImpl;
@@ -35,6 +37,7 @@ import org.jetbrains.kotlin.psi.*;
 import org.jetbrains.kotlin.resolve.BindingContextUtils;
 import org.jetbrains.kotlin.resolve.BindingTrace;
 import org.jetbrains.kotlin.resolve.calls.CallResolver;
+import org.jetbrains.kotlin.resolve.calls.context.ResolutionContext;
 import org.jetbrains.kotlin.resolve.calls.inference.ConstraintSystem;
 import org.jetbrains.kotlin.resolve.calls.inference.ConstraintSystemStatus;
 import org.jetbrains.kotlin.resolve.calls.inference.ConstraintsUtil;
@@ -49,13 +52,12 @@ import org.jetbrains.kotlin.resolve.calls.tasks.TracingStrategy;
 import org.jetbrains.kotlin.resolve.calls.util.CallMaker;
 import org.jetbrains.kotlin.resolve.descriptorUtil.AnnotationsForResolveKt;
 import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue;
-import org.jetbrains.kotlin.types.KotlinType;
-import org.jetbrains.kotlin.types.TypeUtils;
-import org.jetbrains.kotlin.types.Variance;
+import org.jetbrains.kotlin.types.*;
 import org.jetbrains.kotlin.types.typeUtil.TypeUtilsKt;
 
 import java.util.*;
 
+import static org.jetbrains.kotlin.diagnostics.Errors.TYPE_INFERENCE_FAILED_ON_SPECIAL_CONSTRUCT;
 import static org.jetbrains.kotlin.resolve.BindingContext.CALL;
 import static org.jetbrains.kotlin.resolve.BindingContext.RESOLVED_CALL;
 import static org.jetbrains.kotlin.resolve.calls.inference.constraintPosition.ConstraintPositionKind.EXPECTED_TYPE_POSITION;
@@ -64,7 +66,7 @@ public class ControlStructureTypingUtils {
     private static final Logger LOG = Logger.getInstance(ControlStructureTypingUtils.class);
 
     public enum ResolveConstruct {
-        IF("if"), ELVIS("elvis"), EXCL_EXCL("ExclExcl");
+        IF("if"), ELVIS("elvis"), EXCL_EXCL("ExclExcl"), WHEN("when");
 
         private final String name;
 
@@ -102,11 +104,32 @@ public class ControlStructureTypingUtils {
         SimpleFunctionDescriptorImpl function = createFunctionDescriptorForSpecialConstruction(
                 construct, argumentNames, isArgumentNullable);
         TracingStrategy tracing = createTracingForSpecialConstruction(call, construct.getName(), context);
-        ResolutionCandidate<CallableDescriptor> resolutionCandidate = ResolutionCandidate.<CallableDescriptor>create(call, function);
+        TypeSubstitutor knownTypeParameterSubstitutor = createKnownTypeParameterSubstitutorForSpecialCall(construct, function, context.expectedType);
+        ResolutionCandidate<CallableDescriptor> resolutionCandidate =
+                ResolutionCandidate.<CallableDescriptor>create(call, function, knownTypeParameterSubstitutor);
         OverloadResolutionResults<FunctionDescriptor> results = callResolver.resolveCallWithKnownCandidate(
                 call, tracing, context, resolutionCandidate, dataFlowInfoForArguments);
         assert results.isSingleResult() : "Not single result after resolving one known candidate";
         return results.getResultingCall();
+    }
+
+    private static @Nullable TypeSubstitutor createKnownTypeParameterSubstitutorForSpecialCall(
+            @NotNull ResolveConstruct construct,
+            @NotNull SimpleFunctionDescriptorImpl function,
+            @NotNull KotlinType expectedType
+    ) {
+        if (construct == ResolveConstruct.ELVIS
+            || TypeUtils.noExpectedType(expectedType)
+            || TypeUtils.isDontCarePlaceholder(expectedType)
+            || KotlinBuiltIns.isUnitOrNullableUnit(expectedType)
+            || KotlinBuiltIns.isAnyOrNullableAny(expectedType)
+                ) {
+            return null;
+        }
+
+        TypeConstructor typeParameterConstructor = function.getTypeParameters().get(0).getTypeConstructor();
+        TypeProjection typeProjection = new TypeProjectionImpl(expectedType);
+        return TypeSubstitutor.create(ImmutableMap.of(typeParameterConstructor, typeProjection));
     }
 
     private SimpleFunctionDescriptorImpl createFunctionDescriptorForSpecialConstruction(
@@ -157,19 +180,14 @@ public class ControlStructureTypingUtils {
     }
 
     /*package*/ static MutableDataFlowInfoForArguments createIndependentDataFlowInfoForArgumentsForCall(
+            @NotNull DataFlowInfo initialDataFlowInfo,
             final Map<ValueArgument, DataFlowInfo> dataFlowInfoForArgumentsMap
     ) {
-        return new MutableDataFlowInfoForArguments() {
-            private DataFlowInfo initialDataFlowInfo;
-
-            @Override
-            public void setInitialDataFlowInfo(@NotNull DataFlowInfo dataFlowInfo) {
-                this.initialDataFlowInfo = dataFlowInfo;
-            }
+        return new MutableDataFlowInfoForArguments(initialDataFlowInfo) {
 
             @Override
             public void updateInfo(@NotNull ValueArgument valueArgument, @NotNull DataFlowInfo dataFlowInfo) {
-                //todo
+                dataFlowInfoForArgumentsMap.put(valueArgument, dataFlowInfo);
             }
 
             @NotNull
@@ -177,25 +195,33 @@ public class ControlStructureTypingUtils {
             public DataFlowInfo getInfo(@NotNull ValueArgument valueArgument) {
                 return dataFlowInfoForArgumentsMap.get(valueArgument);
             }
-
-            @NotNull
-            @Override
-            public DataFlowInfo getResultInfo() {
-                //todo merge and use
-                return initialDataFlowInfo;
-            }
         };
     }
 
     public static MutableDataFlowInfoForArguments createDataFlowInfoForArgumentsForIfCall(
             @NotNull Call callForIf,
+            @NotNull DataFlowInfo conditionInfo,
             @NotNull DataFlowInfo thenInfo,
             @NotNull DataFlowInfo elseInfo
     ) {
         Map<ValueArgument, DataFlowInfo> dataFlowInfoForArgumentsMap = Maps.newHashMap();
         dataFlowInfoForArgumentsMap.put(callForIf.getValueArguments().get(0), thenInfo);
         dataFlowInfoForArgumentsMap.put(callForIf.getValueArguments().get(1), elseInfo);
-        return createIndependentDataFlowInfoForArgumentsForCall(dataFlowInfoForArgumentsMap);
+        return createIndependentDataFlowInfoForArgumentsForCall(conditionInfo, dataFlowInfoForArgumentsMap);
+    }
+
+    public static MutableDataFlowInfoForArguments createDataFlowInfoForArgumentsOfWhenCall(
+            @NotNull Call callForWhen,
+            @NotNull DataFlowInfo subjectDataFlowInfo,
+            @NotNull List<DataFlowInfo> entryDataFlowInfos
+    ) {
+        Map<ValueArgument, DataFlowInfo> dataFlowInfoForArgumentsMap = Maps.newHashMap();
+        int i = 0;
+        for (ValueArgument argument : callForWhen.getValueArguments()) {
+            DataFlowInfo entryDataFlowInfo = entryDataFlowInfos.get(i++);
+            dataFlowInfoForArgumentsMap.put(argument, entryDataFlowInfo);
+        }
+        return createIndependentDataFlowInfoForArgumentsForCall(subjectDataFlowInfo, dataFlowInfoForArgumentsMap);
     }
 
     /*package*/ static Call createCallForSpecialConstruction(
@@ -214,16 +240,16 @@ public class ControlStructureTypingUtils {
                 return expression.getNode();
             }
 
-            @NotNull
+            @Nullable
             @Override
             public ReceiverValue getExplicitReceiver() {
-                return ReceiverValue.NO_RECEIVER;
+                return null;
             }
 
-            @NotNull
+            @Nullable
             @Override
             public ReceiverValue getDispatchReceiver() {
-                return ReceiverValue.NO_RECEIVER;
+                return null;
             }
 
             @Nullable
@@ -331,6 +357,19 @@ public class ControlStructureTypingUtils {
             }
 
             @Override
+            public Boolean visitWhenExpression(@NotNull KtWhenExpression whenExpression, CheckTypeContext c) {
+                boolean errorWasReported = false;
+                for (KtWhenEntry whenEntry : whenExpression.getEntries()) {
+                    KtExpression entryExpression = whenEntry.getExpression();
+                    if (entryExpression != null) {
+                        errorWasReported |= checkExpressionTypeRecursively(entryExpression, c);
+                    }
+                }
+                errorWasReported |= checkExpressionType(whenExpression, c);
+                return errorWasReported;
+            }
+
+            @Override
             public Boolean visitIfExpression(@NotNull KtIfExpression ifExpression, CheckTypeContext c) {
                 KtExpression thenBranch = ifExpression.getThen();
                 KtExpression elseBranch = ifExpression.getElse();
@@ -397,7 +436,7 @@ public class ControlStructureTypingUtils {
 
             @Override
             public void typeInferenceFailed(
-                    @NotNull BindingTrace trace, @NotNull InferenceErrorData data
+                    @NotNull ResolutionContext<?> context, @NotNull InferenceErrorData data
             ) {
                 ConstraintSystem constraintSystem = data.constraintSystem;
                 ConstraintSystemStatus status = constraintSystem.getStatus();
@@ -409,12 +448,28 @@ public class ControlStructureTypingUtils {
                 KtExpression expression = (KtExpression) call.getCallElement();
                 if (status.hasOnlyErrorsDerivedFrom(EXPECTED_TYPE_POSITION) || status.hasConflictingConstraints()
                         || status.hasTypeInferenceIncorporationError()) { // todo after KT-... remove this line
-                    expression.accept(checkTypeVisitor, new CheckTypeContext(trace, data.expectedType));
+                    if (noTypeCheckingErrorsInExpression(expression, context.trace, data.expectedType)) {
+                        KtExpression calleeExpression = call.getCalleeExpression();
+                        if (calleeExpression instanceof KtWhenExpression || calleeExpression instanceof KtIfExpression) {
+                            if (status.hasConflictingConstraints() || status.hasTypeInferenceIncorporationError()) {
+                                // TODO provide comprehensible error report for hasConflictingConstraints() case (if possible)
+                                context.trace.report(TYPE_INFERENCE_FAILED_ON_SPECIAL_CONSTRUCT.on(expression));
+                            }
+                        }
+                    }
                     return;
                 }
                 KtDeclaration parentDeclaration = PsiTreeUtil.getParentOfType(expression, KtNamedDeclaration.class);
                 logError("Expression: " + (parentDeclaration != null ? parentDeclaration.getText() : expression.getText()) +
                          "\nConstraint system status: \n" + ConstraintsUtil.getDebugMessageForStatus(status));
+            }
+
+            private boolean noTypeCheckingErrorsInExpression(
+                    KtExpression expression,
+                    @NotNull BindingTrace trace,
+                    @NotNull KotlinType expectedType
+            ) {
+                return Boolean.TRUE != expression.accept(checkTypeVisitor, new CheckTypeContext(trace, expectedType));
             }
         };
     }
@@ -466,7 +521,10 @@ public class ControlStructureTypingUtils {
 
         @Override
         public void wrongReceiverType(
-                @NotNull BindingTrace trace, @NotNull ReceiverParameterDescriptor receiverParameter, @NotNull ReceiverValue receiverArgument
+                @NotNull BindingTrace trace,
+                @NotNull ReceiverParameterDescriptor receiverParameter,
+                @NotNull ReceiverValue receiverArgument,
+                @NotNull ResolutionContext<?> c
         ) {
             logError();
         }
@@ -543,7 +601,7 @@ public class ControlStructureTypingUtils {
 
         @Override
         public void typeInferenceFailed(
-                @NotNull BindingTrace trace, @NotNull InferenceErrorData inferenceErrorData
+                @NotNull ResolutionContext<?> context, @NotNull InferenceErrorData inferenceErrorData
         ) {
             logError();
         }

@@ -16,7 +16,7 @@
 
 package org.jetbrains.kotlin.codegen;
 
-import kotlin.CollectionsKt;
+import kotlin.collections.CollectionsKt;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.kotlin.codegen.state.GenerationState;
@@ -35,8 +35,6 @@ import org.jetbrains.org.objectweb.asm.Type;
 import org.jetbrains.org.objectweb.asm.commons.InstructionAdapter;
 
 import java.util.*;
-
-import static org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue.NO_RECEIVER;
 
 public class FunctionReferenceGenerationStrategy extends FunctionGenerationStrategy.CodegenBased<FunctionDescriptor> {
     private final ResolvedCall<?> resolvedCall;
@@ -82,13 +80,13 @@ public class FunctionReferenceGenerationStrategy extends FunctionGenerationStrat
                 }
             }
 
-            @NotNull
+            @Nullable
             @Override
             public ReceiverValue getExtensionReceiver() {
                 return extensionReceiver;
             }
 
-            @NotNull
+            @Nullable
             @Override
             public ReceiverValue getDispatchReceiver() {
                 return dispatchReceiver;
@@ -112,14 +110,14 @@ public class FunctionReferenceGenerationStrategy extends FunctionGenerationStrat
         if (referencedFunction instanceof ConstructorDescriptor) {
             if (returnType.getSort() == Type.ARRAY) {
                 //noinspection ConstantConditions
-                result = codegen.generateNewArray(fakeExpression, referencedFunction.getReturnType());
+                result = codegen.generateNewArray(fakeExpression, referencedFunction.getReturnType(), fakeResolvedCall);
             }
             else {
                 result = codegen.generateConstructorCall(fakeResolvedCall, returnType);
             }
         }
         else {
-            Call call = CallMaker.makeCall(fakeExpression, NO_RECEIVER, null, fakeExpression, fakeArguments);
+            Call call = CallMaker.makeCall(fakeExpression, null, null, fakeExpression, fakeArguments);
             result = codegen.invokeFunction(call, fakeResolvedCall, StackValue.none());
         }
 
@@ -157,13 +155,13 @@ public class FunctionReferenceGenerationStrategy extends FunctionGenerationStrat
         }
     }
 
-    @NotNull
+    @Nullable
     private ReceiverValue computeAndSaveReceiver(
             @NotNull JvmMethodSignature signature,
             @NotNull ExpressionCodegen codegen,
             @Nullable ReceiverParameterDescriptor receiver
     ) {
-        if (receiver == null) return NO_RECEIVER;
+        if (receiver == null) return null;
 
         KtExpression receiverExpression = KtPsiFactoryKt
                 .KtPsiFactory(state.getProject()).createExpression("callableReferenceFakeReceiver");

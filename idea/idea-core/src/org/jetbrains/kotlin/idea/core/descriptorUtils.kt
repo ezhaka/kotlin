@@ -30,7 +30,6 @@ import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.findOriginalTopMostOverriddenDescriptors
 import org.jetbrains.kotlin.resolve.scopes.LexicalScope
 import org.jetbrains.kotlin.resolve.scopes.receivers.ExpressionReceiver
-import org.jetbrains.kotlin.resolve.scopes.receivers.ReceiverValue
 import org.jetbrains.kotlin.resolve.scopes.utils.getImplicitReceiversHierarchy
 import org.jetbrains.kotlin.synthetic.SyntheticJavaPropertyDescriptor
 
@@ -55,7 +54,7 @@ private fun DeclarationDescriptorWithVisibility.isVisible(
         bindingContext: BindingContext? = null,
         resolutionScope: LexicalScope? = null
 ): Boolean {
-    if (Visibilities.isVisible(ReceiverValue.IRRELEVANT_RECEIVER, this, from)) return true
+    if (Visibilities.isVisibleWithIrrelevantReceiver(this, from)) return true
 
     if (bindingContext == null || resolutionScope == null) return false
 
@@ -86,7 +85,7 @@ private fun compareDescriptorsText(project: Project, d1: DeclarationDescriptor, 
     return false
 }
 
-public fun compareDescriptors(project: Project, currentDescriptor: DeclarationDescriptor?, originalDescriptor: DeclarationDescriptor?): Boolean {
+fun compareDescriptors(project: Project, currentDescriptor: DeclarationDescriptor?, originalDescriptor: DeclarationDescriptor?): Boolean {
     if (currentDescriptor == originalDescriptor) return true
     if (currentDescriptor == null || originalDescriptor == null) return false
 
@@ -111,7 +110,7 @@ public fun compareDescriptors(project: Project, currentDescriptor: DeclarationDe
     return false
 }
 
-public fun Visibility.toKeywordToken(): KtModifierKeywordToken {
+fun Visibility.toKeywordToken(): KtModifierKeywordToken {
     val normalized = normalize()
     when (normalized) {
         Visibilities.PUBLIC -> return KtTokens.PUBLIC_KEYWORD

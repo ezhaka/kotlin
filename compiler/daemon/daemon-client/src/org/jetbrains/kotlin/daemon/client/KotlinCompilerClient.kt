@@ -28,6 +28,7 @@ import java.io.PrintStream
 import java.rmi.server.UnicastRemoteObject
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
+import kotlin.comparisons.*
 import kotlin.concurrent.thread
 
 
@@ -216,7 +217,7 @@ object KotlinCompilerClient {
                     val memBefore = daemon.getUsedMemory().get() / 1024
                     val startTime = System.nanoTime()
 
-                    val res = daemon.remoteCompile(CompileService.NO_SESSION, CompileService.TargetPlatform.JVM, filteredArgs.toArrayList().toTypedArray(), servicesFacade, outStrm, CompileService.OutputFormat.PLAIN, outStrm, null)
+                    val res = daemon.remoteCompile(CompileService.NO_SESSION, CompileService.TargetPlatform.JVM, filteredArgs.toList().toTypedArray(), servicesFacade, outStrm, CompileService.OutputFormat.PLAIN, outStrm, null)
 
                     val endTime = System.nanoTime()
                     println("Compilation result code: $res")
@@ -341,9 +342,9 @@ object KotlinCompilerClient {
 }
 
 
-data class DaemonReportMessage(public val category: DaemonReportCategory, public val message: String)
+data class DaemonReportMessage(val category: DaemonReportCategory, val message: String)
 
-class DaemonReportingTargets(public val out: PrintStream? = null, public val messages: MutableCollection<DaemonReportMessage>? = null)
+class DaemonReportingTargets(val out: PrintStream? = null, val messages: MutableCollection<DaemonReportMessage>? = null)
 
 
 internal fun isProcessAlive(process: Process) =

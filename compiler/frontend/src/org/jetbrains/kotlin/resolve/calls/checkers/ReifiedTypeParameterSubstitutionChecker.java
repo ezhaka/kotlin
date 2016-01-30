@@ -18,10 +18,10 @@ package org.jetbrains.kotlin.resolve.calls.checkers;
 
 import com.intellij.psi.PsiElement;
 import org.jetbrains.annotations.NotNull;
-import org.jetbrains.kotlin.descriptors.CallableDescriptor;
-import org.jetbrains.kotlin.descriptors.ClassifierDescriptor;
-import org.jetbrains.kotlin.descriptors.TypeParameterDescriptor;
+import org.jetbrains.kotlin.builtins.KotlinBuiltIns;
+import org.jetbrains.kotlin.descriptors.*;
 import org.jetbrains.kotlin.diagnostics.Errors;
+import org.jetbrains.kotlin.name.FqName;
 import org.jetbrains.kotlin.psi.KtExpression;
 import org.jetbrains.kotlin.resolve.calls.context.BasicCallResolutionContext;
 import org.jetbrains.kotlin.resolve.calls.model.ResolvedCall;
@@ -39,25 +39,46 @@ public class ReifiedTypeParameterSubstitutionChecker implements CallChecker {
         for (Map.Entry<TypeParameterDescriptor, KotlinType> entry : typeArguments.entrySet()) {
             TypeParameterDescriptor parameter = entry.getKey();
             KotlinType argument = entry.getValue();
-            ClassifierDescriptor argumentDeclarationDescription = argument.getConstructor().getDeclarationDescriptor();
+            ClassifierDescriptor argumentDeclarationDescriptor = argument.getConstructor().getDeclarationDescriptor();
 
-            if (parameter.isReified()) {
-                if (argumentDeclarationDescription instanceof TypeParameterDescriptor &&
-                    !((TypeParameterDescriptor) argumentDeclarationDescription).isReified()
-                ) {
-                    context.trace.report(
-                            Errors.TYPE_PARAMETER_AS_REIFIED.on(getCallElement(context), parameter)
-                    );
-                }
-                else if (TypeUtilsKt.cannotBeReified(argument)) {
-                    context.trace.report(Errors.REIFIED_TYPE_FORBIDDEN_SUBSTITUTION.on(getCallElement(context), argument));
-                }
+            if (!parameter.isReified() && !isTypeParameterOfKotlinArray(parameter)) {
+                continue;
+            }
+
+            if (argumentDeclarationDescriptor instanceof TypeParameterDescriptor &&
+                !((TypeParameterDescriptor) argumentDeclarationDescriptor).isReified()) {
+                context.trace.report(
+                        Errors.TYPE_PARAMETER_AS_REIFIED.on(getElementToReport(context, parameter.getIndex()), parameter)
+                );
+            }
+            else if (TypeUtilsKt.cannotBeReified(argument)) {
+                context.trace.report(
+                        Errors.REIFIED_TYPE_FORBIDDEN_SUBSTITUTION.on(getElementToReport(context, parameter.getIndex()), argument));
+            }
+            else if (TypeUtilsKt.unsafeAsReifiedArgument(argument) && !hasPureReifiableAnnotation(parameter)) {
+                context.trace.report(
+                        Errors.REIFIED_TYPE_UNSAFE_SUBSTITUTION.on(getElementToReport(context, parameter.getIndex()), argument));
             }
         }
     }
 
+    private static final FqName PURE_REIFIABLE_ANNOTATION_FQ_NAME = new FqName("kotlin.internal.PureReifiable");
+
+    private static boolean hasPureReifiableAnnotation(@NotNull TypeParameterDescriptor parameter) {
+        return parameter.getAnnotations().hasAnnotation(PURE_REIFIABLE_ANNOTATION_FQ_NAME) ||
+               isTypeParameterOfKotlinArray(parameter);
+    }
+
+    private static boolean isTypeParameterOfKotlinArray(@NotNull TypeParameterDescriptor parameter) {
+        DeclarationDescriptor container = parameter.getContainingDeclaration();
+        return container instanceof ClassDescriptor && KotlinBuiltIns.isNonPrimitiveArray((ClassDescriptor) container);
+    }
+
     @NotNull
-    private static PsiElement getCallElement(@NotNull BasicCallResolutionContext context) {
+    private static PsiElement getElementToReport(@NotNull BasicCallResolutionContext context, int parameterIndex) {
+        if (context.call.getTypeArguments().size() > parameterIndex) {
+            return context.call.getTypeArguments().get(parameterIndex);
+        }
         KtExpression callee = context.call.getCalleeExpression();
         return callee != null ? callee : context.call.getCallElement();
     }

@@ -19,24 +19,19 @@ package org.jetbrains.kotlin.idea.refactoring.introduce
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.RangeMarker
 import com.intellij.openapi.project.Project
-import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.PsiFile
 import com.intellij.refactoring.introduce.inplace.AbstractInplaceIntroducer
 import com.intellij.refactoring.rename.inplace.InplaceRefactoring
-import com.intellij.ui.NonFocusableCheckBox
 import com.intellij.util.ui.FormBuilder
 import org.jetbrains.kotlin.idea.KotlinFileType
 import org.jetbrains.kotlin.idea.core.replaced
-import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers
 import org.jetbrains.kotlin.idea.util.application.executeWriteCommand
-import org.jetbrains.kotlin.psi.KtExpression
-import org.jetbrains.kotlin.psi.KtNamedDeclaration
-import org.jetbrains.kotlin.psi.KtPsiFactory
-import org.jetbrains.kotlin.psi.KtSimpleNameExpression
+import org.jetbrains.kotlin.psi.*
 import org.jetbrains.kotlin.psi.psiUtil.getNonStrictParentOfType
+import org.jetbrains.kotlin.psi.psiUtil.getParentOfTypeAndBranch
 import java.awt.BorderLayout
 
-public abstract class AbstractKotlinInplaceIntroducer<D: KtNamedDeclaration>(
+abstract class AbstractKotlinInplaceIntroducer<D: KtNamedDeclaration>(
         localVariable: D?,
         expression: KtExpression?,
         occurrences: Array<KtExpression>,
@@ -45,11 +40,11 @@ public abstract class AbstractKotlinInplaceIntroducer<D: KtNamedDeclaration>(
         editor: Editor
 ): AbstractInplaceIntroducer<D, KtExpression>(project, editor, expression, localVariable, occurrences, title, KotlinFileType.INSTANCE) {
     protected fun initFormComponents(init: FormBuilder.() -> Unit) {
-        myWholePanel.setLayout(BorderLayout())
+        myWholePanel.layout = BorderLayout()
 
         with(FormBuilder.createFormBuilder()) {
             init()
-            myWholePanel.add(getPanel(), BorderLayout.CENTER)
+            myWholePanel.add(panel, BorderLayout.CENTER)
         }
     }
 
@@ -57,7 +52,7 @@ public abstract class AbstractKotlinInplaceIntroducer<D: KtNamedDeclaration>(
         myEditor.putUserData(InplaceRefactoring.INTRODUCE_RESTART, true)
         try {
             stopIntroduce(myEditor)
-            myProject.executeWriteCommand(getCommandName(), getCommandName(), action)
+            myProject.executeWriteCommand(commandName, commandName, action)
             // myExprMarker was invalidated by stopIntroduce()
             myExprMarker = myExpr?.let { createMarker(it) }
             startInplaceIntroduceTemplate()
@@ -75,12 +70,18 @@ public abstract class AbstractKotlinInplaceIntroducer<D: KtNamedDeclaration>(
             marker: RangeMarker,
             exprText: String?
     ): KtExpression? {
-        if (exprText == null || !declaration.isValid()) return null
+        if (exprText == null || !declaration.isValid) return null
 
-        return containingFile
-                .findElementAt(marker.getStartOffset())
-                ?.getNonStrictParentOfType<KtSimpleNameExpression>()
-                ?.replaced(KtPsiFactory(myProject).createExpression(exprText))
+        val leaf = containingFile.findElementAt(marker.startOffset) ?: return null
+
+        leaf.getParentOfTypeAndBranch<KtProperty> { nameIdentifier }?.let {
+            return it.replaced(KtPsiFactory(myProject).createDeclaration(exprText))
+        }
+
+        val occurrenceExprText = (myExpr as? KtProperty)?.name ?: exprText
+        return leaf
+                .getNonStrictParentOfType<KtSimpleNameExpression>()
+                ?.replaced(KtPsiFactory(myProject).createExpression(occurrenceExprText))
     }
 
     override fun updateTitle(declaration: D?) = updateTitle(declaration, null)

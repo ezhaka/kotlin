@@ -25,8 +25,10 @@ import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.psi.search.searches.ReferencesSearch
 import com.intellij.psi.util.PsiTreeUtil
+import com.intellij.refactoring.RefactoringActionHandler
 import com.intellij.refactoring.introduce.inplace.AbstractInplaceIntroducer
 import com.intellij.refactoring.listeners.RefactoringEventListener
+import com.intellij.util.SmartList
 import com.intellij.util.containers.MultiMap
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
@@ -36,10 +38,9 @@ import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
 import org.jetbrains.kotlin.idea.caches.resolve.resolveToDescriptor
 import org.jetbrains.kotlin.idea.core.KotlinNameSuggester
 import org.jetbrains.kotlin.idea.core.NewDeclarationNameValidator
-import org.jetbrains.kotlin.idea.util.getResolutionScope
 import org.jetbrains.kotlin.idea.core.moveInsideParenthesesAndReplaceWith
-import org.jetbrains.kotlin.idea.core.refactoring.removeTemplateEntryBracesIfPossible
-import org.jetbrains.kotlin.idea.core.refactoring.runRefactoringWithPostprocessing
+import org.jetbrains.kotlin.idea.refactoring.removeTemplateEntryBracesIfPossible
+import org.jetbrains.kotlin.idea.refactoring.runRefactoringWithPostprocessing
 import org.jetbrains.kotlin.idea.core.replaced
 import org.jetbrains.kotlin.idea.refactoring.KotlinRefactoringBundle
 import org.jetbrains.kotlin.idea.refactoring.changeSignature.*
@@ -50,6 +51,7 @@ import org.jetbrains.kotlin.idea.util.IdeDescriptorRenderers
 import org.jetbrains.kotlin.idea.util.application.executeCommand
 import org.jetbrains.kotlin.idea.util.application.runWriteAction
 import org.jetbrains.kotlin.idea.util.approximateWithResolvableType
+import org.jetbrains.kotlin.idea.util.getResolutionScope
 import org.jetbrains.kotlin.idea.util.psi.patternMatching.KotlinPsiRange
 import org.jetbrains.kotlin.idea.util.psi.patternMatching.KotlinPsiUnifier
 import org.jetbrains.kotlin.idea.util.psi.patternMatching.toRange
@@ -61,10 +63,10 @@ import org.jetbrains.kotlin.resolve.scopes.receivers.ImplicitReceiver
 import org.jetbrains.kotlin.types.typeUtil.isNothing
 import org.jetbrains.kotlin.types.typeUtil.isUnit
 import org.jetbrains.kotlin.types.typeUtil.supertypes
+import org.jetbrains.kotlin.utils.addIfNotNull
 import java.util.*
-import kotlin.test.fail
 
-public data class IntroduceParameterDescriptor(
+data class IntroduceParameterDescriptor(
         val originalRange: KotlinPsiRange,
         val callable: KtNamedDeclaration,
         val callableDescriptor: FunctionDescriptor,
@@ -94,11 +96,11 @@ public data class IntroduceParameterDescriptor(
         valVar = if (callable is KtClass) {
             val modifierIsUnnecessary: (PsiElement) -> Boolean = {
                 when {
-                    it.getParent() != callable.getBody() ->
+                    it.parent != callable.getBody() ->
                         false
                     it is KtAnonymousInitializer ->
                         true
-                    it is KtProperty && it.getInitializer()?.getTextRange()?.intersects(originalRange.getTextRange()) ?: false ->
+                    it is KtProperty && it.initializer?.textRange?.intersects(originalRange.getTextRange()) ?: false ->
                         true
                     else ->
                         false
@@ -123,7 +125,7 @@ fun getParametersToRemove(
     return parametersUsages.entrySet()
             .filter {
                 it.value.all { paramUsage ->
-                    occurrenceRanges.any { occurrenceRange -> occurrenceRange.contains(paramUsage.getTextRange()) }
+                    occurrenceRanges.any { occurrenceRange -> occurrenceRange.contains(paramUsage.textRange) }
                 }
             }
             .map { it.key }
@@ -147,12 +149,13 @@ fun IntroduceParameterDescriptor.performRefactoring() {
                                 .forEach { methodDescriptor.removeParameter(it) }
                     }
 
+                    val defaultValue = if (newArgumentValue is KtProperty) (newArgumentValue as KtProperty).initializer else newArgumentValue
                     val parameterInfo = KotlinParameterInfo(callableDescriptor = callableDescriptor,
                                                             name = newParameterName,
-                                                            defaultValueForCall = if (withDefaultValue) null else newArgumentValue,
-                                                            defaultValueForParameter = if (withDefaultValue) newArgumentValue else null,
+                                                            defaultValueForCall = if (withDefaultValue) null else defaultValue,
+                                                            defaultValueForParameter = if (withDefaultValue) defaultValue else null,
                                                             valOrVar = valVar)
-                    parameterInfo.currentTypeText = newParameterTypeText
+                    parameterInfo.currentTypeInfo = KotlinTypeInfo(false, null, newParameterTypeText)
                     methodDescriptor.addParameter(parameterInfo)
                 }
             }
@@ -160,14 +163,14 @@ fun IntroduceParameterDescriptor.performRefactoring() {
             override fun performSilently(affectedFunctions: Collection<PsiElement>): Boolean = true
         }
 
-        val project = callable.getProject();
+        val project = callable.project;
         val changeSignature = { runChangeSignature(project, callableDescriptor, config, callable, INTRODUCE_PARAMETER) }
         changeSignature.runRefactoringWithPostprocessing(project, "refactoring.changeSignature") {
             try {
                 occurrencesToReplace.forEach { occurrenceReplacer(it) }
             }
             finally {
-                project.getMessageBus()
+                project.messageBus
                         .syncPublisher(RefactoringEventListener.REFACTORING_EVENT_TOPIC)
                         .refactoringDone(INTRODUCE_PARAMETER_REFACTORING_ID, null)
             }
@@ -195,7 +198,7 @@ fun selectNewParameterContext(
                 (if (stopAt != null) parent.parents.takeWhile { it != stopAt } else parents)
                         .filter {
                             ((it is KtClass && !it.isInterface() && it !is KtEnumEntry) || it is KtNamedFunction || it is KtSecondaryConstructor) &&
-                            ((it as KtNamedDeclaration).getValueParameterList() != null || it.getNameIdentifier() != null)
+                            ((it as KtNamedDeclaration).getValueParameterList() != null || it.nameIdentifier != null)
                         }
                         .toList()
             },
@@ -203,20 +206,31 @@ fun selectNewParameterContext(
     )
 }
 
-public interface KotlinIntroduceParameterHelper {
+interface KotlinIntroduceParameterHelper {
     object Default: KotlinIntroduceParameterHelper
 
     fun configure(descriptor: IntroduceParameterDescriptor): IntroduceParameterDescriptor = descriptor
 }
 
-public open class KotlinIntroduceParameterHandler(
+open class KotlinIntroduceParameterHandler(
         val helper: KotlinIntroduceParameterHelper = KotlinIntroduceParameterHelper.Default
-): KotlinIntroduceHandlerBase() {
+): RefactoringActionHandler {
     open fun invoke(project: Project, editor: Editor, expression: KtExpression, targetParent: KtNamedDeclaration) {
         val physicalExpression = expression.substringContextOrThis
+        if (physicalExpression is KtProperty && physicalExpression.isLocal && physicalExpression.nameIdentifier == null) {
+            showErrorHintByKey(project, editor, "cannot.refactor.no.expression", INTRODUCE_PARAMETER)
+            return
+        }
+
         val context = physicalExpression.analyze()
 
-        val expressionType = expression.extractableSubstringInfo?.type ?: context.getType(physicalExpression)
+        val expressionType = if (physicalExpression is KtProperty && physicalExpression.isLocal) {
+            context[BindingContext.VARIABLE, physicalExpression]?.type
+        }
+        else {
+            expression.extractableSubstringInfo?.type ?: context.getType(physicalExpression)
+        }
+
         if (expressionType == null) {
             showErrorHint(project, editor, "Expression has no type", INTRODUCE_PARAMETER)
             return
@@ -236,43 +250,55 @@ public open class KotlinIntroduceParameterHandler(
         val replacementType = expressionType.approximateWithResolvableType(targetParent.getResolutionScope(context, targetParent.getResolutionFacade()), false)
 
         val body = when (targetParent) {
-                       is KtFunction -> targetParent.getBodyExpression()
+                       is KtFunction -> targetParent.bodyExpression
                        is KtClass -> targetParent.getBody()
                        else -> null
                    } ?: throw AssertionError("Body element is not found: ${targetParent.getElementTextWithContext()}")
         val nameValidator = NewDeclarationNameValidator(body, sequenceOf(body), NewDeclarationNameValidator.Target.VARIABLES)
-        val suggestedNames = KotlinNameSuggester.suggestNamesByType(replacementType, nameValidator, "p")
+
+        val suggestedNames = SmartList<String>().apply {
+            if (physicalExpression is KtProperty && !ApplicationManager.getApplication().isUnitTestMode) {
+                addIfNotNull(physicalExpression.name)
+            }
+            addAll(KotlinNameSuggester.suggestNamesByType(replacementType, nameValidator, "p"))
+        }
 
         val parametersUsages = findInternalUsagesOfParametersAndReceiver(targetParent, functionDescriptor)
 
         val forbiddenRanges =
                 if (targetParent is KtClass) {
-                    targetParent.getDeclarations().filter { isObjectOrNonInnerClass(it) }.map { it.getTextRange() }
+                    targetParent.declarations.filter { isObjectOrNonInnerClass(it) }.map { it.textRange }
                 }
                 else {
                     Collections.emptyList()
                 }
-        val occurrencesToReplace = expression.toRange()
-                .match(body, KotlinPsiUnifier.DEFAULT)
-                .filterNot {
-                    val textRange = it.range.getPhysicalTextRange()
-                    forbiddenRanges.any { it.intersects(textRange) }
-                }
-                .mapNotNull {
-                    val matchedElement = it.range.elements.singleOrNull()
-                    when (matchedElement) {
-                        is KtExpression -> matchedElement
-                        is KtStringTemplateEntryWithExpression -> matchedElement.getExpression()
-                        else -> null
-                    } as? KtExpression
-                }
-                .map { it.toRange() }
+
+        val occurrencesToReplace = if (expression is KtProperty) {
+            ReferencesSearch.search(expression).mapNotNullTo(SmartList(expression.toRange())) { it.element?.toRange() }
+        }
+        else {
+            expression.toRange()
+                    .match(body, KotlinPsiUnifier.DEFAULT)
+                    .filterNot {
+                        val textRange = it.range.getPhysicalTextRange()
+                        forbiddenRanges.any { it.intersects(textRange) }
+                    }
+                    .mapNotNull {
+                        val matchedElement = it.range.elements.singleOrNull()
+                        val matchedExpr = when (matchedElement) {
+                            is KtExpression -> matchedElement
+                            is KtStringTemplateEntryWithExpression -> matchedElement.expression
+                            else -> null
+                        } as? KtExpression
+                        matchedExpr?.toRange()
+                    }
+        }
 
         project.executeCommand(
                 INTRODUCE_PARAMETER,
                 null,
                 fun() {
-                    val isTestMode = ApplicationManager.getApplication().isUnitTestMode()
+                    val isTestMode = ApplicationManager.getApplication().isUnitTestMode
                     val haveLambdaArgumentsToReplace = occurrencesToReplace.any {
                         it.elements.any { it is KtLambdaExpression && it.parent is KtLambdaArgument }
                     }
@@ -296,11 +322,12 @@ public open class KotlinIntroduceParameterHandler(
                                             withDefaultValue = false,
                                             parametersUsages = parametersUsages,
                                             occurrencesToReplace = occurrencesToReplace,
-                                            occurrenceReplacer = {
+                                            occurrenceReplacer = replacer@ {
                                                 val expressionToReplace = it.elements.single() as KtExpression
                                                 val replacingExpression = psiFactory.createExpression(newParameterName)
                                                 val substringInfo = expressionToReplace.extractableSubstringInfo
                                                 val result = when {
+                                                    expressionToReplace is KtProperty -> return@replacer expressionToReplace.delete()
                                                     expressionToReplace.isLambdaOutsideParentheses() -> {
                                                         expressionToReplace
                                                                 .getStrictParentOfType<KtLambdaArgument>()!!
@@ -320,8 +347,8 @@ public open class KotlinIntroduceParameterHandler(
 
                     if (inplaceIsAvailable) {
                         with(PsiDocumentManager.getInstance(project)) {
-                            commitDocument(editor.getDocument())
-                            doPostponedOperationsAndUnblockDocument(editor.getDocument())
+                            commitDocument(editor.document)
+                            doPostponedOperationsAndUnblockDocument(editor.document)
                         }
 
                         val introducer = KotlinInplaceParameterIntroducer(introduceParameterDescriptor,
@@ -350,7 +377,7 @@ public open class KotlinIntroduceParameterHandler(
 
         if (file !is KtFile) return
         selectNewParameterContext(editor, file) { elements, targetParent ->
-            val expression = ((elements.singleOrNull() as? KtBlockExpression)?.getStatements() ?: elements).singleOrNull()
+            val expression = ((elements.singleOrNull() as? KtBlockExpression)?.statements ?: elements).singleOrNull()
             if (expression is KtExpression) {
                 invoke(project, editor, expression, targetParent as KtNamedDeclaration)
             }
@@ -361,7 +388,7 @@ public open class KotlinIntroduceParameterHandler(
     }
 
     override fun invoke(project: Project, elements: Array<out PsiElement>, dataContext: DataContext?) {
-        fail("$INTRODUCE_PARAMETER can only be invoked from editor")
+        throw AssertionError("$INTRODUCE_PARAMETER can only be invoked from editor")
     }
 }
 
@@ -369,13 +396,10 @@ private fun DeclarationDescriptor?.toFunctionDescriptor(targetParent: KtNamedDec
     val functionDescriptor: FunctionDescriptor? =
             when (this) {
                 is FunctionDescriptor -> this
-                is ClassDescriptor -> this.getUnsubstitutedPrimaryConstructor()
+                is ClassDescriptor -> this.unsubstitutedPrimaryConstructor
                 else -> null
             }
-    if (functionDescriptor == null) {
-        throw AssertionError("Unexpected element type: ${targetParent.getElementTextWithContext()}")
-    }
-    return functionDescriptor
+    return functionDescriptor ?: throw AssertionError("Unexpected element type: ${targetParent.getElementTextWithContext()}")
 }
 
 private fun findInternalUsagesOfParametersAndReceiver(
@@ -386,19 +410,19 @@ private fun findInternalUsagesOfParametersAndReceiver(
     targetParent.getValueParameters()
             .filter { !it.hasValOrVar() }
             .forEach {
-                val paramUsages = ReferencesSearch.search(it).map { it.getElement() as KtElement }
+                val paramUsages = ReferencesSearch.search(it).map { it.element as KtElement }
                 if (paramUsages.isNotEmpty()) {
                     usages.put(it, paramUsages)
                 }
             }
-    val receiverTypeRef = (targetParent as? KtFunction)?.getReceiverTypeReference()
+    val receiverTypeRef = (targetParent as? KtFunction)?.receiverTypeReference
     if (receiverTypeRef != null) {
         targetParent.acceptChildren(
                 object : KtTreeVisitorVoid() {
                     override fun visitThisExpression(expression: KtThisExpression) {
                         super.visitThisExpression(expression)
 
-                        if (expression.getInstanceReference().mainReference.resolve() == targetDescriptor) {
+                        if (expression.instanceReference.mainReference.resolve() == targetDescriptor) {
                             usages.putValue(receiverTypeRef, expression)
                         }
                     }
@@ -409,9 +433,9 @@ private fun findInternalUsagesOfParametersAndReceiver(
                         val bindingContext = element.analyze()
                         val resolvedCall = element.getResolvedCall(bindingContext) ?: return
 
-                        if ((resolvedCall.getExtensionReceiver() as? ImplicitReceiver)?.declarationDescriptor == targetDescriptor ||
-                            (resolvedCall.getDispatchReceiver() as? ImplicitReceiver)?.declarationDescriptor == targetDescriptor) {
-                            usages.putValue(receiverTypeRef, resolvedCall.getCall().getCallElement())
+                        if ((resolvedCall.extensionReceiver as? ImplicitReceiver)?.declarationDescriptor == targetDescriptor ||
+                            (resolvedCall.dispatchReceiver as? ImplicitReceiver)?.declarationDescriptor == targetDescriptor) {
+                            usages.putValue(receiverTypeRef, resolvedCall.call.callElement)
                         }
                     }
                 }
@@ -426,7 +450,7 @@ interface KotlinIntroduceLambdaParameterHelper: KotlinIntroduceParameterHelper {
     fun configureExtractLambda(descriptor: ExtractableCodeDescriptor): ExtractableCodeDescriptor = descriptor
 }
 
-public open class KotlinIntroduceLambdaParameterHandler(
+open class KotlinIntroduceLambdaParameterHandler(
         helper: KotlinIntroduceLambdaParameterHelper = KotlinIntroduceLambdaParameterHelper.Default
 ): KotlinIntroduceParameterHandler(helper) {
     val extractLambdaHelper = object: ExtractionEngineHelper(INTRODUCE_LAMBDA_PARAMETER) {
@@ -468,7 +492,7 @@ public open class KotlinIntroduceLambdaParameterHandler(
             }
 
             val dialog = createDialog(project, editor, lambdaExtractionDescriptor)
-            if (ApplicationManager.getApplication()!!.isUnitTestMode()) {
+            if (ApplicationManager.getApplication()!!.isUnitTestMode) {
                 dialog.performRefactoring()
             }
             else {
@@ -480,7 +504,7 @@ public open class KotlinIntroduceLambdaParameterHandler(
     override fun invoke(project: Project, editor: Editor, expression: KtExpression, targetParent: KtNamedDeclaration) {
         val duplicateContainer =
                 when (targetParent) {
-                    is KtFunction -> targetParent.getBodyExpression()
+                    is KtFunction -> targetParent.bodyExpression
                     is KtClass -> targetParent.getBody()
                     else -> null
                 } ?: throw AssertionError("Body element is not found: ${targetParent.getElementTextWithContext()}")

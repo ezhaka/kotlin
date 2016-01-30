@@ -61,7 +61,7 @@ import org.jetbrains.kotlin.parsing.KotlinParserDefinition;
 import org.jetbrains.kotlin.psi.KtFile;
 import org.jetbrains.kotlin.psi.KtScript;
 import org.jetbrains.kotlin.resolve.*;
-import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowInfo;
+import org.jetbrains.kotlin.resolve.calls.smartcasts.DataFlowInfoFactory;
 import org.jetbrains.kotlin.resolve.jvm.JvmClassName;
 import org.jetbrains.kotlin.resolve.jvm.TopDownAnalyzerFacadeForJVM;
 import org.jetbrains.kotlin.resolve.lazy.ResolveSession;
@@ -160,7 +160,7 @@ public class ReplInterpreter {
                 new JvmPackagePartProvider(environment)
         );
 
-        this.topDownAnalysisContext = new TopDownAnalysisContext(TopDownAnalysisMode.LocalDeclarations, DataFlowInfo.EMPTY,
+        this.topDownAnalysisContext = new TopDownAnalysisContext(TopDownAnalysisMode.LocalDeclarations, DataFlowInfoFactory.EMPTY,
                                                                  container.getResolveSession().getDeclarationScopeProvider());
         this.topDownAnalyzer = container.getLazyTopDownAnalyzerForTopLevel();
         this.resolveSession = container.getResolveSession();
@@ -295,7 +295,8 @@ public class ReplInterpreter {
 
         DiagnosticMessageHolder errorHolder = createDiagnosticHolder();
 
-        AnalyzerWithCompilerReport.SyntaxErrorReport syntaxErrorReport = AnalyzerWithCompilerReport.reportSyntaxErrors(psiFile, errorHolder);
+        AnalyzerWithCompilerReport.SyntaxErrorReport syntaxErrorReport = AnalyzerWithCompilerReport.Companion
+                .reportSyntaxErrors(psiFile, errorHolder);
 
         if (syntaxErrorReport.isHasErrors() && syntaxErrorReport.isAllErrorsAtEof()) {
             if (ideMode) {
@@ -427,7 +428,8 @@ public class ReplInterpreter {
             trace.record(BindingContext.FILE_TO_PACKAGE_FRAGMENT, psiFile, resolveSession.getPackageFragment(FqName.ROOT));
         }
 
-        boolean hasErrors = AnalyzerWithCompilerReport.reportDiagnostics(trace.getBindingContext().getDiagnostics(), errorReporter, false);
+        boolean hasErrors = AnalyzerWithCompilerReport.Companion
+                .reportDiagnostics(trace.getBindingContext().getDiagnostics(), errorReporter, false);
         if (hasErrors) {
             return null;
         }

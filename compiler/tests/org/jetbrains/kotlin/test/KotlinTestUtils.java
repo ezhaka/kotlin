@@ -39,8 +39,8 @@ import com.intellij.util.Function;
 import com.intellij.util.Processor;
 import com.intellij.util.containers.ContainerUtil;
 import junit.framework.TestCase;
-import kotlin.CollectionsKt;
-import kotlin.SetsKt;
+import kotlin.collections.CollectionsKt;
+import kotlin.collections.SetsKt;
 import kotlin.jvm.functions.Function1;
 import org.jetbrains.annotations.NonNls;
 import org.jetbrains.annotations.NotNull;
@@ -446,6 +446,10 @@ public class KotlinTestUtils {
 
         if (configurationKind.getWithRuntime()) {
             JvmContentRootsKt.addJvmClasspathRoot(configuration, ForTestCompileRuntime.runtimeJarForTests());
+            JvmContentRootsKt.addJvmClasspathRoot(configuration, ForTestCompileRuntime.kotlinTestJarForTests());
+        }
+        else if (configurationKind.getWithMockRuntime()) {
+            JvmContentRootsKt.addJvmClasspathRoot(configuration, ForTestCompileRuntime.mockRuntimeJarForTests());
         }
         if (configurationKind.getWithReflection()) {
             JvmContentRootsKt.addJvmClasspathRoot(configuration, ForTestCompileRuntime.reflectJarForTests());
@@ -794,13 +798,10 @@ public class KotlinTestUtils {
         return testFile;
     }
 
-    public static String getTestsRoot(@NotNull TestCase testCase) {
-        try {
-            return (String) testCase.getClass().getMethod("getTestsRoot").invoke(testCase);
-        }
-        catch (Exception e) {
-            throw new RuntimeException("Can't call getTestsRoot() on test class", e);
-        }
+    public static String getTestsRoot(@NotNull Class<?> testCaseClass) {
+        TestMetadata testClassMetadata = testCaseClass.getAnnotation(TestMetadata.class);
+        Assert.assertNotNull("No metadata for class: " + testCaseClass, testClassMetadata);
+        return testClassMetadata.value();
     }
 
     public static void assertAllTestsPresentByMetadata(
@@ -810,10 +811,7 @@ public class KotlinTestUtils {
             boolean recursive,
             @NotNull String... excludeDirs
     ) {
-        TestMetadata testClassMetadata = testCaseClass.getAnnotation(TestMetadata.class);
-        Assert.assertNotNull("No metadata for class: " + testCaseClass, testClassMetadata);
-        String rootPath = testClassMetadata.value();
-        File rootFile = new File(rootPath);
+        File rootFile = new File(getTestsRoot(testCaseClass));
 
         Set<String> filePaths = collectPathsMetadata(testCaseClass);
         Set<String> exclude = SetsKt.setOf(excludeDirs);
@@ -838,9 +836,7 @@ public class KotlinTestUtils {
             @NotNull File testDataDir,
             @NotNull final Pattern filenamePattern
     ) {
-        TestMetadata testClassMetadata = testCaseClass.getAnnotation(TestMetadata.class);
-        Assert.assertNotNull("No metadata for class: " + testCaseClass, testClassMetadata);
-        final File rootFile = new File(testClassMetadata.value());
+        final File rootFile = new File(getTestsRoot(testCaseClass));
 
         final Set<String> filePaths = collectPathsMetadata(testCaseClass);
 
@@ -937,7 +933,7 @@ public class KotlinTestUtils {
 
     @NotNull
     public static ModuleDescriptorImpl createEmptyModule(@NotNull String name) {
-        return createEmptyModule(name, JvmPlatform.INSTANCE$);
+        return createEmptyModule(name, JvmPlatform.INSTANCE);
     }
 
     @NotNull
@@ -960,5 +956,10 @@ public class KotlinTestUtils {
             return matcher.replaceAll("\\$*");
         }
         return string;
+    }
+
+    public static boolean isAllFilesPresentTest(String testName) {
+        //noinspection SpellCheckingInspection
+        return testName.toLowerCase().startsWith("allfilespresentin");
     }
 }

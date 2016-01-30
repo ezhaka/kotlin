@@ -117,7 +117,7 @@ public class KotlinRefactoringUtil {
         Project project = declaration.getProject();
         Map<PsiElement, CallableDescriptor> overriddenElementsToDescriptor = new HashMap<PsiElement, CallableDescriptor>();
         for (CallableDescriptor overriddenDescriptor : DescriptorUtils.getAllOverriddenDescriptors(declarationDescriptor)) {
-            PsiElement overriddenDeclaration = DescriptorToSourceUtilsIde.INSTANCE$.getAnyDeclaration(project, overriddenDescriptor);
+            PsiElement overriddenDeclaration = DescriptorToSourceUtilsIde.INSTANCE.getAnyDeclaration(project, overriddenDescriptor);
             if (PsiTreeUtil.instanceOf(overriddenDeclaration, KtNamedFunction.class, KtProperty.class, PsiMethod.class)) {
                 overriddenElementsToDescriptor.put(overriddenDeclaration, overriddenDescriptor);
             }
@@ -425,6 +425,7 @@ public class KotlinRefactoringUtil {
         if (expressions.size() == 0) {
             if (failOnEmptySuggestion) throw new IntroduceRefactoringException(
                     KotlinRefactoringBundle.message("cannot.refactor.not.expression"));
+            callback.run(null);
             return;
         }
 

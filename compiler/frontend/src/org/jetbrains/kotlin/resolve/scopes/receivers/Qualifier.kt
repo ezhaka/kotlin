@@ -23,25 +23,25 @@ import org.jetbrains.kotlin.psi.KtSimpleNameExpression
 import org.jetbrains.kotlin.psi.psiUtil.getTopmostParentQualifiedExpressionForSelector
 import org.jetbrains.kotlin.resolve.BindingContext
 import org.jetbrains.kotlin.resolve.descriptorUtil.classValueType
-import org.jetbrains.kotlin.resolve.scopes.ChainedScope
+import org.jetbrains.kotlin.resolve.scopes.ChainedMemberScope
 import org.jetbrains.kotlin.resolve.scopes.FilteringScope
-import org.jetbrains.kotlin.resolve.scopes.ScopeUtils
 import org.jetbrains.kotlin.resolve.scopes.MemberScope
+import org.jetbrains.kotlin.resolve.scopes.ScopeUtils
 import org.jetbrains.kotlin.utils.addIfNotNull
 import java.util.*
 
-public interface Qualifier: Receiver {
+interface Qualifier: Receiver {
 
-    public val expression: KtExpression
+    val expression: KtExpression
 
-    public val referenceExpression: KtSimpleNameExpression
+    val referenceExpression: KtSimpleNameExpression
 
-    public val name: Name
+    val name: Name
         get() = descriptor.name
 
-    public val descriptor: DeclarationDescriptor
+    val descriptor: DeclarationDescriptor
 
-    public val scope: MemberScope
+    val scope: MemberScope
 }
 
 abstract class QualifierReceiver(
@@ -52,13 +52,11 @@ abstract class QualifierReceiver(
         get() = referenceExpression.getTopmostParentQualifiedExpressionForSelector() ?: referenceExpression
 
     abstract fun getNestedClassesAndPackageMembersScope(): MemberScope
-
-    override fun exists() = true
 }
 
 class PackageQualifier(
         referenceExpression: KtSimpleNameExpression,
-        public val packageView: PackageViewDescriptor
+        val packageView: PackageViewDescriptor
 ) : QualifierReceiver(referenceExpression) {
 
     override val descriptor: DeclarationDescriptor
@@ -112,7 +110,7 @@ class ClassQualifier(
             scopes.add(classifier.unsubstitutedInnerClassesScope)
         }
 
-        return ChainedScope("Member scope for $name as class or object", *scopes.toTypedArray())
+        return ChainedMemberScope("Member scope for $name as class or object", scopes)
     }
 
     override fun getNestedClassesAndPackageMembersScope(): MemberScope {
@@ -128,7 +126,7 @@ class ClassQualifier(
             scopes.add(ScopeUtils.getStaticNestedClassesScope(classifier))
         }
 
-        return ChainedScope("Static scope for $name as class or object", *scopes.toTypedArray())
+        return ChainedMemberScope("Static scope for $name as class or object", scopes)
     }
 
     override fun toString() = "Class{$classifier}"

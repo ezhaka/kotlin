@@ -10,6 +10,8 @@ class MapTest {
         val data = mapOf<String, Int>()
         val a = data.getOrElse("foo") { 2 }
         assertEquals(2, a)
+        val a1 = data.getOrElse("foo") { data.get("bar") } ?: 1
+        assertEquals(1, a1)
 
         val b = data.getOrElse("foo") { 3 }
         assertEquals(3, b)
@@ -18,8 +20,13 @@ class MapTest {
         val empty = mapOf<String, Int?>()
         val c = empty.getOrElse("") { null }
         assertEquals(null, c)
+
+        val nullable = mapOf(1 to null)
+        val d = nullable.getOrElse(1) { "x" }
+        assertEquals("x", d)
     }
 
+    @Suppress("INVISIBLE_MEMBER")
     @test fun getOrImplicitDefault() {
         val data: MutableMap<String, Int> = hashMapOf("bar" to 1)
         assertTrue(assertFails { data.getOrImplicitDefault("foo") } is NoSuchElementException)
@@ -54,6 +61,9 @@ class MapTest {
         val empty = hashMapOf<String, Int?>()
         val c = empty.getOrPut("") { null }
         assertEquals(null, c)
+
+        val d = empty.getOrPut("") { 1 }
+        assertEquals(1, d)
     }
 
     @test fun sizeAndEmpty() {
@@ -167,7 +177,7 @@ class MapTest {
     }
 
     @test fun createWithSelector() {
-        val map = listOf("a", "bb", "ccc").toMapBy { it.length }
+        val map = listOf("a", "bb", "ccc").associateBy { it.length }
         assertEquals(3, map.size)
         assertEquals("a", map.get(1))
         assertEquals("bb", map.get(2))
@@ -175,18 +185,26 @@ class MapTest {
     }
 
     @test fun createWithSelectorAndOverwrite() {
-        val map = listOf("aa", "bb", "ccc").toMapBy { it.length }
+        val map = listOf("aa", "bb", "ccc").associateBy { it.length }
         assertEquals(2, map.size)
         assertEquals("bb", map.get(2))
         assertEquals("ccc", map.get(3))
     }
 
     @test fun createWithSelectorForKeyAndValue() {
-        val map = listOf("a", "bb", "ccc").toMap({ it.length }, { it.toUpperCase() })
+        val map = listOf("a", "bb", "ccc").associateBy({ it.length }, { it.toUpperCase() })
         assertEquals(3, map.size)
-        assertEquals("A", map.get(1))
-        assertEquals("BB", map.get(2))
-        assertEquals("CCC", map.get(3))
+        assertEquals("A", map[1])
+        assertEquals("BB", map[2])
+        assertEquals("CCC", map[3])
+    }
+
+    @test fun createWithPairSelector() {
+        val map = listOf("a", "bb", "ccc").associate { it.length to it.toUpperCase() }
+        assertEquals(3, map.size)
+        assertEquals("A", map[1])
+        assertEquals("BB", map[2])
+        assertEquals("CCC", map[3])
     }
 
     @test fun createUsingTo() {
@@ -194,6 +212,12 @@ class MapTest {
         assertEquals(2, map.size)
         assertEquals(1, map["a"])
         assertEquals(2, map["b"])
+    }
+
+    @test fun createMutableMap() {
+        val map = mutableMapOf("b" to 1, "c" to 2)
+        map.put("a", 3)
+        assertEquals(listOf("b" to 1, "c" to 2, "a" to 3), map.toList())
     }
 
     @test fun createLinkedMap() {
@@ -314,41 +338,6 @@ class MapTest {
     @test fun plusMap() = testPlus { it + mapOf("C" to 3, "B" to 4) }
 
 
-    fun testMinus(doMinus: (Map<String, Int>) -> Map<String, Int>) {
-        val original = mapOf("A" to 1, "B" to 2)
-        val shortened = doMinus(original)
-        assertEquals("A" to 1, shortened.entries.single().toPair())
-    }
-
-    @test fun minus() = testMinus { it - "B" - "C" }
-
-    @test fun minusList() = testMinus { it - listOf("B", "C") }
-
-    @test fun minusArray() = testMinus { it - arrayOf("B", "C") }
-
-    @test fun minusSequence() = testMinus { it - sequenceOf("B", "C") }
-
-    @test fun minusSet() = testMinus { it - setOf("B", "C") }
-
-
-
-    fun testMinusAssign(doMinusAssign: (MutableMap<String, Int>) -> Unit) {
-        val original = hashMapOf("A" to 1, "B" to 2)
-        doMinusAssign(original)
-        assertEquals("A" to 1, original.entries.single().toPair())
-    }
-
-    @test fun minusAssign() = testMinusAssign {
-        it -= "B"
-        it -= "C"
-    }
-
-    @test fun minusAssignList() = testMinusAssign { it -= listOf("B", "C") }
-
-    @test fun minusAssignArray() = testMinusAssign { it -= arrayOf("B", "C") }
-
-    @test fun minusAssignSequence() = testMinusAssign { it -= sequenceOf("B", "C") }
-
 
     fun testIdempotent(operation: (Map<String, Int>) -> Map<String, Int>) {
         val original = mapOf("A" to 1, "B" to 2)
@@ -364,16 +353,12 @@ class MapTest {
 
 
     @test fun plusEmptyList() = testIdempotent { it + listOf() }
-    @test fun minusEmptyList() = testIdempotent { it - listOf() }
 
     @test fun plusEmptySet() = testIdempotent { it + setOf() }
-    @test fun minusEmptySet() = testIdempotent { it - setOf() }
 
     @test fun plusAssignEmptyList() = testIdempotentAssign { it += listOf() }
-    @test fun minusAssignEmptyList() = testIdempotentAssign { it -= listOf() }
 
     @test fun plusAssignEmptySet() = testIdempotentAssign { it += setOf() }
-    @test fun minusAssignEmptySet() = testIdempotentAssign { it -= setOf() }
 
 
 }

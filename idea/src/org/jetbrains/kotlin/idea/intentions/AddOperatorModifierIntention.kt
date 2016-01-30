@@ -28,15 +28,11 @@ class AddOperatorModifierIntention : SelfTargetingRangeIntention<KtNamedFunction
     override fun applicabilityRange(element: KtNamedFunction): TextRange? {
         val nameIdentifier = element.nameIdentifier ?: return null
         val functionDescriptor = element.resolveToDescriptor() as? FunctionDescriptor ?: return null
-        if (functionDescriptor.isOperator || !OperatorChecks.canBeOperator(functionDescriptor)) return null
+        if (functionDescriptor.isOperator || !OperatorChecks.checkOperator(functionDescriptor).isSuccess) return null
         return nameIdentifier.textRange
     }
 
-    override fun applyTo(element: KtNamedFunction, editor: Editor) {
-        applyTo(element)
-    }
-
-    fun applyTo(element: KtNamedFunction) {
+    override fun applyTo(element: KtNamedFunction, editor: Editor?) {
         element.addModifier(KtTokens.OPERATOR_KEYWORD)
     }
 }

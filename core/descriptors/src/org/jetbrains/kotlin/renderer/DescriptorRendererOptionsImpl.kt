@@ -25,15 +25,15 @@ import kotlin.properties.ObservableProperty
 import kotlin.properties.ReadWriteProperty
 
 internal class DescriptorRendererOptionsImpl : DescriptorRendererOptions {
-    public var isLocked: Boolean = false
+    var isLocked: Boolean = false
         private set
 
-    public fun lock() {
+    fun lock() {
         assert(!isLocked)
         isLocked = true
     }
 
-    public fun copy(): DescriptorRendererOptionsImpl {
+    fun copy(): DescriptorRendererOptionsImpl {
         val copy = DescriptorRendererOptionsImpl()
 
         //TODO: use Kotlin reflection
@@ -74,7 +74,6 @@ internal class DescriptorRendererOptionsImpl : DescriptorRendererOptions {
     override var withoutReturnType by property(false)
     override var normalizedVisibilities by property(false)
     override var showInternalKeyword by property(true)
-    override var prettyFunctionTypes by property(true)
     override var uninferredTypeParameterAsName by property(false)
     override var includePropertyConstant by property(false)
     override var withoutTypeParameters by property(false)

@@ -43,8 +43,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
-import static kotlin.CollectionsKt.emptyList;
-import static kotlin.CollectionsKt.joinToString;
+import static kotlin.collections.CollectionsKt.emptyList;
+import static kotlin.collections.CollectionsKt.joinToString;
 
 public class ErrorUtils {
 
@@ -554,7 +554,7 @@ public class ErrorUtils {
     }
 
     public static boolean containsUninferredParameter(@Nullable KotlinType type) {
-        return TypeUtils.containsSpecialType(type, new Function1<KotlinType, Boolean>() {
+        return TypeUtils.contains(type, new Function1<KotlinType, Boolean>() {
             @Override
             public Boolean invoke(KotlinType argumentType) {
                 return isUninferredParameter(argumentType);

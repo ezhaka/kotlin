@@ -84,6 +84,7 @@ public class ResolvedCallImpl<D extends CallableDescriptor> implements MutableRe
 
     private final Map<TypeParameterDescriptor, KotlinType> typeArguments = Maps.newLinkedHashMap();
     private final Map<ValueParameterDescriptor, ResolvedValueArgument> valueArguments = Maps.newLinkedHashMap();
+    private Map<ValueParameterDescriptor, ResolvedValueArgument> valueArgumentsBeforeSubstitution;
     private final MutableDataFlowInfoForArguments dataFlowInfoForArguments;
     private final Map<ValueArgument, ArgumentMatchImpl> argumentToParameterMap = Maps.newHashMap();
 
@@ -114,8 +115,8 @@ public class ResolvedCallImpl<D extends CallableDescriptor> implements MutableRe
     public ResolvedCallImpl(
             @NotNull Call call,
             @NotNull D candidateDescriptor,
-            @NotNull ReceiverValue dispatchReceiver,
-            @NotNull ReceiverValue extensionReceiver,
+            @Nullable ReceiverValue dispatchReceiver,
+            @Nullable ReceiverValue extensionReceiver,
             @NotNull ExplicitReceiverKind explicitReceiverKind,
             @Nullable TypeSubstitutor knownTypeParametersSubstitutor,
             @NotNull DelegatingBindingTrace trace,
@@ -199,9 +200,9 @@ public class ResolvedCallImpl<D extends CallableDescriptor> implements MutableRe
             substitutedParametersMap.put(valueParameterDescriptor.getOriginal(), valueParameterDescriptor);
         }
 
-        Map<ValueParameterDescriptor, ResolvedValueArgument> originalValueArguments = Maps.newLinkedHashMap(valueArguments);
+        valueArgumentsBeforeSubstitution = Maps.newLinkedHashMap(valueArguments);
         valueArguments.clear();
-        for (Map.Entry<ValueParameterDescriptor, ResolvedValueArgument> entry : originalValueArguments.entrySet()) {
+        for (Map.Entry<ValueParameterDescriptor, ResolvedValueArgument> entry : valueArgumentsBeforeSubstitution.entrySet()) {
             ValueParameterDescriptor substitutedVersion = substitutedParametersMap.get(entry.getKey().getOriginal());
             assert substitutedVersion != null : entry.getKey();
             valueArguments.put(substitutedVersion, entry.getValue());
@@ -240,13 +241,13 @@ public class ResolvedCallImpl<D extends CallableDescriptor> implements MutableRe
     }
 
     @Override
-    @NotNull
+    @Nullable
     public Receiver getExtensionReceiver() {
         return extensionReceiver;
     }
 
     @Override
-    @NotNull
+    @Nullable
     public ReceiverValue getDispatchReceiver() {
         return dispatchReceiver;
     }
@@ -261,6 +262,14 @@ public class ResolvedCallImpl<D extends CallableDescriptor> implements MutableRe
     @NotNull
     public Map<ValueParameterDescriptor, ResolvedValueArgument> getValueArguments() {
         return valueArguments;
+    }
+
+    @Override
+    @NotNull
+    public Map<ValueParameterDescriptor, ResolvedValueArgument> getUnsubstitutedValueArguments() {
+        // TODO We need unsubstituted value arguments to compare signatures for specificity when explicit type arguments are provided.
+        // Current implementation is questionable (mostly due to lack of well-defined contract for MutableResolvedCall).
+        return valueArgumentsBeforeSubstitution != null ? valueArgumentsBeforeSubstitution : valueArguments;
     }
 
     @Nullable
@@ -304,7 +313,7 @@ public class ResolvedCallImpl<D extends CallableDescriptor> implements MutableRe
             if (ArgumentMappingKt.isReallySuccess(this)) {
                 LOG.error("ArgumentUnmapped for " + valueArgument + " in successfully resolved call: " + call.getCallElement().getText());
             }
-            return ArgumentUnmapped.INSTANCE$;
+            return ArgumentUnmapped.INSTANCE;
         }
         return argumentMatch;
     }

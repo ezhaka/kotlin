@@ -316,6 +316,12 @@ public class JavaToKotlinConverterSingleFileTestGenerated extends AbstractJavaTo
             KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("j2k/testData/fileOrElement/assertStatement"), Pattern.compile("^(.+)\\.java$"), true);
         }
 
+        @TestMetadata("assertNotNull.java")
+        public void testAssertNotNull() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("j2k/testData/fileOrElement/assertStatement/assertNotNull.java");
+            doTest(fileName);
+        }
+
         @TestMetadata("onlyCondition.java")
         public void testOnlyCondition() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("j2k/testData/fileOrElement/assertStatement/onlyCondition.java");
@@ -2080,6 +2086,12 @@ public class JavaToKotlinConverterSingleFileTestGenerated extends AbstractJavaTo
             doTest(fileName);
         }
 
+        @TestMetadata("overMapEntries.java")
+        public void testOverMapEntries() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("j2k/testData/fileOrElement/for/overMapEntries.java");
+            doTest(fileName);
+        }
+
         @TestMetadata("withContinue1.java")
         public void testWithContinue1() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("j2k/testData/fileOrElement/for/withContinue1.java");
@@ -2785,6 +2797,18 @@ public class JavaToKotlinConverterSingleFileTestGenerated extends AbstractJavaTo
             doTest(fileName);
         }
 
+        @TestMetadata("kt-9997.java")
+        public void testKt_9997() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("j2k/testData/fileOrElement/issues/kt-9997.java");
+            doTest(fileName);
+        }
+
+        @TestMetadata("operationsWithChar.java")
+        public void testOperationsWithChar() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("j2k/testData/fileOrElement/issues/operationsWithChar.java");
+            doTest(fileName);
+        }
+
         @TestMetadata("qualifyStatic.java")
         public void testQualifyStatic() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("j2k/testData/fileOrElement/issues/qualifyStatic.java");
@@ -3088,6 +3112,12 @@ public class JavaToKotlinConverterSingleFileTestGenerated extends AbstractJavaTo
         @TestMetadata("getClass.java")
         public void testGetClass() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("j2k/testData/fileOrElement/methodCallExpression/getClass.java");
+            doTest(fileName);
+        }
+
+        @TestMetadata("parameterToReceiver.java")
+        public void testParameterToReceiver() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("j2k/testData/fileOrElement/methodCallExpression/parameterToReceiver.java");
             doTest(fileName);
         }
 
@@ -3941,6 +3971,21 @@ public class JavaToKotlinConverterSingleFileTestGenerated extends AbstractJavaTo
         }
     }
 
+    @TestMetadata("j2k/testData/fileOrElement/strings")
+    @TestDataPath("$PROJECT_ROOT")
+    @RunWith(JUnit3RunnerWithInners.class)
+    public static class Strings extends AbstractJavaToKotlinConverterSingleFileTest {
+        public void testAllFilesPresentInStrings() throws Exception {
+            KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("j2k/testData/fileOrElement/strings"), Pattern.compile("^(.+)\\.java$"), true);
+        }
+
+        @TestMetadata("formattedString.java")
+        public void testFormattedString() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("j2k/testData/fileOrElement/strings/formattedString.java");
+            doTest(fileName);
+        }
+    }
+
     @TestMetadata("j2k/testData/fileOrElement/superExpression")
     @TestDataPath("$PROJECT_ROOT")
     @RunWith(JUnit3RunnerWithInners.class)
@@ -4117,6 +4162,12 @@ public class JavaToKotlinConverterSingleFileTestGenerated extends AbstractJavaTo
         @TestMetadata("iterableAndIterator3.java")
         public void testIterableAndIterator3() throws Exception {
             String fileName = KotlinTestUtils.navigationMetadata("j2k/testData/fileOrElement/toKotlinClasses/iterableAndIterator3.java");
+            doTest(fileName);
+        }
+
+        @TestMetadata("LibraryFunctions.java")
+        public void testLibraryFunctions() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("j2k/testData/fileOrElement/toKotlinClasses/LibraryFunctions.java");
             doTest(fileName);
         }
 

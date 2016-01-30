@@ -3,6 +3,8 @@
     protected @a fun f() {
     }
 
+    inline fun <reified @a T, @a F> inlineFun() { }
+
     private fun annotationWithVararg(@a vararg i: Int) {}
 
     @b(E.E1) private val c: Int = 1
@@ -17,7 +19,7 @@
 
 
     private @b(E.E2) companion object {
-
+        @f val field = 42
     }
 
     class Nested @a private @b(E.E1) @b(E.E2) constructor()
@@ -29,7 +31,7 @@
 
 @Target(AnnotationTarget.PROPERTY, AnnotationTarget.VALUE_PARAMETER, AnnotationTarget.FUNCTION,
         AnnotationTarget.CONSTRUCTOR, AnnotationTarget.PROPERTY_GETTER, AnnotationTarget.PROPERTY_SETTER,
-        AnnotationTarget.TYPE, AnnotationTarget.CLASS)
+        AnnotationTarget.TYPE, AnnotationTarget.CLASS, AnnotationTarget.TYPE_PARAMETER)
 annotation class a
 
 @Target(AnnotationTarget.PROPERTY, AnnotationTarget.FUNCTION, AnnotationTarget.CLASS,
@@ -42,5 +44,8 @@ annotation class b(val e: E)
         AnnotationTarget.CONSTRUCTOR, AnnotationTarget.PROPERTY_GETTER, AnnotationTarget.PROPERTY_SETTER,
         AnnotationTarget.TYPE, AnnotationTarget.CLASS)
 annotation class c
+
+@Target(AnnotationTarget.FIELD)
+annotation class f
 
 enum class E { E1, E2 }

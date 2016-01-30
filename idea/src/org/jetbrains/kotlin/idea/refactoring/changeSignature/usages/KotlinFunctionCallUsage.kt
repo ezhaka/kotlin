@@ -26,7 +26,7 @@ import org.jetbrains.kotlin.descriptors.*
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.codeInsight.shorten.addToShorteningWaitSet
 import org.jetbrains.kotlin.idea.core.moveFunctionLiteralOutsideParentheses
-import org.jetbrains.kotlin.idea.core.refactoring.replaceListPsiAndKeepDelimiters
+import org.jetbrains.kotlin.idea.refactoring.replaceListPsiAndKeepDelimiters
 import org.jetbrains.kotlin.idea.refactoring.changeSignature.KotlinChangeInfo
 import org.jetbrains.kotlin.idea.refactoring.changeSignature.KotlinParameterInfo
 import org.jetbrains.kotlin.idea.refactoring.changeSignature.isInsideOfCallerBody
@@ -124,11 +124,11 @@ class KotlinFunctionCallUsage(
     }
 
     private fun getReceiverExpressionIfMatched(
-            receiverValue: ReceiverValue,
+            receiverValue: ReceiverValue?,
             originalDescriptor: DeclarationDescriptor,
             psiFactory: KtPsiFactory
     ): KtExpression? {
-        if (!receiverValue.exists()) return null
+        if (receiverValue == null) return null
 
         // Replace descriptor of extension function/property with descriptor of its receiver
         // to simplify checking against receiver value in the corresponding resolved call
@@ -307,8 +307,8 @@ class KotlinFunctionCallUsage(
         val newReceiverInfo = changeInfo.receiverParameterInfo
         val originalReceiverInfo = changeInfo.methodDescriptor.receiver
 
-        val extensionReceiver = if (resolvedCall != null) resolvedCall.extensionReceiver else ReceiverValue.NO_RECEIVER
-        val dispatchReceiver = if (resolvedCall != null) resolvedCall.dispatchReceiver else ReceiverValue.NO_RECEIVER
+        val extensionReceiver = resolvedCall?.extensionReceiver
+        val dispatchReceiver = resolvedCall?.dispatchReceiver
 
         // Do not add extension receiver to calls with explicit dispatch receiver
         if (newReceiverInfo != null && fullCallElement is KtQualifiedExpression && dispatchReceiver is ExpressionReceiver) return
@@ -461,15 +461,13 @@ class KotlinFunctionCallUsage(
     }
 
     companion object {
-        private val REVERSED_TEXT_OFFSET_COMPARATOR = object : Comparator<Pair<KtElement, KtElement>> {
-            override fun compare(p1: Pair<KtElement, KtElement>, p2: Pair<KtElement, KtElement>): Int {
-                val offset1 = p1.first.startOffset
-                val offset2 = p2.first.startOffset
-                return when {
-                    offset1 < offset2 -> 1
-                    offset1 > offset2 -> -1
-                    else -> 0
-                }
+        private val REVERSED_TEXT_OFFSET_COMPARATOR = Comparator<kotlin.Pair<KtElement, KtElement>> { p1, p2 ->
+            val offset1 = p1.first.startOffset
+            val offset2 = p2.first.startOffset
+            when {
+                offset1 < offset2 -> 1
+                offset1 > offset2 -> -1
+                else -> 0
             }
         }
 

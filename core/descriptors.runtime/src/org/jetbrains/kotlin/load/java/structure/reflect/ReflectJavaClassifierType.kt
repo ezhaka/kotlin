@@ -22,13 +22,13 @@ import java.lang.reflect.ParameterizedType
 import java.lang.reflect.Type
 import java.lang.reflect.TypeVariable
 
-public class ReflectJavaClassifierType(public override val type: Type) : ReflectJavaType(), JavaClassifierType {
+class ReflectJavaClassifierType(public override val type: Type) : ReflectJavaType(), JavaClassifierType {
     private val classifier: JavaClassifier = run {
         val type = type
         val classifier: JavaClassifier = when (type) {
             is Class<*> -> ReflectJavaClass(type)
             is TypeVariable<*> -> ReflectJavaTypeParameter(type)
-            is ParameterizedType -> ReflectJavaClass(type.getRawType() as Class<*>)
+            is ParameterizedType -> ReflectJavaClass(type.rawType as Class<*>)
             else -> throw IllegalStateException("Not a classifier type (${type.javaClass}): $type")
         }
         classifier
@@ -45,7 +45,7 @@ public class ReflectJavaClassifierType(public override val type: Type) : Reflect
     override fun isRaw(): Boolean = with(type) { this is Class<*> && getTypeParameters().isNotEmpty() }
 
     override fun getTypeArguments(): List<JavaType> {
-        return sequence({type as? ParameterizedType}, { it.ownerType as? ParameterizedType }).flatMap {
+        return generateSequence({type as? ParameterizedType}, { it.ownerType as? ParameterizedType }).flatMap {
             it.actualTypeArguments.asSequence().map { ReflectJavaType.create(it) }
         }.toList()
     }
