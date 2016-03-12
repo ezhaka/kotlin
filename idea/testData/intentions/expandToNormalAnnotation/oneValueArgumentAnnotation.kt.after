@@ -1,0 +1,1 @@
+@AnnWithValue(value = "abc") class C

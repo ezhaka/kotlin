@@ -5218,6 +5218,33 @@ public class IntentionTestGenerated extends AbstractIntentionTest {
 
     }
 
+    @TestMetadata("idea/testData/intentions/expandToNormalAnnotation")
+    @TestDataPath("$PROJECT_ROOT")
+    @RunWith(JUnit3RunnerWithInners.class)
+    public static class ExpandToNormalAnnotation extends AbstractIntentionTest {
+        public void testAllFilesPresentInExpandToNormalAnnotation() throws Exception {
+            KotlinTestUtils.assertAllTestsPresentByMetadata(this.getClass(), new File("idea/testData/intentions/expandToNormalAnnotation"), Pattern.compile("^([\\w\\-_]+)\\.kt$"), true);
+        }
+
+        @TestMetadata("kotlinOneArgumentAnnotation.kt")
+        public void testKotlinOneArgumentAnnotation() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/intentions/expandToNormalAnnotation/kotlinOneArgumentAnnotation.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("normalFormAnnotation.kt")
+        public void testNormalFormAnnotation() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/intentions/expandToNormalAnnotation/normalFormAnnotation.kt");
+            doTest(fileName);
+        }
+
+        @TestMetadata("oneValueArgumentAnnotation.kt")
+        public void testOneValueArgumentAnnotation() throws Exception {
+            String fileName = KotlinTestUtils.navigationMetadata("idea/testData/intentions/expandToNormalAnnotation/oneValueArgumentAnnotation.kt");
+            doTest(fileName);
+        }
+    }
+
     @TestMetadata("idea/testData/intentions/ifNullToElvis")
     @TestDataPath("$PROJECT_ROOT")
     @RunWith(JUnit3RunnerWithInners.class)

@@ -1,0 +1,1 @@
+@AnnWithValue(<caret>"abc") class C

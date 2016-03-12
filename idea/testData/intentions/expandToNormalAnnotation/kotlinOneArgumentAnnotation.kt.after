@@ -1,0 +1,4 @@
+annotation class Ann(val x: String)
+
+@Ann(x = "some string")
+class A
